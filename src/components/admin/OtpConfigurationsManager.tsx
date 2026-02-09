@@ -57,7 +57,7 @@ const OtpConfigurationsManager = () => {
     lastActivity: string | null;
   } | null>(null);
   const [sessionLoading, setSessionLoading] = useState(false);
-  const [initializingSession, setInitializingSession] = useState(false);
+  
   const [serverSleeping, setServerSleeping] = useState(false);
   const [wakingUp, setWakingUp] = useState(false);
   const [importingCookies, setImportingCookies] = useState(false);
@@ -146,39 +146,8 @@ const OtpConfigurationsManager = () => {
     setSessionLoading(false);
   };
 
-  // تهيئة الجلسة
-  const initializeSession = async (email: string, gmailAppPassword: string) => {
-    setInitializingSession(true);
-    try {
-      const result = await callOsnSession("init", { email, gmailAppPassword });
 
-      if (result.success) {
-        toast({
-          title: "✅ تم تسجيل الدخول بنجاح",
-          description: "الجلسة محفوظة وجاهزة للاستخدام",
-        });
-        setSessionStatus(result.status || result.data);
-        return true;
-      } else {
-        toast({
-          title: "❌ فشل تسجيل الدخول",
-          description: result.error || "حدث خطأ أثناء تهيئة الجلسة",
-          variant: "destructive",
-        });
-        return false;
-      }
-    } catch (error: any) {
-      console.error("Error initializing session:", error);
-      toast({
-        title: "❌ خطأ في الاتصال",
-        description: error.message || "تعذر الاتصال بالسيرفر",
-        variant: "destructive",
-      });
-      return false;
-    } finally {
-      setInitializingSession(false);
-    }
-  };
+
 
   // استيراد Cookies مباشرة
   const handleImportCookies = async () => {
@@ -365,14 +334,8 @@ const OtpConfigurationsManager = () => {
       setDialogOpen(false);
       fetchData();
 
-      // 🚀 تهيئة الجلسة تلقائياً بعد الحفظ
-      if (form.is_active) {
-        toast({
-          title: "⏳ جاري تهيئة الجلسة...",
-          description: "يتم تسجيل الدخول وحفظ الجلسة",
-        });
-        await initializeSession(form.gmail_address, form.gmail_app_password);
-      }
+
+
 
     } catch (error: any) {
       console.error("Error saving configuration:", error);
@@ -510,7 +473,7 @@ const OtpConfigurationsManager = () => {
                 )}
                 <div>
                   <p className="font-medium">
-                    {sessionStatus?.isLoggedIn ? "✅ الجلسة متصلة" : "⚠️ الجلسة غير متصلة"}
+                    {sessionStatus?.isLoggedIn ? "✅ الجلسة متصلة" : "⚠️ الجلسة غير متصلة - استورد الكوكيز"}
                   </p>
                   {sessionStatus?.email && (
                     <p className="text-sm text-muted-foreground">{sessionStatus.email}</p>
@@ -522,50 +485,18 @@ const OtpConfigurationsManager = () => {
                   )}
                 </div>
               </div>
-              <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={fetchSessionStatus}
-                  disabled={sessionLoading}
-                >
-                  {sessionLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                </Button>
-                {!sessionStatus?.isLoggedIn && configurations.length > 0 && (
-                  <Button
-                    size="sm"
-                    disabled={initializingSession}
-                    onClick={async () => {
-                      const activeConfig = configurations.find(c => c.is_active);
-                      if (activeConfig) {
-                        await initializeSession(activeConfig.gmail_address, activeConfig.gmail_app_password);
-                      } else {
-                        toast({
-                          title: "لا يوجد إعداد نشط",
-                          description: "يرجى تفعيل إعداد OTP أولاً",
-                          variant: "destructive",
-                        });
-                      }
-                    }}
-                  >
-                    {initializingSession ? (
-                      <>
-                        <Loader2 className="h-4 w-4 ml-1 animate-spin" />
-                        جاري التهيئة...
-                      </>
-                    ) : (
-                      <>
-                        <Wifi className="h-4 w-4 ml-1" />
-                        تهيئة الجلسة
-                      </>
-                    )}
-                  </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={fetchSessionStatus}
+                disabled={sessionLoading}
+              >
+                {sessionLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
                 )}
-              </div>
+              </Button>
             </div>
           </CardContent>
         </Card>
