@@ -61,14 +61,28 @@ class OSNSessionManager {
 
     console.log('🌐 Opening Puppeteer browser...');
     
+    // Use system Chrome (required for Docker deployment)
+    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable';
+    console.log('Chrome path:', executablePath);
+    
     try {
       this.browser = await puppeteer.launch({
         headless: 'new',
+        executablePath,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
           '--disable-gpu',
+          '--single-process',
+          '--no-zygote',
+          '--disable-extensions',
+          '--disable-background-networking',
+          '--disable-default-apps',
+          '--disable-sync',
+          '--no-first-run',
+          '--ignore-certificate-errors',
+          '--ignore-ssl-errors',
         ],
       });
       console.log('✅ Browser launched successfully');
@@ -173,53 +187,169 @@ class OSNSessionManager {
       
       let submitButton = null;
       
-      // محاولة selectors مختلفة
+      // الطريقة 1: محاولة selectors مختلفة
       const buttonSelectors = [
         'button[type="submit"]',
         'input[type="submit"]',
         'button[data-testid*="submit" i]',
         'button[data-testid*="continue" i]',
+        'button[data-testid*="send" i]',
+        'button[data-testid*="request" i]',
+        'button[data-testid*="otp" i]',
+        'button[data-testid*="code" i]',
+        'button[data-testid*="verify" i]',
         'button[class*="submit" i]',
         'button[class*="continue" i]',
         'button[class*="primary" i]',
+        'button[class*="cta" i]',
+        'button[class*="action" i]',
+        'button[class*="btn-primary" i]',
+        'button[class*="send" i]',
+        'a[class*="btn" i][class*="primary" i]',
+        'div[role="button"]',
+        'span[role="button"]',
       ];
       
       for (const selector of buttonSelectors) {
-        submitButton = await this.page.$(selector);
-        if (submitButton) {
-          console.log(`✅ Found button: ${selector}`);
-          break;
-        }
-      }
-      
-      // البحث بالنص إذا لم نجد بالـ selector
-      if (!submitButton) {
-        console.log('🔍 Searching buttons by text...');
-        const buttons = await this.page.$$('button, input[type="submit"], a[role="button"]');
-        const targetTexts = ['continue', 'next', 'sign in', 'login', 'submit', 'send', 'متابعة', 'تسجيل', 'دخول', 'إرسال'];
-        
-        for (const btn of buttons) {
-          const text = await this.page.evaluate(el => (el.textContent || el.value || '').toLowerCase().trim(), btn);
+        const candidates = await this.page.$$(selector);
+        for (const candidate of candidates) {
           const isVisible = await this.page.evaluate(el => {
             const style = window.getComputedStyle(el);
-            return style.display !== 'none' && style.visibility !== 'hidden' && el.offsetParent !== null;
-          }, btn);
-          
-          if (isVisible && targetTexts.some(t => text.includes(t))) {
-            console.log(`✅ Found button by text: "${text}"`);
-            submitButton = btn;
+            const rect = el.getBoundingClientRect();
+            return style.display !== 'none' && 
+                   style.visibility !== 'hidden' && 
+                   style.opacity !== '0' &&
+                   rect.width > 0 && rect.height > 0;
+          }, candidate);
+          if (isVisible) {
+            console.log(`✅ Found visible button: ${selector}`);
+            submitButton = candidate;
             break;
+          }
+        }
+        if (submitButton) break;
+      }
+      
+      // الطريقة 2: البحث بالنص في كل العناصر القابلة للنقر
+      if (!submitButton) {
+        console.log('🔍 Searching all clickable elements by text...');
+        const clickableElements = await this.page.$$('button, input[type="submit"], a[role="button"], a[href], div[role="button"], span[role="button"], [tabindex="0"]');
+        const targetTexts = [
+          'continue', 'next', 'sign in', 'login', 'submit', 'send', 
+          'send code', 'send otp', 'request code', 'request otp', 'get code', 'get otp',
+          'verify', 'confirm', 'proceed', 'go',
+          'متابعة', 'تسجيل', 'دخول', 'إرسال', 'أرسل', 'طلب', 'تأكيد',
+          'إرسال الرمز', 'طلب الرمز', 'أرسل الرمز',
+        ];
+        
+        for (const el of clickableElements) {
+          const info = await this.page.evaluate(el => {
+            const style = window.getComputedStyle(el);
+            const rect = el.getBoundingClientRect();
+            return {
+              text: (el.textContent || el.value || el.getAttribute('aria-label') || '').toLowerCase().trim(),
+              isVisible: style.display !== 'none' && 
+                         style.visibility !== 'hidden' && 
+                         style.opacity !== '0' &&
+                         rect.width > 0 && rect.height > 0,
+              tag: el.tagName,
+              type: el.type,
+            };
+          }, el);
+          
+          if (info.isVisible && targetTexts.some(t => info.text.includes(t))) {
+            console.log(`✅ Found button by text: "${info.text}" (${info.tag})`);
+            submitButton = el;
+            break;
+          }
+        }
+      }
+
+      // الطريقة 3: البحث عن أي زر ظاهر بالقرب من حقل الإيميل
+      if (!submitButton) {
+        console.log('🔍 Searching for any visible button near email input...');
+        submitButton = await this.page.evaluate(() => {
+          const emailInput = document.querySelector('input[type="email"], input[name="email"]');
+          if (!emailInput) return null;
+          
+          // البحث في العناصر الأخوة والأبناء القريبة
+          const form = emailInput.closest('form');
+          const container = form || emailInput.parentElement?.parentElement?.parentElement;
+          if (!container) return null;
+          
+          const buttons = container.querySelectorAll('button, input[type="submit"], [role="button"], a');
+          for (const btn of buttons) {
+            const style = window.getComputedStyle(btn);
+            const rect = btn.getBoundingClientRect();
+            if (style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 30 && rect.height > 20) {
+              return btn; // سنرجع null لأنه evaluate
+            }
+          }
+          return null;
+        });
+        
+        // إذا evaluate رجّع null، نستخدم $eval بطريقة مختلفة
+        if (!submitButton) {
+          try {
+            const formOrContainer = await this.page.$('form') || await this.page.$('[class*="login" i]') || await this.page.$('[class*="auth" i]');
+            if (formOrContainer) {
+              const buttonsInForm = await formOrContainer.$$('button, [role="button"]');
+              for (const btn of buttonsInForm) {
+                const isVisible = await this.page.evaluate(el => {
+                  const style = window.getComputedStyle(el);
+                  const rect = el.getBoundingClientRect();
+                  return style.display !== 'none' && rect.width > 30 && rect.height > 20;
+                }, btn);
+                if (isVisible) {
+                  console.log('✅ Found button in form/container');
+                  submitButton = btn;
+                  break;
+                }
+              }
+            }
+          } catch (e) {
+            console.log('⚠️ Form search failed:', e.message);
           }
         }
       }
 
       // الضغط على الزر أو Enter
       if (submitButton) {
+        // أخذ screenshot قبل الضغط للتوثيق
+        const beforeClick = await this.page.screenshot({ encoding: 'base64' });
+        console.log('📸 Screenshot before clicking submit button taken');
+        
         await submitButton.click();
         console.log('✅ Submit button clicked');
       } else {
-        console.log('⚠️ No button found, pressing Enter...');
+        console.log('⚠️ No button found, trying Enter then Tab+Enter...');
         await this.page.keyboard.press('Enter');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // إذا Enter ما اشتغل، نجرب Tab ثم Enter
+        const urlAfterEnter = this.page.url();
+        if (urlAfterEnter.includes('login') || urlAfterEnter.includes('more-options')) {
+          console.log('⚠️ Enter didn\'t work, trying Tab+Enter...');
+          await this.page.keyboard.press('Tab');
+          await new Promise(resolve => setTimeout(resolve, 300));
+          await this.page.keyboard.press('Enter');
+        }
+      }
+
+      // Log all visible buttons for debugging
+      const allButtons = await this.page.$$('button, [role="button"], input[type="submit"]');
+      for (let i = 0; i < allButtons.length; i++) {
+        const btnInfo = await this.page.evaluate(el => {
+          const rect = el.getBoundingClientRect();
+          return {
+            text: (el.textContent || el.value || '').trim().substring(0, 50),
+            tag: el.tagName,
+            class: el.className?.substring?.(0, 60) || '',
+            visible: rect.width > 0 && rect.height > 0,
+            rect: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
+          };
+        }, allButtons[i]);
+        console.log(`🔘 Button[${i}]:`, JSON.stringify(btnInfo));
       }
 
       // انتظار الانتقال للصفحة التالية

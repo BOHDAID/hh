@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: angel-store
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: NODE_ENV
+        value: production
+    healthCheckPath: /health
