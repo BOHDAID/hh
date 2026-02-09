@@ -102,11 +102,11 @@ const OtpConfigurationsManager = () => {
   const [cookieDialogOpen, setCookieDialogOpen] = useState(false);
   const [cookieText, setCookieText] = useState("");
   const [selectedVariantId, setSelectedVariantId] = useState("");
-  const [cookieEmail, setCookieEmail] = useState("");
-  const [cookieGmailAddress, setCookieGmailAddress] = useState("");
-  const [cookieGmailAppPassword, setCookieGmailAppPassword] = useState("");
   const [importingCookies, setImportingCookies] = useState(false);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
+  const [smtpEditSessionId, setSmtpEditSessionId] = useState<string | null>(null);
+  const [smtpGmailAddress, setSmtpGmailAddress] = useState("");
+  const [smtpGmailAppPassword, setSmtpGmailAppPassword] = useState("");
 
   const [form, setForm] = useState({
     product_id: "",
@@ -269,7 +269,6 @@ const OtpConfigurationsManager = () => {
   const handleImportCookies = async () => {
     if (!cookieText.trim()) { toast({ title: "خطأ", description: "يرجى لصق الكوكيز أولاً", variant: "destructive" }); return; }
     if (!selectedVariantId) { toast({ title: "خطأ", description: "يرجى اختيار المنتج الفرعي", variant: "destructive" }); return; }
-    if (!cookieEmail.trim()) { toast({ title: "خطأ", description: "يرجى إدخال إيميل حساب OSN", variant: "destructive" }); return; }
 
     setImportingCookies(true);
     try {
@@ -277,22 +276,21 @@ const OtpConfigurationsManager = () => {
       try { cookies = JSON.parse(cookieText.trim()); }
       catch { toast({ title: "خطأ في التنسيق", description: "الكوكيز يجب أن تكون بتنسيق JSON صالح", variant: "destructive" }); setImportingCookies(false); return; }
 
-      const result = await callOsnSession("import-cookies", { cookies, email: cookieEmail.trim() });
+      const extractedEmail = extractEmailFromCookies(cookies);
+      const result = await callOsnSession("import-cookies", { cookies, email: extractedEmail });
 
       if (result.success) {
         const { error: insertError } = await supabase.from("osn_sessions").insert({
           variant_id: selectedVariantId,
-          email: cookieEmail.trim(),
+          email: extractedEmail,
           cookies: cookies,
           is_active: true,
           is_connected: true,
           last_activity: new Date().toISOString(),
-          gmail_address: cookieGmailAddress.trim() || null,
-          gmail_app_password: cookieGmailAppPassword.trim() || null,
         });
         if (insertError) toast({ title: "⚠️ تم الاستيراد لكن فشل الحفظ", description: insertError.message, variant: "destructive" });
-        else toast({ title: "✅ تم استيراد الكوكيز بنجاح", description: `الجلسة متصلة - ${cookieEmail.trim()}` });
-        setCookieDialogOpen(false); setCookieText(""); setSelectedVariantId(""); setCookieEmail(""); setCookieGmailAddress(""); setCookieGmailAppPassword("");
+        else toast({ title: "✅ تم استيراد الكوكيز بنجاح", description: `الجلسة متصلة${extractedEmail ? ` - ${extractedEmail}` : ''}` });
+        setCookieDialogOpen(false); setCookieText(""); setSelectedVariantId("");
         await Promise.all([fetchOsnSessions(), fetchSessionStatus()]);
       } else {
         toast({ title: "❌ فشل استيراد الكوكيز", description: result.error || "الكوكيز غير صالحة", variant: "destructive" });
@@ -300,6 +298,15 @@ const OtpConfigurationsManager = () => {
     } catch (error: any) {
       toast({ title: "❌ خطأ", description: error.message, variant: "destructive" });
     } finally { setImportingCookies(false); }
+  };
+
+  const handleSaveSmtp = async (sessionId: string) => {
+    const { error } = await supabase.from("osn_sessions").update({
+      gmail_address: smtpGmailAddress.trim() || null,
+      gmail_app_password: smtpGmailAppPassword.trim() || null,
+    }).eq("id", sessionId);
+    if (error) toast({ title: "❌ خطأ", description: error.message, variant: "destructive" });
+    else { toast({ title: "✅ تم حفظ بيانات SMTP" }); setSmtpEditSessionId(null); await fetchOsnSessions(); }
   };
 
   const handleDeleteSession = async (sessionId: string) => {
@@ -502,6 +509,19 @@ const OtpConfigurationsManager = () => {
                       <Button
                         variant="outline"
                         size="icon"
+                        className="h-8 w-8"
+                        onClick={() => {
+                          setSmtpEditSessionId(smtpEditSessionId === session.id ? null : session.id);
+                          setSmtpGmailAddress(session.gmail_address || "");
+                          setSmtpGmailAppPassword(session.gmail_app_password || "");
+                        }}
+                        title="إعدادات SMTP"
+                      >
+                        <Mail className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
                         className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
                         disabled={deletingSessionId === session.id}
                         onClick={() => handleDeleteSession(session.id)}
@@ -510,8 +530,8 @@ const OtpConfigurationsManager = () => {
                       </Button>
                     </div>
                   </div>
-                  {/* Gmail SMTP info */}
-                  {session.gmail_address && (
+                  {/* Gmail SMTP info or edit */}
+                  {session.gmail_address && smtpEditSessionId !== session.id && (
                     <div className="flex items-center gap-4 pt-1 border-t border-border/50 text-xs text-muted-foreground" dir="ltr">
                       <div className="flex items-center gap-1">
                         <Mail className="h-3 w-3" />
@@ -523,6 +543,20 @@ const OtpConfigurationsManager = () => {
                         <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setShowPasswords(prev => ({ ...prev, [session.id]: !prev[session.id] }))}>
                           {showPasswords[session.id] ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
                         </Button>
+                      </div>
+                    </div>
+                  )}
+                  {smtpEditSessionId === session.id && (
+                    <div className="pt-2 border-t border-border/50 space-y-2">
+                      <p className="text-xs font-medium flex items-center gap-1"><Mail className="h-3 w-3" />بيانات Gmail SMTP</p>
+                      <Input type="email" placeholder="example@gmail.com" value={smtpGmailAddress} onChange={(e) => setSmtpGmailAddress(e.target.value)} dir="ltr" className="h-8 text-xs" />
+                      <Input type="password" placeholder="Gmail App Password" value={smtpGmailAppPassword} onChange={(e) => setSmtpGmailAppPassword(e.target.value)} dir="ltr" className="h-8 text-xs" />
+                      <div className="flex items-center justify-between">
+                        <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline">إنشاء App Password</a>
+                        <div className="flex gap-1">
+                          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setSmtpEditSessionId(null)}>إلغاء</Button>
+                          <Button size="sm" className="h-7 text-xs" onClick={() => handleSaveSmtp(session.id)}>حفظ</Button>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -708,12 +742,6 @@ const OtpConfigurationsManager = () => {
               </Select>
             </div>
 
-            {/* إيميل حساب OSN */}
-            <div className="space-y-2">
-              <Label>إيميل حساب OSN <span className="text-destructive">*</span></Label>
-              <Input type="email" placeholder="user@example.com" value={cookieEmail} onChange={(e) => setCookieEmail(e.target.value)} dir="ltr" />
-            </div>
-
             {/* كوكيز JSON */}
             <div className="space-y-2">
               <Label>كوكيز OSN (JSON) <span className="text-destructive">*</span></Label>
@@ -724,16 +752,8 @@ const OtpConfigurationsManager = () => {
                 dir="ltr"
                 className="min-h-[150px] font-mono text-xs"
               />
-            </div>
-
-            {/* Gmail SMTP */}
-            <div className="space-y-2 p-3 rounded-lg border bg-muted/30">
-              <Label className="text-sm font-medium flex items-center gap-2"><Mail className="h-4 w-4" />بيانات Gmail SMTP (اختياري)</Label>
-              <p className="text-xs text-muted-foreground">لجلب رموز OTP تلقائياً عند شراء العملاء</p>
-              <Input type="email" placeholder="example@gmail.com" value={cookieGmailAddress} onChange={(e) => setCookieGmailAddress(e.target.value)} dir="ltr" />
-              <Input type="password" placeholder="Gmail App Password" value={cookieGmailAppPassword} onChange={(e) => setCookieGmailAppPassword(e.target.value)} dir="ltr" />
               <p className="text-xs text-muted-foreground">
-                <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" className="text-primary underline">إنشاء App Password من هنا</a>
+                الإيميل يُستخرج تلقائياً من الكوكيز. استخدم إضافة "Cookie-Editor" لتصدير الكوكيز.
               </p>
             </div>
 
@@ -744,6 +764,7 @@ const OtpConfigurationsManager = () => {
                 <p>1. سجّل دخول في osnplus.com من متصفحك</p>
                 <p>2. استخدم إضافة Cookie-Editor لتصدير الكوكيز</p>
                 <p>3. اختر المنتج الفرعي والصق الكوكيز واضغط "استيراد"</p>
+                <p>4. بعد الاستيراد يمكنك إضافة بيانات Gmail SMTP من الجلسة</p>
               </div>
             </div>
           </div>
