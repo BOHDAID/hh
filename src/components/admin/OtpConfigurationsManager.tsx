@@ -106,6 +106,8 @@ const OtpConfigurationsManager = () => {
   const [importingCookies, setImportingCookies] = useState(false);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [smtpEditSessionId, setSmtpEditSessionId] = useState<string | null>(null);
+  const [editingEmailSessionId, setEditingEmailSessionId] = useState<string | null>(null);
+  const [editingEmailValue, setEditingEmailValue] = useState("");
   const [smtpGmailAddress, setSmtpGmailAddress] = useState("");
   const [smtpGmailAppPassword, setSmtpGmailAppPassword] = useState("");
 
@@ -299,6 +301,7 @@ const OtpConfigurationsManager = () => {
 
   const handleImportCookies = async () => {
     if (!cookieText.trim()) { toast({ title: "خطأ", description: "يرجى لصق الكوكيز أولاً", variant: "destructive" }); return; }
+    if (!manualEmail.trim()) { toast({ title: "خطأ", description: "يرجى إدخال إيميل الحساب", variant: "destructive" }); return; }
     if (!selectedVariantId) { toast({ title: "خطأ", description: "يرجى اختيار المنتج الفرعي", variant: "destructive" }); return; }
 
     setImportingCookies(true);
@@ -528,10 +531,25 @@ const OtpConfigurationsManager = () => {
                         <p className="text-sm font-medium">
                           {session.product_variants?.products?.name || "منتج"} — {session.product_variants?.name || "فرعي"}
                         </p>
-                        <p className="text-xs text-muted-foreground" dir="ltr">
-                          {session.email || "بدون إيميل"}
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground" dir="ltr">
+                          {editingEmailSessionId === session.id ? (
+                            <form className="flex items-center gap-1" onSubmit={async (e) => {
+                              e.preventDefault();
+                              const { error } = await supabase.from("osn_sessions").update({ email: editingEmailValue.trim() }).eq("id", session.id);
+                              if (!error) { toast({ title: "✅ تم تحديث الإيميل" }); setEditingEmailSessionId(null); await fetchOsnSessions(); }
+                              else toast({ title: "❌ خطأ", description: error.message, variant: "destructive" });
+                            }}>
+                              <Input value={editingEmailValue} onChange={(e) => setEditingEmailValue(e.target.value)} className="h-6 text-xs w-48" dir="ltr" autoFocus />
+                              <Button type="submit" size="sm" variant="ghost" className="h-6 px-1 text-xs">✓</Button>
+                              <Button type="button" size="sm" variant="ghost" className="h-6 px-1 text-xs" onClick={() => setEditingEmailSessionId(null)}>✕</Button>
+                            </form>
+                          ) : (
+                            <span className="cursor-pointer hover:text-primary hover:underline" onClick={() => { setEditingEmailSessionId(session.id); setEditingEmailValue(session.email || ''); }} title="انقر لتعديل الإيميل">
+                              {session.email || "بدون إيميل - انقر للإضافة"}
+                            </span>
+                          )}
                           {session.last_activity && ` • ${new Date(session.last_activity).toLocaleString("ar-SA")}`}
-                        </p>
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -776,7 +794,7 @@ const OtpConfigurationsManager = () => {
 
             {/* إيميل الحساب */}
             <div className="space-y-2">
-              <Label>إيميل الحساب (اختياري)</Label>
+              <Label>إيميل الحساب <span className="text-destructive">*</span></Label>
               <Input
                 type="email"
                 placeholder="example@email.com"
@@ -785,7 +803,7 @@ const OtpConfigurationsManager = () => {
                 dir="ltr"
               />
               <p className="text-xs text-muted-foreground">
-                أدخل إيميل حساب OSN يدوياً (كوكيز OSN لا تحتوي الإيميل تلقائياً)
+                أدخل إيميل حساب OSN (إلزامي - الكوكيز لا تحتوي الإيميل)
               </p>
             </div>
 
