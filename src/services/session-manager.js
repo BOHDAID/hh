@@ -496,6 +496,85 @@ class OSNSessionManager {
   }
 
   /**
+   * استيراد كوكيز لتسجيل الدخول بدون OTP
+   */
+  async importCookies(cookies, email) {
+    try {
+      console.log(`🍪 Importing ${cookies.length} cookies...`);
+      
+      await this.openBrowser();
+      this.page = await this.browser.newPage();
+      
+      await this.page.setViewport({ width: 1920, height: 1080 });
+      await this.page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+
+      // تحويل الكوكيز لصيغة Puppeteer
+      const puppeteerCookies = cookies.map(c => ({
+        name: c.name,
+        value: c.value,
+        domain: c.domain || '.osnplus.com',
+        path: c.path || '/',
+        secure: c.secure || false,
+        httpOnly: c.httpOnly || false,
+        ...(c.expirationDate ? { expires: c.expirationDate } : {}),
+      }));
+
+      await this.page.setCookie(...puppeteerCookies);
+      console.log('✅ Cookies set in browser');
+
+      // التحقق من الجلسة بفتح صفحة OSN
+      await this.page.goto('https://osnplus.com/', {
+        waitUntil: 'networkidle2',
+        timeout: 30000,
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      const currentUrl = this.page.url();
+      console.log('🔗 URL after cookie import:', currentUrl);
+
+      const isLoggedIn = !currentUrl.includes('login');
+      
+      if (isLoggedIn) {
+        this.isLoggedIn = true;
+        this.currentEmail = email || 'imported-session';
+        this.lastActivity = new Date();
+        this.loginAttempts = 0;
+
+        // محاولة استخراج الإيميل من الكوكيز
+        if (!email) {
+          const authCookie = cookies.find(c => c.name === 'auth');
+          if (authCookie) {
+            try {
+              const decoded = decodeURIComponent(authCookie.value);
+              const parsed = JSON.parse(decoded);
+              if (parsed.accountId) {
+                this.currentEmail = `account-${parsed.accountId}`;
+              }
+            } catch {}
+          }
+        }
+
+        console.log('🎉 Cookie import successful! Logged in as:', this.currentEmail);
+        return {
+          success: true,
+          message: 'تم استيراد الكوكيز وتسجيل الدخول بنجاح',
+          email: this.currentEmail,
+        };
+      } else {
+        console.error('❌ Cookie import failed - redirected to login');
+        return {
+          success: false,
+          error: 'الكوكيز منتهية الصلاحية أو غير صالحة',
+        };
+      }
+    } catch (error) {
+      console.error('❌ Import cookies error:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * جلب آخر OTP من Gmail للعميل
    */
   async getClientOTP() {
