@@ -573,6 +573,50 @@ export type Database = {
           },
         ]
       }
+      osn_sessions: {
+        Row: {
+          cookies: Json
+          created_at: string | null
+          email: string | null
+          id: string
+          is_active: boolean | null
+          is_connected: boolean | null
+          last_activity: string | null
+          updated_at: string | null
+          variant_id: string
+        }
+        Insert: {
+          cookies: Json
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_connected?: boolean | null
+          last_activity?: string | null
+          updated_at?: string | null
+          variant_id: string
+        }
+        Update: {
+          cookies?: Json
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_connected?: boolean | null
+          last_activity?: string | null
+          updated_at?: string | null
+          variant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "osn_sessions_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       otp_codes: {
         Row: {
           activation_code_id: string
