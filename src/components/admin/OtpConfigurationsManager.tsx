@@ -148,7 +148,7 @@ const OtpConfigurationsManager = () => {
   };
 
   const fetchOsnSessions = async () => {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("osn_sessions")
       .select(`*`)
       .order("created_at", { ascending: false });
@@ -264,7 +264,7 @@ const OtpConfigurationsManager = () => {
       const result = await callOsnSession("import-cookies", { cookies, email: extractedEmail });
 
       if (result.success) {
-        const { error: insertError } = await supabase.from("osn_sessions").insert({
+        const { error: insertError } = await db.from("osn_sessions").insert({
           variant_id: selectedVariantId,
           email: extractedEmail,
           cookies: cookies,
@@ -287,7 +287,7 @@ const OtpConfigurationsManager = () => {
   const handleDeleteSession = async (sessionId: string) => {
     if (!confirm("هل أنت متأكد من حذف هذه الجلسة؟")) return;
     setDeletingSessionId(sessionId);
-    const { error } = await supabase.from("osn_sessions").delete().eq("id", sessionId);
+    const { error } = await db.from("osn_sessions").delete().eq("id", sessionId);
     if (error) toast({ title: "خطأ", description: "فشل في حذف الجلسة", variant: "destructive" });
     else { toast({ title: "✅ تم حذف الجلسة" }); await fetchOsnSessions(); }
     setDeletingSessionId(null);
