@@ -4,7 +4,6 @@ import { dirname, join } from 'path';
 import qrAutomationRoutes from './src/routes/qr-automation.js';
 import sessionManager from './src/services/session-manager.js';
 import telegramBot from './src/services/telegram-bot.js';
-import { getActiveOtpConfig } from './src/services/supabase-backend.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -44,42 +43,10 @@ app.get('/{*splat}', (req, res) => {
 
 // Start server
 const server = app.listen(PORT, '0.0.0.0', async () => {
-  console.log(`🚀 Server is running on port ${PORT}`);
+  console.log(`🚀 Server is running on port ${PORT} (ultra-light mode)`);
   console.log(`📍 Health check available at /health`);
   console.log(`📍 QR API available at /api/qr/*`);
-  
-  // 📊 محاولة جلب الإعدادات من قاعدة البيانات أولاً
-  let osnEmail = process.env.OSN_EMAIL;
-  let gmailPassword = process.env.GMAIL_APP_PASSWORD;
-  
-  // إذا لم تتوفر من ENV، نجلبها من Database
-  if (!osnEmail || !gmailPassword) {
-    console.log('🔍 Checking database for OTP configuration...');
-    const dbConfig = await getActiveOtpConfig();
-    if (dbConfig) {
-      osnEmail = dbConfig.email;
-      gmailPassword = dbConfig.gmailAppPassword;
-      console.log('✅ Found configuration in database for:', osnEmail);
-    }
-  }
-  
-  // تهيئة جلسة OSN
-  if (osnEmail && gmailPassword) {
-    console.log('🔄 Auto-initializing OSN session...');
-    try {
-      const result = await sessionManager.initialize(osnEmail, gmailPassword);
-      if (result.success) {
-        console.log('✅ OSN session initialized successfully');
-      } else {
-        console.error('❌ OSN session initialization failed:', result.error);
-      }
-    } catch (error) {
-      console.error('❌ Error initializing OSN session:', error.message);
-    }
-  } else {
-    console.log('ℹ️ No OSN configuration found.');
-    console.log('   Add configuration from Admin Panel or set ENV vars.');
-  }
+  console.log(`💡 Browser opens only when needed - no persistent Chrome process`);
 
   // 🤖 بدء بوت تيليجرام
   console.log('🤖 Starting Telegram Bot...');
@@ -90,18 +57,11 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
   }
 });
 
-// Keep-alive mechanism to prevent sleep
+// Keep-alive heartbeat (lightweight - no browser)
 setInterval(() => {
   const status = sessionManager.getStatus();
-  console.log(`💓 Heartbeat - ${new Date().toISOString()} | Session: ${status.isLoggedIn ? '✅ Active' : '❌ Inactive'}`);
-  
-  // إعادة التحقق من صلاحية الجلسة كل 5 دقائق
-  if (status.isLoggedIn) {
-    sessionManager.ensureLoggedIn().catch(err => {
-      console.error('❌ Session check failed:', err.message);
-    });
-  }
-}, 300000); // كل 5 دقائق
+  console.log(`💓 Heartbeat - ${new Date().toISOString()} | Cookies: ${status.isLoggedIn ? '✅ Stored' : '❌ None'}`);
+}, 300000);
 
 // Graceful shutdown function
 let isShuttingDown = false;
