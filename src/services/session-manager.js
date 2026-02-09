@@ -138,34 +138,18 @@ class OSNSessionManager {
 
       // انتظار تحميل JavaScript
       console.log('⏳ Waiting for page to fully load...');
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 5000));
       
       console.log('📄 Page title:', await this.page.title());
       console.log('🔗 Current URL:', this.page.url());
 
+      // === DEBUG: تسجيل كل العناصر في الصفحة ===
+      await this._logPageElements();
+
       // ========== الخطوة 2: إيجاد وإدخال Email ==========
       console.log('📧 Looking for email input...');
       
-      let emailInput = null;
-      const emailSelectors = [
-        'input[type="email"]',
-        'input[name="email"]',
-        'input[placeholder*="email" i]',
-        'input[placeholder*="Email" i]',
-        'input[id*="email" i]',
-        'input[autocomplete="email"]',
-        'input[type="text"]:not([type="hidden"])',
-      ];
-
-      // محاولة كل selector
-      for (const selector of emailSelectors) {
-        emailInput = await this.page.$(selector);
-        if (emailInput) {
-          console.log(`✅ Found email input: ${selector}`);
-          break;
-        }
-      }
-
+      const emailInput = await this._findEmailInput();
       if (!emailInput) {
         const screenshot = await this.page.screenshot({ encoding: 'base64' });
         return { 
@@ -177,191 +161,51 @@ class OSNSessionManager {
 
       // مسح الحقل وإدخال الإيميل
       await emailInput.click({ clickCount: 3 });
-      await emailInput.type(email, { delay: 30 });
+      await new Promise(resolve => setTimeout(resolve, 300));
+      await emailInput.type(email, { delay: 50 });
       console.log('✅ Email entered:', email);
       
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // ========== الخطوة 3: إيجاد والضغط على زر Continue ==========
-      console.log('➡️ Looking for submit button...');
+      // ========== الخطوة 3: ضغط زر الإرسال ==========
+      const submitResult = await this._clickSubmitButton();
       
-      let submitButton = null;
+      if (!submitResult.clicked) {
+        const screenshot = await this.page.screenshot({ encoding: 'base64' });
+        return {
+          success: false,
+          error: 'لم يتم العثور على زر الإرسال - تحقق من اللوقات لتفاصيل الأزرار',
+          screenshot: `data:image/png;base64,${screenshot}`
+        };
+      }
+
+      // انتظار الانتقال للصفحة التالية (صفحة OTP)
+      console.log('⏳ Waiting for page transition after submit...');
+      await new Promise(resolve => setTimeout(resolve, 5000));
       
-      // الطريقة 1: محاولة selectors مختلفة
-      const buttonSelectors = [
-        'button[type="submit"]',
-        'input[type="submit"]',
-        'button[data-testid*="submit" i]',
-        'button[data-testid*="continue" i]',
-        'button[data-testid*="send" i]',
-        'button[data-testid*="request" i]',
-        'button[data-testid*="otp" i]',
-        'button[data-testid*="code" i]',
-        'button[data-testid*="verify" i]',
-        'button[class*="submit" i]',
-        'button[class*="continue" i]',
-        'button[class*="primary" i]',
-        'button[class*="cta" i]',
-        'button[class*="action" i]',
-        'button[class*="btn-primary" i]',
-        'button[class*="send" i]',
-        'a[class*="btn" i][class*="primary" i]',
-        'div[role="button"]',
-        'span[role="button"]',
-      ];
-      
-      for (const selector of buttonSelectors) {
-        const candidates = await this.page.$$(selector);
-        for (const candidate of candidates) {
-          const isVisible = await this.page.evaluate(el => {
-            const style = window.getComputedStyle(el);
-            const rect = el.getBoundingClientRect();
-            return style.display !== 'none' && 
-                   style.visibility !== 'hidden' && 
-                   style.opacity !== '0' &&
-                   rect.width > 0 && rect.height > 0;
-          }, candidate);
-          if (isVisible) {
-            console.log(`✅ Found visible button: ${selector}`);
-            submitButton = candidate;
-            break;
-          }
-        }
-        if (submitButton) break;
-      }
-      
-      // الطريقة 2: البحث بالنص في كل العناصر القابلة للنقر
-      if (!submitButton) {
-        console.log('🔍 Searching all clickable elements by text...');
-        const clickableElements = await this.page.$$('button, input[type="submit"], a[role="button"], a[href], div[role="button"], span[role="button"], [tabindex="0"]');
-        const targetTexts = [
-          'continue', 'next', 'sign in', 'login', 'submit', 'send', 
-          'send code', 'send otp', 'request code', 'request otp', 'get code', 'get otp',
-          'verify', 'confirm', 'proceed', 'go',
-          'متابعة', 'تسجيل', 'دخول', 'إرسال', 'أرسل', 'طلب', 'تأكيد',
-          'إرسال الرمز', 'طلب الرمز', 'أرسل الرمز',
-        ];
+      const urlAfterSubmit = this.page.url();
+      console.log('🔗 URL after submit:', urlAfterSubmit);
+
+      // التحقق أننا انتقلنا لصفحة OTP
+      const pageChangedAfterSubmit = await this._checkPageChangedToOTP(urlAfterSubmit);
+      if (!pageChangedAfterSubmit) {
+        console.log('⚠️ Page might not have changed. Taking screenshot and retrying submit...');
         
-        for (const el of clickableElements) {
-          const info = await this.page.evaluate(el => {
-            const style = window.getComputedStyle(el);
-            const rect = el.getBoundingClientRect();
-            return {
-              text: (el.textContent || el.value || el.getAttribute('aria-label') || '').toLowerCase().trim(),
-              isVisible: style.display !== 'none' && 
-                         style.visibility !== 'hidden' && 
-                         style.opacity !== '0' &&
-                         rect.width > 0 && rect.height > 0,
-              tag: el.tagName,
-              type: el.type,
-            };
-          }, el);
-          
-          if (info.isVisible && targetTexts.some(t => info.text.includes(t))) {
-            console.log(`✅ Found button by text: "${info.text}" (${info.tag})`);
-            submitButton = el;
-            break;
-          }
-        }
+        // محاولة ثانية - ربما الزر ما انضغط صح
+        await this._clickSubmitButton();
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        console.log('🔗 URL after retry:', this.page.url());
       }
 
-      // الطريقة 3: البحث عن أي زر ظاهر بالقرب من حقل الإيميل
-      if (!submitButton) {
-        console.log('🔍 Searching for any visible button near email input...');
-        submitButton = await this.page.evaluate(() => {
-          const emailInput = document.querySelector('input[type="email"], input[name="email"]');
-          if (!emailInput) return null;
-          
-          // البحث في العناصر الأخوة والأبناء القريبة
-          const form = emailInput.closest('form');
-          const container = form || emailInput.parentElement?.parentElement?.parentElement;
-          if (!container) return null;
-          
-          const buttons = container.querySelectorAll('button, input[type="submit"], [role="button"], a');
-          for (const btn of buttons) {
-            const style = window.getComputedStyle(btn);
-            const rect = btn.getBoundingClientRect();
-            if (style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 30 && rect.height > 20) {
-              return btn; // سنرجع null لأنه evaluate
-            }
-          }
-          return null;
-        });
-        
-        // إذا evaluate رجّع null، نستخدم $eval بطريقة مختلفة
-        if (!submitButton) {
-          try {
-            const formOrContainer = await this.page.$('form') || await this.page.$('[class*="login" i]') || await this.page.$('[class*="auth" i]');
-            if (formOrContainer) {
-              const buttonsInForm = await formOrContainer.$$('button, [role="button"]');
-              for (const btn of buttonsInForm) {
-                const isVisible = await this.page.evaluate(el => {
-                  const style = window.getComputedStyle(el);
-                  const rect = el.getBoundingClientRect();
-                  return style.display !== 'none' && rect.width > 30 && rect.height > 20;
-                }, btn);
-                if (isVisible) {
-                  console.log('✅ Found button in form/container');
-                  submitButton = btn;
-                  break;
-                }
-              }
-            }
-          } catch (e) {
-            console.log('⚠️ Form search failed:', e.message);
-          }
-        }
-      }
-
-      // الضغط على الزر أو Enter
-      if (submitButton) {
-        // أخذ screenshot قبل الضغط للتوثيق
-        const beforeClick = await this.page.screenshot({ encoding: 'base64' });
-        console.log('📸 Screenshot before clicking submit button taken');
-        
-        await submitButton.click();
-        console.log('✅ Submit button clicked');
-      } else {
-        console.log('⚠️ No button found, trying Enter then Tab+Enter...');
-        await this.page.keyboard.press('Enter');
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // إذا Enter ما اشتغل، نجرب Tab ثم Enter
-        const urlAfterEnter = this.page.url();
-        if (urlAfterEnter.includes('login') || urlAfterEnter.includes('more-options')) {
-          console.log('⚠️ Enter didn\'t work, trying Tab+Enter...');
-          await this.page.keyboard.press('Tab');
-          await new Promise(resolve => setTimeout(resolve, 300));
-          await this.page.keyboard.press('Enter');
-        }
-      }
-
-      // Log all visible buttons for debugging
-      const allButtons = await this.page.$$('button, [role="button"], input[type="submit"]');
-      for (let i = 0; i < allButtons.length; i++) {
-        const btnInfo = await this.page.evaluate(el => {
-          const rect = el.getBoundingClientRect();
-          return {
-            text: (el.textContent || el.value || '').trim().substring(0, 50),
-            tag: el.tagName,
-            class: el.className?.substring?.(0, 60) || '',
-            visible: rect.width > 0 && rect.height > 0,
-            rect: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
-          };
-        }, allButtons[i]);
-        console.log(`🔘 Button[${i}]:`, JSON.stringify(btnInfo));
-      }
-
-      // انتظار الانتقال للصفحة التالية
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      console.log('🔗 URL after submit:', this.page.url());
+      // === DEBUG: تسجيل عناصر صفحة OTP ===
+      await this._logPageElements();
 
       // ========== الخطوة 4: انتظار وقراءة OTP ==========
       console.log('⏳ Waiting for OTP email...');
       
       let otpResult = null;
-      const maxOtpAttempts = 5;
-      const otpWaitInterval = 5000; // 5 ثواني بين كل محاولة
+      const maxOtpAttempts = 8;
+      const otpWaitInterval = 5000;
       
       for (let attempt = 1; attempt <= maxOtpAttempts; attempt++) {
         console.log(`📬 OTP attempt ${attempt}/${maxOtpAttempts}...`);
@@ -381,7 +225,7 @@ class OSNSessionManager {
         const screenshot = await this.page.screenshot({ encoding: 'base64' });
         return { 
           success: false, 
-          error: 'لم يتم استلام رمز OTP بعد عدة محاولات',
+          error: 'لم يتم استلام رمز OTP بعد عدة محاولات. ربما الزر لم يُضغط بشكل صحيح.',
           screenshot: `data:image/png;base64,${screenshot}`
         };
       }
@@ -389,81 +233,38 @@ class OSNSessionManager {
       const otp = otpResult.otp;
 
       // ========== الخطوة 5: إدخال OTP ==========
-      console.log('🔑 Entering OTP code...');
+      console.log('🔑 Entering OTP code:', otp);
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // البحث عن حقول OTP
-      const otpInputs = await this.page.$$('input[type="text"], input[type="tel"], input[type="number"], input[inputmode="numeric"]');
-      console.log(`📝 Found ${otpInputs.length} potential OTP inputs`);
-      
-      if (otpInputs.length >= 4 && otpInputs.length <= 8) {
-        // حقول منفصلة لكل رقم
-        console.log('📝 Entering OTP in separate fields...');
-        for (let i = 0; i < Math.min(otp.length, otpInputs.length); i++) {
-          await otpInputs[i].type(otp[i], { delay: 50 });
-        }
-      } else if (otpInputs.length >= 1) {
-        // حقل واحد
-        console.log('📝 Entering OTP in single field...');
-        await otpInputs[0].click();
-        await otpInputs[0].type(otp, { delay: 30 });
-      } else {
-        // كتابة مباشرة
-        console.log('📝 Typing OTP directly...');
-        await this.page.keyboard.type(otp, { delay: 50 });
-      }
+      await this._enterOTP(otp);
       
       console.log('✅ OTP entered');
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       // ========== الخطوة 6: تأكيد OTP ==========
       console.log('✅ Confirming OTP...');
+      await this._clickSubmitButton(); // نفس المنطق - نضغط أي زر submit/verify
       
-      // البحث عن زر التأكيد
-      let verifyButton = null;
-      const verifySelectors = ['button[type="submit"]', 'input[type="submit"]'];
-      
-      for (const selector of verifySelectors) {
-        verifyButton = await this.page.$(selector);
-        if (verifyButton) break;
-      }
-      
-      if (!verifyButton) {
-        const buttons = await this.page.$$('button');
-        const verifyTexts = ['verify', 'confirm', 'submit', 'تأكيد', 'تحقق'];
-        
-        for (const btn of buttons) {
-          const text = await this.page.evaluate(el => (el.textContent || '').toLowerCase(), btn);
-          if (verifyTexts.some(t => text.includes(t))) {
-            verifyButton = btn;
-            break;
-          }
-        }
-      }
-      
-      if (verifyButton) {
-        await verifyButton.click();
-        console.log('✅ Verify button clicked');
-      } else {
-        await this.page.keyboard.press('Enter');
-        console.log('✅ Enter pressed for verification');
-      }
-
       // ========== الخطوة 7: التحقق من نجاح الدخول ==========
       console.log('⏳ Waiting for login confirmation...');
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      await new Promise(resolve => setTimeout(resolve, 8000));
 
       const currentUrl = this.page.url();
       console.log('🔗 Final URL:', currentUrl);
       
       // التحقق من نجاح الدخول
-      const loginSuccess = !currentUrl.includes('login') && !currentUrl.includes('verify');
+      const loginSuccess = !currentUrl.includes('login') && !currentUrl.includes('verify') && !currentUrl.includes('more-options');
       
       if (loginSuccess) {
         console.log('🎉 OSN Login successful!');
         this.isLoggedIn = true;
         this.lastActivity = new Date();
         this.loginAttempts = 0;
+        
+        // حفظ الكوكيز للجلسة
+        const cookies = await this.page.cookies();
+        console.log(`🍪 Saved ${cookies.length} cookies for session persistence`);
+        this._savedCookies = cookies;
         
         const screenshot = await this.page.screenshot({ encoding: 'base64' });
         return { 
@@ -493,6 +294,354 @@ class OSNSessionManager {
       } catch {
         return { success: false, error: error.message };
       }
+    }
+  }
+
+  // ===========================
+  // دوال مساعدة داخلية
+  // ===========================
+
+  /**
+   * تسجيل كل عناصر الصفحة للـ debugging
+   */
+  async _logPageElements() {
+    try {
+      const elements = await this.page.evaluate(() => {
+        const result = { inputs: [], buttons: [], links: [], forms: [] };
+        
+        // كل inputs
+        document.querySelectorAll('input').forEach(el => {
+          const rect = el.getBoundingClientRect();
+          result.inputs.push({
+            type: el.type, name: el.name, placeholder: el.placeholder,
+            id: el.id, class: el.className?.substring(0, 50),
+            visible: rect.width > 0 && rect.height > 0,
+            rect: `${Math.round(rect.x)},${Math.round(rect.y)},${Math.round(rect.width)}x${Math.round(rect.height)}`
+          });
+        });
+        
+        // كل buttons و role=button
+        document.querySelectorAll('button, [role="button"], input[type="submit"]').forEach(el => {
+          const rect = el.getBoundingClientRect();
+          const style = window.getComputedStyle(el);
+          result.buttons.push({
+            tag: el.tagName, text: (el.textContent || el.value || '').trim().substring(0, 80),
+            type: el.type, class: el.className?.substring?.(0, 60),
+            id: el.id, disabled: el.disabled,
+            visible: rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden',
+            rect: `${Math.round(rect.x)},${Math.round(rect.y)},${Math.round(rect.width)}x${Math.round(rect.height)}`,
+            ariaLabel: el.getAttribute('aria-label'),
+          });
+        });
+
+        // كل links (أول 10)
+        const links = document.querySelectorAll('a[href]');
+        for (let i = 0; i < Math.min(links.length, 10); i++) {
+          const el = links[i];
+          const rect = el.getBoundingClientRect();
+          result.links.push({
+            text: (el.textContent || '').trim().substring(0, 50),
+            href: el.href?.substring(0, 80),
+            visible: rect.width > 0 && rect.height > 0,
+          });
+        }
+
+        // كل forms
+        document.querySelectorAll('form').forEach(el => {
+          result.forms.push({
+            action: el.action?.substring(0, 80),
+            method: el.method,
+            id: el.id,
+            childButtons: el.querySelectorAll('button, [role="button"], input[type="submit"]').length,
+            childInputs: el.querySelectorAll('input').length,
+          });
+        });
+
+        return result;
+      });
+
+      console.log('📋 === PAGE ELEMENTS DEBUG ===');
+      console.log('📋 Inputs:', JSON.stringify(elements.inputs));
+      console.log('📋 Buttons:', JSON.stringify(elements.buttons));
+      console.log('📋 Links:', JSON.stringify(elements.links));
+      console.log('📋 Forms:', JSON.stringify(elements.forms));
+      console.log('📋 === END PAGE ELEMENTS ===');
+    } catch (e) {
+      console.log('⚠️ Failed to log page elements:', e.message);
+    }
+  }
+
+  /**
+   * البحث عن حقل الإيميل
+   */
+  async _findEmailInput() {
+    const selectors = [
+      'input[type="email"]',
+      'input[name="email"]',
+      'input[placeholder*="email" i]',
+      'input[placeholder*="Email" i]',
+      'input[id*="email" i]',
+      'input[autocomplete="email"]',
+      'input[type="text"]:not([type="hidden"])',
+    ];
+
+    for (const selector of selectors) {
+      const el = await this.page.$(selector);
+      if (el) {
+        const isVisible = await this.page.evaluate(el => {
+          const rect = el.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        }, el);
+        if (isVisible) {
+          console.log(`✅ Found email input: ${selector}`);
+          return el;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * البحث عن زر الإرسال والضغط عليه - الطريقة الشاملة
+   */
+  async _clickSubmitButton() {
+    console.log('➡️ === SEARCHING FOR SUBMIT BUTTON ===');
+
+    // === الطريقة 1: CSS Selectors ===
+    const selectorList = [
+      'button[type="submit"]',
+      'input[type="submit"]',
+      'button[data-testid*="submit" i]',
+      'button[data-testid*="continue" i]',
+      'button[data-testid*="send" i]',
+      'button[data-testid*="request" i]',
+      'button[data-testid*="otp" i]',
+      'button[data-testid*="code" i]',
+      'button[data-testid*="verify" i]',
+      'button[data-testid*="login" i]',
+      'button[data-testid*="sign" i]',
+      'button[class*="submit" i]',
+      'button[class*="continue" i]',
+      'button[class*="primary" i]',
+      'button[class*="cta" i]',
+      'button[class*="btn-primary" i]',
+      'button[class*="send" i]',
+      'button[class*="login" i]',
+      'button[class*="sign" i]',
+    ];
+
+    for (const selector of selectorList) {
+      const candidates = await this.page.$$(selector);
+      for (const candidate of candidates) {
+        const isVisible = await this.page.evaluate(el => {
+          const style = window.getComputedStyle(el);
+          const rect = el.getBoundingClientRect();
+          return style.display !== 'none' && 
+                 style.visibility !== 'hidden' && 
+                 style.opacity !== '0' &&
+                 !el.disabled &&
+                 rect.width > 20 && rect.height > 15;
+        }, candidate);
+        if (isVisible) {
+          const text = await this.page.evaluate(el => (el.textContent || el.value || '').trim().substring(0, 50), candidate);
+          console.log(`✅ [Method 1] Found button by selector "${selector}": "${text}"`);
+          await candidate.click();
+          console.log('✅ Button clicked!');
+          return { clicked: true, method: 'selector', selector };
+        }
+      }
+    }
+
+    // === الطريقة 2: البحث بالنص ===
+    console.log('🔍 [Method 2] Searching by text content...');
+    const targetTexts = [
+      'continue', 'next', 'sign in', 'log in', 'login', 'submit', 'send',
+      'send code', 'send otp', 'request code', 'request otp', 'get code', 'get otp',
+      'verify', 'confirm', 'proceed', 'go', 'enter',
+      'متابعة', 'تسجيل', 'دخول', 'إرسال', 'أرسل', 'طلب', 'تأكيد',
+      'إرسال الرمز', 'طلب الرمز', 'أرسل الرمز', 'تسجيل الدخول',
+    ];
+
+    const allClickable = await this.page.$$('button, [role="button"], input[type="submit"], a.btn, a[class*="button" i]');
+    for (const el of allClickable) {
+      const info = await this.page.evaluate(el => {
+        const style = window.getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        return {
+          text: (el.textContent || el.value || el.getAttribute('aria-label') || '').toLowerCase().trim(),
+          isVisible: style.display !== 'none' && 
+                     style.visibility !== 'hidden' && 
+                     style.opacity !== '0' &&
+                     !el.disabled &&
+                     rect.width > 20 && rect.height > 15,
+          tag: el.tagName,
+        };
+      }, el);
+      
+      if (info.isVisible && targetTexts.some(t => info.text.includes(t))) {
+        console.log(`✅ [Method 2] Found button by text: "${info.text}" (${info.tag})`);
+        await el.click();
+        console.log('✅ Button clicked!');
+        return { clicked: true, method: 'text', text: info.text };
+      }
+    }
+
+    // === الطريقة 3: البحث داخل form ===
+    console.log('🔍 [Method 3] Searching inside form...');
+    const form = await this.page.$('form');
+    if (form) {
+      const formButtons = await form.$$('button, [role="button"], input[type="submit"]');
+      for (const btn of formButtons) {
+        const isVisible = await this.page.evaluate(el => {
+          const rect = el.getBoundingClientRect();
+          const style = window.getComputedStyle(el);
+          return rect.width > 20 && rect.height > 15 && style.display !== 'none' && !el.disabled;
+        }, btn);
+        if (isVisible) {
+          const text = await this.page.evaluate(el => (el.textContent || '').trim().substring(0, 50), btn);
+          console.log(`✅ [Method 3] Found button in form: "${text}"`);
+          await btn.click();
+          console.log('✅ Button clicked!');
+          return { clicked: true, method: 'form', text };
+        }
+      }
+    }
+
+    // === الطريقة 4: أي زر مرئي كبير (الأكبر حجماً) ===
+    console.log('🔍 [Method 4] Finding largest visible button...');
+    const allBtns = await this.page.$$('button, [role="button"]');
+    let largestBtn = null;
+    let largestArea = 0;
+    
+    for (const btn of allBtns) {
+      const info = await this.page.evaluate(el => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return {
+          area: rect.width * rect.height,
+          visible: rect.width > 30 && rect.height > 20 && style.display !== 'none' && style.visibility !== 'hidden' && !el.disabled,
+          text: (el.textContent || '').trim().substring(0, 50),
+          rect: `${Math.round(rect.x)},${Math.round(rect.y)},${Math.round(rect.width)}x${Math.round(rect.height)}`,
+        };
+      }, btn);
+      
+      if (info.visible && info.area > largestArea) {
+        largestArea = info.area;
+        largestBtn = { element: btn, ...info };
+      }
+    }
+
+    if (largestBtn && largestArea > 500) {
+      console.log(`✅ [Method 4] Clicking largest button: "${largestBtn.text}" (${largestBtn.rect}, area=${largestArea})`);
+      await largestBtn.element.click();
+      console.log('✅ Button clicked!');
+      return { clicked: true, method: 'largest', text: largestBtn.text };
+    }
+
+    // === الطريقة 5: Enter و Tab+Enter ===
+    console.log('⚠️ [Method 5] No button found! Trying keyboard...');
+    await this.page.keyboard.press('Enter');
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    const urlAfterEnter = this.page.url();
+    console.log('🔗 URL after Enter:', urlAfterEnter);
+    
+    // Tab + Enter
+    await this.page.keyboard.press('Tab');
+    await new Promise(resolve => setTimeout(resolve, 300));
+    await this.page.keyboard.press('Enter');
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    console.log('🔗 URL after Tab+Enter:', this.page.url());
+    
+    return { clicked: false, method: 'keyboard_fallback' };
+  }
+
+  /**
+   * التحقق هل الصفحة انتقلت لصفحة OTP
+   */
+  async _checkPageChangedToOTP(url) {
+    // التحقق من URL
+    if (url.includes('otp') || url.includes('verify') || url.includes('code') || url.includes('confirm')) {
+      console.log('✅ URL indicates OTP page');
+      return true;
+    }
+    
+    // التحقق من وجود حقول OTP في الصفحة
+    const hasOtpFields = await this.page.evaluate(() => {
+      const inputs = document.querySelectorAll('input[type="text"], input[type="tel"], input[type="number"], input[inputmode="numeric"]');
+      // إذا فيه 4-8 حقول رقمية صغيرة، غالباً حقول OTP
+      let otpLikeCount = 0;
+      inputs.forEach(input => {
+        const rect = input.getBoundingClientRect();
+        if (rect.width > 0 && rect.width < 80 && rect.height > 0) {
+          otpLikeCount++;
+        }
+      });
+      return otpLikeCount >= 4;
+    });
+    
+    if (hasOtpFields) {
+      console.log('✅ OTP-like input fields detected on page');
+      return true;
+    }
+    
+    // التحقق من وجود نص يدل على OTP
+    const hasOtpText = await this.page.evaluate(() => {
+      const bodyText = document.body?.textContent?.toLowerCase() || '';
+      return bodyText.includes('verification') || bodyText.includes('otp') || 
+             bodyText.includes('code') || bodyText.includes('رمز') || 
+             bodyText.includes('تحقق');
+    });
+    
+    if (hasOtpText) {
+      console.log('✅ OTP-related text found on page');
+      return true;
+    }
+    
+    console.log('⚠️ Cannot confirm OTP page - proceeding anyway');
+    return false;
+  }
+
+  /**
+   * إدخال رمز OTP
+   */
+  async _enterOTP(otp) {
+    // البحث عن حقول OTP
+    const otpInputs = await this.page.$$('input[type="text"], input[type="tel"], input[type="number"], input[inputmode="numeric"]');
+    console.log(`📝 Found ${otpInputs.length} potential OTP inputs`);
+    
+    // فلترة الحقول المرئية فقط
+    const visibleInputs = [];
+    for (const input of otpInputs) {
+      const isVisible = await this.page.evaluate(el => {
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      }, input);
+      if (isVisible) visibleInputs.push(input);
+    }
+    
+    console.log(`📝 Visible OTP inputs: ${visibleInputs.length}`);
+
+    if (visibleInputs.length >= 4 && visibleInputs.length <= 8) {
+      // حقول منفصلة لكل رقم
+      console.log('📝 Entering OTP in separate fields...');
+      for (let i = 0; i < Math.min(otp.length, visibleInputs.length); i++) {
+        await visibleInputs[i].click();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        await visibleInputs[i].type(otp[i], { delay: 80 });
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+    } else if (visibleInputs.length >= 1) {
+      // حقل واحد
+      console.log('📝 Entering OTP in single field...');
+      await visibleInputs[0].click({ clickCount: 3 });
+      await new Promise(resolve => setTimeout(resolve, 200));
+      await visibleInputs[0].type(otp, { delay: 50 });
+    } else {
+      // كتابة مباشرة
+      console.log('📝 No visible inputs found, typing OTP directly...');
+      await this.page.keyboard.type(otp, { delay: 80 });
     }
   }
 
