@@ -267,9 +267,81 @@ router.post('/reset-counter', express.json(), async (req, res) => {
 });
 
 /**
+ * POST /api/qr/import-cookies
+ * استيراد Cookies مباشرة بدون تسجيل دخول
+ */
+router.post('/import-cookies', express.json({ limit: '5mb' }), async (req, res) => {
+  try {
+    const { cookies, email, secret } = req.body;
+
+    const expectedSecret = process.env.QR_AUTOMATION_SECRET || 'default-qr-secret-key';
+    if (secret !== expectedSecret) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (!cookies || !Array.isArray(cookies)) {
+      return res.status(400).json({ error: 'cookies array is required' });
+    }
+
+    console.log(`🍪 Import cookies request: ${cookies.length} cookies`);
+
+    const result = await sessionManager.importCookies(cookies, email);
+
+    if (result.success) {
+      return res.json({
+        success: true,
+        message: result.message,
+        status: sessionManager.getStatus(),
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: result.error,
+        screenshot: result.screenshot,
+      });
+    }
+  } catch (error) {
+    console.error('❌ Import Cookies Error:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/qr/export-cookies
+ * تصدير الكوكيز الحالية
+ */
+router.post('/export-cookies', express.json(), async (req, res) => {
+  try {
+    const { secret } = req.body;
+
+    const expectedSecret = process.env.QR_AUTOMATION_SECRET || 'default-qr-secret-key';
+    if (secret !== expectedSecret) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const result = await sessionManager.exportCookies();
+    return res.json(result);
+  } catch (error) {
+    console.error('❌ Export Cookies Error:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * GET /api/qr/health
  * التحقق من صحة الخدمة
  */
+router.get('/health', (req, res) => {
+  const status = sessionManager.getStatus();
+  res.json({
+    status: 'ok',
+    service: 'QR Automation',
+    sessionLoggedIn: status.isLoggedIn,
+    sessionEmail: status.email,
+    lastActivity: status.lastActivity,
+    timestamp: new Date().toISOString(),
+  });
+});
 router.get('/health', (req, res) => {
   const status = sessionManager.getStatus();
   res.json({
