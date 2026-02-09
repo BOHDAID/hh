@@ -251,18 +251,55 @@ const OtpConfigurationsManager = () => {
 
   const extractEmailFromCookies = (cookies: any[]): string | null => {
     if (!Array.isArray(cookies)) return null;
+    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+    
     for (const cookie of cookies) {
       const val = cookie.value || '';
-      const emailMatch = val.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-      if (emailMatch) return emailMatch[0];
-      if (cookie.name?.toLowerCase().includes('email') || cookie.name?.toLowerCase().includes('user')) {
+      
+      // 1. بحث مباشر في القيمة
+      const directMatch = val.match(emailRegex);
+      if (directMatch) return directMatch[0];
+      
+      // 2. فك URL encoding
+      try {
+        const decoded = decodeURIComponent(val);
+        const decodedMatch = decoded.match(emailRegex);
+        if (decodedMatch) return decodedMatch[0];
+      } catch {}
+      
+      // 3. فك JWT token (header.payload.signature)
+      if (val.includes('.') && val.split('.').length >= 2) {
         try {
-          const decoded = decodeURIComponent(val);
-          const decodedMatch = decoded.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-          if (decodedMatch) return decodedMatch[0];
+          const payload = val.split('.')[1];
+          const jsonStr = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+          const jwtMatch = jsonStr.match(emailRegex);
+          if (jwtMatch) return jwtMatch[0];
+        } catch {}
+      }
+      
+      // 4. فك base64 عادي
+      try {
+        const b64Decoded = atob(val);
+        const b64Match = b64Decoded.match(emailRegex);
+        if (b64Match) return b64Match[0];
+      } catch {}
+      
+      // 5. فك JSON مدمج في القيمة
+      if (val.startsWith('{') || val.startsWith('[')) {
+        try {
+          const jsonStr = JSON.stringify(JSON.parse(val));
+          const jsonMatch = jsonStr.match(emailRegex);
+          if (jsonMatch) return jsonMatch[0];
         } catch {}
       }
     }
+    
+    // 6. بحث في أسماء الكوكيز نفسها (بعض المواقع تخزن الإيميل كاسم)
+    for (const cookie of cookies) {
+      const nameMatch = (cookie.name || '').match(emailRegex);
+      if (nameMatch) return nameMatch[0];
+    }
+    
     return null;
   };
 
