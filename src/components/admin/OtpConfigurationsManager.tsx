@@ -148,11 +148,30 @@ const OtpConfigurationsManager = () => {
   };
 
   const fetchOsnSessions = async () => {
-    const { data, error } = await db
+    const { data, error } = await supabase
       .from("osn_sessions")
-      .select(`*, product_variants:variant_id (name, name_en, product_id, products:product_id (name, name_en, image_url))`)
+      .select(`*`)
       .order("created_at", { ascending: false });
-    if (!error && data) setOsnSessions(data as any);
+    if (error) { console.error("Error fetching osn_sessions:", error); return; }
+    if (!data) return;
+
+    // Fetch variant details from external DB
+    const variantIds = [...new Set(data.map(s => s.variant_id))];
+    if (variantIds.length > 0) {
+      const { data: variantsData } = await db
+        .from("product_variants")
+        .select(`id, name, name_en, product_id, products:product_id (name, name_en, image_url)`)
+        .in("id", variantIds);
+      
+      const variantMap = new Map((variantsData || []).map((v: any) => [v.id, v]));
+      const enriched = data.map(session => ({
+        ...session,
+        product_variants: variantMap.get(session.variant_id) || null,
+      }));
+      setOsnSessions(enriched as any);
+    } else {
+      setOsnSessions(data as any);
+    }
   };
 
   const fetchVariants = async () => {
@@ -245,7 +264,7 @@ const OtpConfigurationsManager = () => {
       const result = await callOsnSession("import-cookies", { cookies, email: extractedEmail });
 
       if (result.success) {
-        const { error: insertError } = await db.from("osn_sessions").insert({
+        const { error: insertError } = await supabase.from("osn_sessions").insert({
           variant_id: selectedVariantId,
           email: extractedEmail,
           cookies: cookies,
@@ -268,7 +287,7 @@ const OtpConfigurationsManager = () => {
   const handleDeleteSession = async (sessionId: string) => {
     if (!confirm("هل أنت متأكد من حذف هذه الجلسة؟")) return;
     setDeletingSessionId(sessionId);
-    const { error } = await db.from("osn_sessions").delete().eq("id", sessionId);
+    const { error } = await supabase.from("osn_sessions").delete().eq("id", sessionId);
     if (error) toast({ title: "خطأ", description: "فشل في حذف الجلسة", variant: "destructive" });
     else { toast({ title: "✅ تم حذف الجلسة" }); await fetchOsnSessions(); }
     setDeletingSessionId(null);
