@@ -607,15 +607,7 @@ export type Database = {
           updated_at?: string | null
           variant_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "osn_sessions_variant_id_fkey"
-            columns: ["variant_id"]
-            isOneToOne: false
-            referencedRelation: "product_variants"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       otp_codes: {
         Row: {
