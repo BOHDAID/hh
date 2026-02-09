@@ -578,6 +578,8 @@ export type Database = {
           cookies: Json
           created_at: string | null
           email: string | null
+          gmail_address: string | null
+          gmail_app_password: string | null
           id: string
           is_active: boolean | null
           is_connected: boolean | null
@@ -589,6 +591,8 @@ export type Database = {
           cookies: Json
           created_at?: string | null
           email?: string | null
+          gmail_address?: string | null
+          gmail_app_password?: string | null
           id?: string
           is_active?: boolean | null
           is_connected?: boolean | null
@@ -600,6 +604,8 @@ export type Database = {
           cookies?: Json
           created_at?: string | null
           email?: string | null
+          gmail_address?: string | null
+          gmail_app_password?: string | null
           id?: string
           is_active?: boolean | null
           is_connected?: boolean | null
