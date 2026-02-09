@@ -27,6 +27,8 @@ interface OsnSession {
   is_connected: boolean;
   last_activity: string | null;
   created_at: string;
+  gmail_address: string | null;
+  gmail_app_password: string | null;
   product_variants?: {
     name: string;
     name_en: string | null;
@@ -100,6 +102,9 @@ const OtpConfigurationsManager = () => {
   const [cookieDialogOpen, setCookieDialogOpen] = useState(false);
   const [cookieText, setCookieText] = useState("");
   const [selectedVariantId, setSelectedVariantId] = useState("");
+  const [cookieEmail, setCookieEmail] = useState("");
+  const [cookieGmailAddress, setCookieGmailAddress] = useState("");
+  const [cookieGmailAppPassword, setCookieGmailAppPassword] = useState("");
   const [importingCookies, setImportingCookies] = useState(false);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
 
@@ -253,6 +258,7 @@ const OtpConfigurationsManager = () => {
   const handleImportCookies = async () => {
     if (!cookieText.trim()) { toast({ title: "خطأ", description: "يرجى لصق الكوكيز أولاً", variant: "destructive" }); return; }
     if (!selectedVariantId) { toast({ title: "خطأ", description: "يرجى اختيار المنتج الفرعي", variant: "destructive" }); return; }
+    if (!cookieEmail.trim()) { toast({ title: "خطأ", description: "يرجى إدخال إيميل حساب OSN", variant: "destructive" }); return; }
 
     setImportingCookies(true);
     try {
@@ -260,21 +266,22 @@ const OtpConfigurationsManager = () => {
       try { cookies = JSON.parse(cookieText.trim()); }
       catch { toast({ title: "خطأ في التنسيق", description: "الكوكيز يجب أن تكون بتنسيق JSON صالح", variant: "destructive" }); setImportingCookies(false); return; }
 
-      const extractedEmail = extractEmailFromCookies(cookies);
-      const result = await callOsnSession("import-cookies", { cookies, email: extractedEmail });
+      const result = await callOsnSession("import-cookies", { cookies, email: cookieEmail.trim() });
 
       if (result.success) {
         const { error: insertError } = await supabase.from("osn_sessions").insert({
           variant_id: selectedVariantId,
-          email: extractedEmail,
+          email: cookieEmail.trim(),
           cookies: cookies,
           is_active: true,
           is_connected: true,
           last_activity: new Date().toISOString(),
+          gmail_address: cookieGmailAddress.trim() || null,
+          gmail_app_password: cookieGmailAppPassword.trim() || null,
         });
         if (insertError) toast({ title: "⚠️ تم الاستيراد لكن فشل الحفظ", description: insertError.message, variant: "destructive" });
-        else toast({ title: "✅ تم استيراد الكوكيز بنجاح", description: `الجلسة متصلة${extractedEmail ? ` - ${extractedEmail}` : ''}` });
-        setCookieDialogOpen(false); setCookieText(""); setSelectedVariantId("");
+        else toast({ title: "✅ تم استيراد الكوكيز بنجاح", description: `الجلسة متصلة - ${cookieEmail.trim()}` });
+        setCookieDialogOpen(false); setCookieText(""); setSelectedVariantId(""); setCookieEmail(""); setCookieGmailAddress(""); setCookieGmailAppPassword("");
         await Promise.all([fetchOsnSessions(), fetchSessionStatus()]);
       } else {
         toast({ title: "❌ فشل استيراد الكوكيز", description: result.error || "الكوكيز غير صالحة", variant: "destructive" });
@@ -457,40 +464,57 @@ const OtpConfigurationsManager = () => {
           ) : (
             <div className="space-y-2">
               {osnSessions.map((session) => (
-                <div key={session.id} className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
-                  <div className="flex items-center gap-3">
-                    {/* صورة المنتج */}
-                    <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
-                      {session.product_variants?.products?.image_url ? (
-                        <img src={session.product_variants.products.image_url} className="h-full w-full object-cover" alt="" />
-                      ) : (
-                        <Package className="h-4 w-4 text-muted-foreground" />
-                      )}
+                <div key={session.id} className="p-3 rounded-lg border bg-muted/30 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
+                        {session.product_variants?.products?.image_url ? (
+                          <img src={session.product_variants.products.image_url} className="h-full w-full object-cover" alt="" />
+                        ) : (
+                          <Package className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">
+                          {session.product_variants?.products?.name || "منتج"} — {session.product_variants?.name || "فرعي"}
+                        </p>
+                        <p className="text-xs text-muted-foreground" dir="ltr">
+                          {session.email || "بدون إيميل"}
+                          {session.last_activity && ` • ${new Date(session.last_activity).toLocaleString("ar-SA")}`}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium">
-                        {session.product_variants?.products?.name || "منتج"} — {session.product_variants?.name || "فرعي"}
-                      </p>
-                      <p className="text-xs text-muted-foreground" dir="ltr">
-                        {session.email || "بدون إيميل"}
-                        {session.last_activity && ` • ${new Date(session.last_activity).toLocaleString("ar-SA")}`}
-                      </p>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={session.is_connected ? "default" : "secondary"} className="text-xs">
+                        {session.is_connected ? "متصل" : "غير متصل"}
+                      </Badge>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        disabled={deletingSessionId === session.id}
+                        onClick={() => handleDeleteSession(session.id)}
+                      >
+                        {deletingSessionId === session.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={session.is_connected ? "default" : "secondary"} className="text-xs">
-                      {session.is_connected ? "متصل" : "غير متصل"}
-                    </Badge>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                      disabled={deletingSessionId === session.id}
-                      onClick={() => handleDeleteSession(session.id)}
-                    >
-                      {deletingSessionId === session.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                    </Button>
-                  </div>
+                  {/* Gmail SMTP info */}
+                  {session.gmail_address && (
+                    <div className="flex items-center gap-4 pt-1 border-t border-border/50 text-xs text-muted-foreground" dir="ltr">
+                      <div className="flex items-center gap-1">
+                        <Mail className="h-3 w-3" />
+                        <span>{session.gmail_address}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Key className="h-3 w-3" />
+                        <span>{showPasswords[session.id] ? session.gmail_app_password : "••••••••"}</span>
+                        <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setShowPasswords(prev => ({ ...prev, [session.id]: !prev[session.id] }))}>
+                          {showPasswords[session.id] ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -673,18 +697,32 @@ const OtpConfigurationsManager = () => {
               </Select>
             </div>
 
+            {/* إيميل حساب OSN */}
+            <div className="space-y-2">
+              <Label>إيميل حساب OSN <span className="text-destructive">*</span></Label>
+              <Input type="email" placeholder="user@example.com" value={cookieEmail} onChange={(e) => setCookieEmail(e.target.value)} dir="ltr" />
+            </div>
+
             {/* كوكيز JSON */}
             <div className="space-y-2">
-              <Label>كوكيز OSN (JSON)</Label>
+              <Label>كوكيز OSN (JSON) <span className="text-destructive">*</span></Label>
               <Textarea
                 placeholder={'[\n  {\n    "name": "cookie_name",\n    "value": "cookie_value",\n    "domain": ".osnplus.com"\n  }\n]'}
                 value={cookieText}
                 onChange={(e) => setCookieText(e.target.value)}
                 dir="ltr"
-                className="min-h-[200px] font-mono text-xs"
+                className="min-h-[150px] font-mono text-xs"
               />
+            </div>
+
+            {/* Gmail SMTP */}
+            <div className="space-y-2 p-3 rounded-lg border bg-muted/30">
+              <Label className="text-sm font-medium flex items-center gap-2"><Mail className="h-4 w-4" />بيانات Gmail SMTP (اختياري)</Label>
+              <p className="text-xs text-muted-foreground">لجلب رموز OTP تلقائياً عند شراء العملاء</p>
+              <Input type="email" placeholder="example@gmail.com" value={cookieGmailAddress} onChange={(e) => setCookieGmailAddress(e.target.value)} dir="ltr" />
+              <Input type="password" placeholder="Gmail App Password" value={cookieGmailAppPassword} onChange={(e) => setCookieGmailAppPassword(e.target.value)} dir="ltr" />
               <p className="text-xs text-muted-foreground">
-                الإيميل يتم استخراجه تلقائياً من الكوكيز. استخدم إضافة "Cookie-Editor" لتصدير الكوكيز.
+                <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" className="text-primary underline">إنشاء App Password من هنا</a>
               </p>
             </div>
 
