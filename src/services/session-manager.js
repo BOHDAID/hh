@@ -61,28 +61,14 @@ class OSNSessionManager {
 
     console.log('🌐 Opening Puppeteer browser...');
     
-    // Use system Chrome (required for Docker deployment)
-    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable';
-    console.log('Chrome path:', executablePath);
-    
     try {
       this.browser = await puppeteer.launch({
         headless: 'new',
-        executablePath,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
           '--disable-gpu',
-          '--single-process',
-          '--no-zygote',
-          '--disable-extensions',
-          '--disable-background-networking',
-          '--disable-default-apps',
-          '--disable-sync',
-          '--no-first-run',
-          '--ignore-certificate-errors',
-          '--ignore-ssl-errors',
         ],
       });
       console.log('✅ Browser launched successfully');
