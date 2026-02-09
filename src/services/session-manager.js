@@ -784,6 +784,92 @@ class OSNSessionManager {
   }
 
   /**
+   * استيراد Cookies مباشرة بدون تسجيل دخول
+   */
+  async importCookies(cookies, email = null) {
+    try {
+      console.log('🍪 Importing cookies directly...');
+      
+      if (!cookies || !Array.isArray(cookies) || cookies.length === 0) {
+        return { success: false, error: 'يرجى تقديم cookies كمصفوفة' };
+      }
+
+      await this.openBrowser();
+      this.page = await this.browser.newPage();
+      
+      await this.page.setViewport({ width: 1920, height: 1080 });
+      await this.page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+
+      const cleanedCookies = cookies.map(c => ({
+        name: c.name,
+        value: c.value,
+        domain: c.domain || '.osnplus.com',
+        path: c.path || '/',
+        httpOnly: c.httpOnly !== undefined ? c.httpOnly : false,
+        secure: c.secure !== undefined ? c.secure : true,
+        sameSite: c.sameSite || 'Lax',
+        ...(c.expires ? { expires: c.expires } : {}),
+      }));
+
+      await this.page.setCookie(...cleanedCookies);
+      console.log(`✅ Injected ${cleanedCookies.length} cookies`);
+      this._savedCookies = cleanedCookies;
+
+      console.log('🔍 Verifying session...');
+      await this.page.goto('https://osnplus.com', {
+        waitUntil: 'networkidle2',
+        timeout: 30000,
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      const currentUrl = this.page.url();
+      console.log('🔗 URL after cookie import:', currentUrl);
+
+      const isLoggedIn = !currentUrl.includes('login') && !currentUrl.includes('signin');
+      
+      if (isLoggedIn) {
+        this.isLoggedIn = true;
+        this.lastActivity = new Date();
+        this.currentEmail = email || 'imported-session';
+        this.loginAttempts = 0;
+        console.log('🎉 Session imported successfully!');
+        
+        const screenshot = await this.page.screenshot({ encoding: 'base64' });
+        return {
+          success: true,
+          message: 'تم استيراد الجلسة بنجاح!',
+          screenshot: `data:image/png;base64,${screenshot}`,
+        };
+      } else {
+        const screenshot = await this.page.screenshot({ encoding: 'base64' });
+        return {
+          success: false,
+          error: 'الكوكيز منتهية أو غير صالحة',
+          screenshot: `data:image/png;base64,${screenshot}`,
+        };
+      }
+    } catch (error) {
+      console.error('❌ Cookie import error:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * تصدير الكوكيز الحالية
+   */
+  async exportCookies() {
+    if (!this.page) {
+      return { success: false, error: 'لا توجد جلسة مفتوحة' };
+    }
+    try {
+      const cookies = await this.page.cookies();
+      return { success: true, cookies, count: cookies.length };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * حالة الجلسة
    */
   getStatus() {

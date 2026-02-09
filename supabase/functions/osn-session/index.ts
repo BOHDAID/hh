@@ -38,7 +38,7 @@ serve(async (req) => {
       );
     }
 
-    const { action, email, gmailAppPassword } = await req.json();
+    const { action, email, gmailAppPassword, cookies } = await req.json();
     console.log(`📡 Action: ${action}`);
 
     let endpoint = "";
@@ -71,6 +71,16 @@ serve(async (req) => {
 
       case "reset-counter":
         endpoint = "/api/qr/reset-counter";
+        break;
+
+      case "import-cookies":
+        endpoint = "/api/qr/import-cookies";
+        body.cookies = cookies;
+        body.email = email;
+        break;
+
+      case "export-cookies":
+        endpoint = "/api/qr/export-cookies";
         break;
 
       case "health":
