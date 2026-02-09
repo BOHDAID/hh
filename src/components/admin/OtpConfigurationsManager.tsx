@@ -101,6 +101,7 @@ const OtpConfigurationsManager = () => {
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [cookieDialogOpen, setCookieDialogOpen] = useState(false);
   const [cookieText, setCookieText] = useState("");
+  const [manualEmail, setManualEmail] = useState("");
   const [selectedVariantId, setSelectedVariantId] = useState("");
   const [importingCookies, setImportingCookies] = useState(false);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
@@ -163,7 +164,7 @@ const OtpConfigurationsManager = () => {
     // Auto-extract and save email from cookies if missing
     for (const session of data) {
       if (!session.email && session.cookies) {
-        const extracted = extractEmailFromCookies(Array.isArray(session.cookies) ? session.cookies : []);
+        const extracted = extractInfoFromCookies(Array.isArray(session.cookies) ? session.cookies : []);
         if (extracted) {
           session.email = extracted;
           supabase.from("osn_sessions").update({ email: extracted }).eq("id", session.id).then(() => {});
@@ -249,55 +250,48 @@ const OtpConfigurationsManager = () => {
 
   // ==================== Cookie Sessions ====================
 
-  const extractEmailFromCookies = (cookies: any[]): string | null => {
+  const extractInfoFromCookies = (cookies: any[]): string | null => {
     if (!Array.isArray(cookies)) return null;
     const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
     
+    // 1. بحث عن إيميل في كل الكوكيز
     for (const cookie of cookies) {
       const val = cookie.value || '';
       
-      // 1. بحث مباشر في القيمة
       const directMatch = val.match(emailRegex);
       if (directMatch) return directMatch[0];
       
-      // 2. فك URL encoding
       try {
         const decoded = decodeURIComponent(val);
         const decodedMatch = decoded.match(emailRegex);
         if (decodedMatch) return decodedMatch[0];
+        
+        // فك JWT داخل JSON مشفر بـ URL
+        const jwtMatch = decoded.match(/eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/);
+        if (jwtMatch) {
+          try {
+            const payload = jwtMatch[0].split('.')[1];
+            const jsonStr = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+            const emailInJwt = jsonStr.match(emailRegex);
+            if (emailInJwt) return emailInJwt[0];
+            // استخراج user_id كبديل
+            const parsed = JSON.parse(jsonStr);
+            if (parsed.user_id) return `user_${parsed.user_id}`;
+          } catch {}
+        }
       } catch {}
       
-      // 3. فك JWT token (header.payload.signature)
+      // JWT مباشر في القيمة
       if (val.includes('.') && val.split('.').length >= 2) {
         try {
           const payload = val.split('.')[1];
           const jsonStr = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
-          const jwtMatch = jsonStr.match(emailRegex);
-          if (jwtMatch) return jwtMatch[0];
+          const jwtEmailMatch = jsonStr.match(emailRegex);
+          if (jwtEmailMatch) return jwtEmailMatch[0];
+          const parsed = JSON.parse(jsonStr);
+          if (parsed.user_id) return `user_${parsed.user_id}`;
         } catch {}
       }
-      
-      // 4. فك base64 عادي
-      try {
-        const b64Decoded = atob(val);
-        const b64Match = b64Decoded.match(emailRegex);
-        if (b64Match) return b64Match[0];
-      } catch {}
-      
-      // 5. فك JSON مدمج في القيمة
-      if (val.startsWith('{') || val.startsWith('[')) {
-        try {
-          const jsonStr = JSON.stringify(JSON.parse(val));
-          const jsonMatch = jsonStr.match(emailRegex);
-          if (jsonMatch) return jsonMatch[0];
-        } catch {}
-      }
-    }
-    
-    // 6. بحث في أسماء الكوكيز نفسها (بعض المواقع تخزن الإيميل كاسم)
-    for (const cookie of cookies) {
-      const nameMatch = (cookie.name || '').match(emailRegex);
-      if (nameMatch) return nameMatch[0];
     }
     
     return null;
@@ -313,21 +307,22 @@ const OtpConfigurationsManager = () => {
       try { cookies = JSON.parse(cookieText.trim()); }
       catch { toast({ title: "خطأ في التنسيق", description: "الكوكيز يجب أن تكون بتنسيق JSON صالح", variant: "destructive" }); setImportingCookies(false); return; }
 
-      const extractedEmail = extractEmailFromCookies(cookies);
-      const result = await callOsnSession("import-cookies", { cookies, email: extractedEmail });
+      const extractedInfo = extractInfoFromCookies(cookies);
+      const finalEmail = manualEmail.trim() || extractedInfo;
+      const result = await callOsnSession("import-cookies", { cookies, email: finalEmail });
 
       if (result.success) {
         const { error: insertError } = await supabase.from("osn_sessions").insert({
           variant_id: selectedVariantId,
-          email: extractedEmail,
+          email: finalEmail,
           cookies: cookies,
           is_active: true,
           is_connected: true,
           last_activity: new Date().toISOString(),
         });
         if (insertError) toast({ title: "⚠️ تم الاستيراد لكن فشل الحفظ", description: insertError.message, variant: "destructive" });
-        else toast({ title: "✅ تم استيراد الكوكيز بنجاح", description: `الجلسة متصلة${extractedEmail ? ` - ${extractedEmail}` : ''}` });
-        setCookieDialogOpen(false); setCookieText(""); setSelectedVariantId("");
+        else toast({ title: "✅ تم استيراد الكوكيز بنجاح", description: `الجلسة متصلة${finalEmail ? ` - ${finalEmail}` : ''}` });
+        setCookieDialogOpen(false); setCookieText(""); setSelectedVariantId(""); setManualEmail("");
         await Promise.all([fetchOsnSessions(), fetchSessionStatus()]);
       } else {
         toast({ title: "❌ فشل استيراد الكوكيز", description: result.error || "الكوكيز غير صالحة", variant: "destructive" });
@@ -779,6 +774,21 @@ const OtpConfigurationsManager = () => {
               </Select>
             </div>
 
+            {/* إيميل الحساب */}
+            <div className="space-y-2">
+              <Label>إيميل الحساب (اختياري)</Label>
+              <Input
+                type="email"
+                placeholder="example@email.com"
+                value={manualEmail}
+                onChange={(e) => setManualEmail(e.target.value)}
+                dir="ltr"
+              />
+              <p className="text-xs text-muted-foreground">
+                أدخل إيميل حساب OSN يدوياً (كوكيز OSN لا تحتوي الإيميل تلقائياً)
+              </p>
+            </div>
+
             {/* كوكيز JSON */}
             <div className="space-y-2">
               <Label>كوكيز OSN (JSON) <span className="text-destructive">*</span></Label>
@@ -790,7 +800,7 @@ const OtpConfigurationsManager = () => {
                 className="min-h-[150px] font-mono text-xs"
               />
               <p className="text-xs text-muted-foreground">
-                الإيميل يُستخرج تلقائياً من الكوكيز. استخدم إضافة "Cookie-Editor" لتصدير الكوكيز.
+                استخدم إضافة "Cookie-Editor" لتصدير الكوكيز.
               </p>
             </div>
 
