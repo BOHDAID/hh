@@ -267,6 +267,50 @@ router.post('/reset-counter', express.json(), async (req, res) => {
 });
 
 /**
+ * POST /api/qr/import-cookies
+ * استيراد كوكيز OSN لتهيئة الجلسة بدون تسجيل دخول
+ */
+router.post('/import-cookies', express.json({ limit: '5mb' }), async (req, res) => {
+  try {
+    const { cookies, email, secret } = req.body;
+
+    const expectedSecret = process.env.QR_AUTOMATION_SECRET || 'default-qr-secret-key';
+    if (secret !== expectedSecret) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (!cookies || !Array.isArray(cookies) || cookies.length === 0) {
+      return res.status(400).json({ error: 'Cookies array is required' });
+    }
+
+    console.log(`🍪 Import cookies request - ${cookies.length} cookies for: ${email || 'unknown'}`);
+
+    const result = await sessionManager.importCookies(cookies, email);
+
+    if (result.success) {
+      console.log('✅ Cookies imported successfully');
+      return res.json({
+        success: true,
+        message: result.message,
+        status: sessionManager.getStatus(),
+      });
+    } else {
+      console.error('❌ Cookie import failed:', result.error);
+      return res.status(500).json({
+        success: false,
+        error: result.error,
+      });
+    }
+  } catch (error) {
+    console.error('❌ Import Cookies Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
  * GET /api/qr/health
  * التحقق من صحة الخدمة
  */
