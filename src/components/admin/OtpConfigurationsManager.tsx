@@ -323,8 +323,14 @@ const OtpConfigurationsManager = () => {
           is_connected: true,
           last_activity: new Date().toISOString(),
         });
-        if (insertError) toast({ title: "⚠️ تم الاستيراد لكن فشل الحفظ", description: insertError.message, variant: "destructive" });
-        else toast({ title: "✅ تم استيراد الكوكيز بنجاح", description: `الجلسة متصلة${finalEmail ? ` - ${finalEmail}` : ''}` });
+        if (insertError) {
+          toast({ title: "⚠️ تم الاستيراد لكن فشل الحفظ", description: insertError.message, variant: "destructive" });
+        } else {
+          // تحديث المنتج الفرعي ليكون غير محدود تلقائياً
+          const { error: unlimitedError } = await db.from("product_variants").update({ is_unlimited: true }).eq("id", selectedVariantId);
+          if (unlimitedError) console.error("Failed to set variant as unlimited:", unlimitedError);
+          toast({ title: "✅ تم استيراد الكوكيز بنجاح", description: `الجلسة متصلة${finalEmail ? ` - ${finalEmail}` : ''} — المنتج الفرعي أصبح غير محدود` });
+        }
         setCookieDialogOpen(false); setCookieText(""); setSelectedVariantId(""); setManualEmail("");
         await Promise.all([fetchOsnSessions(), fetchSessionStatus()]);
       } else {
