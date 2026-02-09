@@ -126,6 +126,19 @@ serve(async (req) => {
       );
     }
 
+    // التحقق من رد فارغ (غالباً 502 من Render بسبب Chrome)
+    if (!responseText || responseText.trim() === "") {
+      console.error("❌ Empty response from server - status:", response.status);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: `السيرفر أرجع رد فارغ (${response.status}). غالباً Chrome/Puppeteer لا يعمل. تأكد أن خدمة Render تستخدم بيئة Docker.`,
+          hint: "أعد إنشاء خدمة Render واختر Docker كـ Environment"
+        }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // محاولة تحويل الرد لـ JSON
     let data;
     try {
