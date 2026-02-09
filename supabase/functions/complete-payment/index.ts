@@ -137,7 +137,7 @@ serve(async (req: Request) => {
     if (order.status === "completed") {
       const { data: existingItems } = await adminClient
         .from("order_items")
-        .select("id, quantity, delivered_data, products(name)")
+        .select("id, quantity, delivered_data, product_id, products(name)")
         .eq("order_id", order_id);
 
       const deliveredProducts: Array<{ name: string; account_data: string; quantity: number }> =
@@ -150,6 +150,28 @@ serve(async (req: Request) => {
           }));
 
       if (deliveredProducts.length === 0) {
+        // Check if all items are from unlimited variants (OSN/cookies-based)
+        let allUnlimited = true;
+        for (const item of (existingItems || [])) {
+          const variantId = (item as any).variant_id;
+          if (variantId) {
+            const { data: vd } = await adminClient.from("product_variants").select("is_unlimited").eq("id", variantId).single();
+            if (!vd?.is_unlimited) { allUnlimited = false; break; }
+          } else {
+            allUnlimited = false; break;
+          }
+        }
+
+        if (allUnlimited) {
+          return new Response(
+            JSON.stringify({
+              success: true,
+              message: "الطلب مكتمل — منتج غير محدود (يتم التفعيل تلقائياً)",
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
         return new Response(
           JSON.stringify({
             success: false,
@@ -307,14 +329,18 @@ serve(async (req: Request) => {
         
         if (variantId) {
           // First try exact variant match
-          const { data: exactMatch, error: exactError } = await adminClient
+          let exactQuery = adminClient
             .from("product_accounts")
             .select("id, account_data, variant_id")
             .eq("product_id", item.product_id)
-            .eq("is_sold", isUnlimitedVariant ? undefined : false)
             .eq("variant_id", variantId)
-            .limit(1)
-            .maybeSingle();
+            .limit(1);
+          
+          if (!isUnlimitedVariant) {
+            exactQuery = exactQuery.eq("is_sold", false);
+          }
+          
+          const { data: exactMatch, error: exactError } = await exactQuery.maybeSingle();
           
           if (exactMatch) {
             account = exactMatch;
