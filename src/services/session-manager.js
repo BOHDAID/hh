@@ -18,18 +18,17 @@ class OSNSessionManager {
   }
 
   /**
-   * تهيئة الجلسة مع بيانات الحساب
+   * تهيئة الجلسة - تجهيز Gmail والمتصفح فقط (بدون تسجيل دخول)
+   * تسجيل الدخول يتم فقط عبر استيراد الكوكيز
    */
   async initialize(email, gmailAppPassword) {
-    console.log('🚀 Initializing OSN Session Manager...');
+    console.log('🚀 Initializing OSN Session Manager (cookies-only mode)...');
     
-    // Reset login attempts counter for new initialization
     this.loginAttempts = 0;
-    
     this.currentEmail = email;
     this.gmailReader = new GmailReader(email, gmailAppPassword);
     
-    // اختبار اتصال Gmail أولاً
+    // اختبار اتصال Gmail
     const gmailTest = await this.gmailReader.testConnection();
     if (!gmailTest.success) {
       console.error('❌ Gmail connection failed:', gmailTest.error);
@@ -38,9 +37,18 @@ class OSNSessionManager {
     
     console.log('✅ Gmail connection OK');
     
-    // محاولة تسجيل الدخول
-    const loginResult = await this.login(email);
-    return loginResult;
+    // فتح المتصفح فقط (بدون تسجيل دخول)
+    try {
+      await this.openBrowser();
+      console.log('✅ Browser ready. Waiting for cookie import to login.');
+      return { 
+        success: true, 
+        message: 'تم تجهيز المتصفح و Gmail. استخدم استيراد الكوكيز لتسجيل الدخول.' 
+      };
+    } catch (error) {
+      console.error('❌ Browser launch failed:', error.message);
+      return { success: false, error: `فشل فتح المتصفح: ${error.message}` };
+    }
   }
 
   /**
@@ -610,14 +618,14 @@ class OSNSessionManager {
   }
 
   /**
-   * التحقق من صلاحية الجلسة وإعادة الدخول إذا لزم
+   * التحقق من صلاحية الجلسة
+   * لا يعيد تسجيل الدخول تلقائياً - يتطلب استيراد كوكيز جديدة
    */
   async ensureLoggedIn() {
     if (this.isLoggedIn && this.page) {
       try {
-        // التحقق من أن الصفحة لا تزال على OSN
         const url = this.page.url();
-        if (url.includes('osn.com') && !url.includes('login')) {
+        if (url.includes('osn') && !url.includes('login')) {
           return { success: true };
         }
       } catch {
@@ -625,9 +633,9 @@ class OSNSessionManager {
       }
     }
 
-    // إعادة تسجيل الدخول
-    console.log('🔄 Session expired, re-logging in...');
-    return await this.login(this.currentEmail);
+    console.log('⚠️ Session expired. Please import cookies to re-login.');
+    this.isLoggedIn = false;
+    return { success: false, error: 'الجلسة منتهية. يرجى استيراد كوكيز جديدة.' };
   }
 }
 
