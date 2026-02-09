@@ -160,6 +160,17 @@ const OtpConfigurationsManager = () => {
     if (error) { console.error("Error fetching osn_sessions:", error); return; }
     if (!data) return;
 
+    // Auto-extract and save email from cookies if missing
+    for (const session of data) {
+      if (!session.email && session.cookies) {
+        const extracted = extractEmailFromCookies(Array.isArray(session.cookies) ? session.cookies : []);
+        if (extracted) {
+          session.email = extracted;
+          supabase.from("osn_sessions").update({ email: extracted }).eq("id", session.id).then(() => {});
+        }
+      }
+    }
+
     // Fetch variant details from external DB
     const variantIds = [...new Set(data.map(s => s.variant_id))];
     if (variantIds.length > 0) {
