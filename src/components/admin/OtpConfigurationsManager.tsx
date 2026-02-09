@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { 
   Mail, Plus, Loader2, Trash2, Edit, Eye, EyeOff, 
-  QrCode, Key, RefreshCw, AlertCircle, ChevronDown, ChevronUp, Package, Wifi, WifiOff
+  QrCode, Key, RefreshCw, AlertCircle, ChevronDown, ChevronUp, Package, Wifi, WifiOff, Cookie, Upload
 } from "lucide-react";
 
 interface OtpConfiguration {
@@ -59,6 +60,8 @@ const OtpConfigurationsManager = () => {
   const [initializingSession, setInitializingSession] = useState(false);
   const [serverSleeping, setServerSleeping] = useState(false);
   const [wakingUp, setWakingUp] = useState(false);
+  const [importingCookies, setImportingCookies] = useState(false);
+  const [cookiesText, setCookiesText] = useState("");
 
   const [form, setForm] = useState({
     product_id: "",
@@ -175,6 +178,44 @@ const OtpConfigurationsManager = () => {
     } finally {
       setInitializingSession(false);
     }
+  };
+
+  // استيراد Cookies مباشرة
+  const handleImportCookies = async () => {
+    if (!cookiesText.trim()) {
+      toast({ title: "خطأ", description: "الصق الكوكيز أولاً", variant: "destructive" });
+      return;
+    }
+
+    setImportingCookies(true);
+    try {
+      let cookies: any[];
+      try {
+        cookies = JSON.parse(cookiesText.trim());
+        if (!Array.isArray(cookies)) cookies = [cookies];
+      } catch {
+        toast({ title: "خطأ", description: "صيغة JSON غير صحيحة. الصق الكوكيز كـ JSON Array.", variant: "destructive" });
+        setImportingCookies(false);
+        return;
+      }
+
+      const activeConfig = configurations.find(c => c.is_active);
+      const result = await callOsnSession("import-cookies", { 
+        cookies, 
+        email: activeConfig?.gmail_address || "imported" 
+      });
+
+      if (result.success) {
+        toast({ title: "✅ تم استيراد الجلسة بنجاح!", description: "الكوكيز شغالة والجلسة متصلة" });
+        setSessionStatus({ isLoggedIn: true, email: activeConfig?.gmail_address || "imported", lastActivity: new Date().toISOString() });
+        setCookiesText("");
+      } else {
+        toast({ title: "❌ فشل الاستيراد", description: result.error || "الكوكيز منتهية أو غير صالحة", variant: "destructive" });
+      }
+    } catch (error: any) {
+      toast({ title: "❌ خطأ", description: error.message, variant: "destructive" });
+    }
+    setImportingCookies(false);
   };
 
   // دالة لتحويل activation_type إلى checkboxes
@@ -526,6 +567,46 @@ const OtpConfigurationsManager = () => {
                 )}
               </div>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* استيراد Cookies */}
+      {!serverSleeping && (
+        <Card className="border-2 border-dashed border-muted-foreground/30">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Cookie className="h-5 w-5 text-primary" />
+              <Label className="font-medium">استيراد جلسة (Cookies)</Label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              سجّل دخول OSN من متصفحك، صدّر الكوكيز (بإضافة مثل EditThisCookie أو Cookie-Editor)، والصقها هنا كـ JSON.
+            </p>
+            <Textarea
+              placeholder='[{"name":"session_id","value":"xxx","domain":".osnplus.com"}, ...]'
+              value={cookiesText}
+              onChange={(e) => setCookiesText(e.target.value)}
+              dir="ltr"
+              className="font-mono text-xs min-h-[80px]"
+            />
+            <Button
+              size="sm"
+              onClick={handleImportCookies}
+              disabled={importingCookies || !cookiesText.trim()}
+              className="w-full"
+            >
+              {importingCookies ? (
+                <>
+                  <Loader2 className="h-4 w-4 ml-1 animate-spin" />
+                  جاري الاستيراد...
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4 ml-1" />
+                  استيراد الجلسة
+                </>
+              )}
+            </Button>
           </CardContent>
         </Card>
       )}
