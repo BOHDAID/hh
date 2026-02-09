@@ -12,9 +12,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Textarea } from "@/components/ui/textarea";
 import { 
   Mail, Plus, Loader2, Trash2, Edit, Eye, EyeOff, 
-  QrCode, Key, RefreshCw, AlertCircle, ChevronDown, ChevronUp, Package, Wifi, WifiOff
+  QrCode, Key, RefreshCw, AlertCircle, ChevronDown, ChevronUp, Package, Wifi, WifiOff, Cookie
 } from "lucide-react";
 
 interface OtpConfiguration {
@@ -59,6 +60,11 @@ const OtpConfigurationsManager = () => {
   const [initializingSession, setInitializingSession] = useState(false);
   const [serverSleeping, setServerSleeping] = useState(false);
   const [wakingUp, setWakingUp] = useState(false);
+  
+  // استيراد الكوكيز
+  const [cookieDialogOpen, setCookieDialogOpen] = useState(false);
+  const [cookieText, setCookieText] = useState("");
+  const [importingCookies, setImportingCookies] = useState(false);
 
   const [form, setForm] = useState({
     product_id: "",
@@ -174,6 +180,64 @@ const OtpConfigurationsManager = () => {
       return false;
     } finally {
       setInitializingSession(false);
+    }
+  };
+
+  // استيراد الكوكيز
+  const handleImportCookies = async () => {
+    if (!cookieText.trim()) {
+      toast({
+        title: "خطأ",
+        description: "يرجى لصق الكوكيز أولاً",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setImportingCookies(true);
+    try {
+      let cookies;
+      try {
+        cookies = JSON.parse(cookieText.trim());
+      } catch {
+        toast({
+          title: "خطأ في التنسيق",
+          description: "الكوكيز يجب أن تكون بتنسيق JSON صالح",
+          variant: "destructive",
+        });
+        setImportingCookies(false);
+        return;
+      }
+
+      const activeConfig = configurations.find(c => c.is_active);
+      const email = activeConfig?.gmail_address || undefined;
+
+      const result = await callOsnSession("import-cookies", { cookies, email });
+
+      if (result.success) {
+        toast({
+          title: "✅ تم استيراد الكوكيز بنجاح",
+          description: "الجلسة متصلة الآن",
+        });
+        setCookieDialogOpen(false);
+        setCookieText("");
+        await fetchSessionStatus();
+      } else {
+        toast({
+          title: "❌ فشل استيراد الكوكيز",
+          description: result.error || "الكوكيز غير صالحة أو منتهية",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      console.error("Error importing cookies:", error);
+      toast({
+        title: "❌ خطأ",
+        description: error.message || "فشل الاتصال بالسيرفر",
+        variant: "destructive",
+      });
+    } finally {
+      setImportingCookies(false);
     }
   };
 
@@ -494,35 +558,47 @@ const OtpConfigurationsManager = () => {
                     <RefreshCw className="h-4 w-4" />
                   )}
                 </Button>
-                {!sessionStatus?.isLoggedIn && configurations.length > 0 && (
-                  <Button
-                    size="sm"
-                    disabled={initializingSession}
-                    onClick={async () => {
-                      const activeConfig = configurations.find(c => c.is_active);
-                      if (activeConfig) {
-                        await initializeSession(activeConfig.gmail_address, activeConfig.gmail_app_password);
-                      } else {
-                        toast({
-                          title: "لا يوجد إعداد نشط",
-                          description: "يرجى تفعيل إعداد OTP أولاً",
-                          variant: "destructive",
-                        });
-                      }
-                    }}
-                  >
-                    {initializingSession ? (
-                      <>
-                        <Loader2 className="h-4 w-4 ml-1 animate-spin" />
-                        جاري التهيئة...
-                      </>
-                    ) : (
-                      <>
-                        <Wifi className="h-4 w-4 ml-1" />
-                        تهيئة الجلسة
-                      </>
+                {!sessionStatus?.isLoggedIn && (
+                  <>
+                    {configurations.length > 0 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={initializingSession}
+                        onClick={async () => {
+                          const activeConfig = configurations.find(c => c.is_active);
+                          if (activeConfig) {
+                            await initializeSession(activeConfig.gmail_address, activeConfig.gmail_app_password);
+                          } else {
+                            toast({
+                              title: "لا يوجد إعداد نشط",
+                              description: "يرجى تفعيل إعداد OTP أولاً",
+                              variant: "destructive",
+                            });
+                          }
+                        }}
+                      >
+                        {initializingSession ? (
+                          <>
+                            <Loader2 className="h-4 w-4 ml-1 animate-spin" />
+                            جاري التهيئة...
+                          </>
+                        ) : (
+                          <>
+                            <Wifi className="h-4 w-4 ml-1" />
+                            تهيئة الجلسة
+                          </>
+                        )}
+                      </Button>
                     )}
-                  </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => setCookieDialogOpen(true)}
+                    >
+                      <Cookie className="h-4 w-4 ml-1" />
+                      استيراد كوكيز
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
@@ -870,6 +946,54 @@ const OtpConfigurationsManager = () => {
           ))}
         </div>
       )}
+
+      {/* ديالوج استيراد الكوكيز */}
+      <Dialog open={cookieDialogOpen} onOpenChange={setCookieDialogOpen}>
+        <DialogContent className="max-w-lg" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Cookie className="h-5 w-5" />
+              استيراد كوكيز OSN
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>كوكيز OSN (JSON)</Label>
+              <Textarea
+                placeholder={'[\n  {\n    "name": "cookie_name",\n    "value": "cookie_value",\n    "domain": ".osnplus.com"\n  }\n]'}
+                value={cookieText}
+                onChange={(e) => setCookieText(e.target.value)}
+                dir="ltr"
+                className="min-h-[200px] font-mono text-xs"
+              />
+              <p className="text-xs text-muted-foreground">
+                استخدم إضافة مثل "EditThisCookie" أو "Cookie-Editor" لتصدير الكوكيز من المتصفح بتنسيق JSON، ثم الصقها هنا.
+              </p>
+            </div>
+
+            <div className="flex items-start gap-2 p-3 rounded-lg border bg-muted/50">
+              <AlertCircle className="h-4 w-4 text-muted-foreground mt-0.5" />
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p><strong>الخطوات:</strong></p>
+                <p>1. سجّل دخول في osnplus.com من متصفحك</p>
+                <p>2. استخدم إضافة Cookie-Editor لتصدير الكوكيز</p>
+                <p>3. الصق الكوكيز هنا واضغط "استيراد"</p>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCookieDialogOpen(false)}>
+              إلغاء
+            </Button>
+            <Button onClick={handleImportCookies} disabled={importingCookies}>
+              {importingCookies && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
+              استيراد
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
