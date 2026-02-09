@@ -530,14 +530,18 @@ class OSNSessionManager {
       await this.page.setCookie(...puppeteerCookies);
       console.log('✅ Cookies set in browser');
 
-      // التحقق من الجلسة بفتح صفحة OSN
-      await this.page.goto('https://osnplus.com/', {
-        waitUntil: 'domcontentloaded',
-        timeout: 60000,
-      });
+      // التحقق من الجلسة بفتح صفحة OSN - بدون انتظار كامل
+      try {
+        await this.page.goto('https://osnplus.com/', {
+          waitUntil: 'domcontentloaded',
+          timeout: 30000,
+        });
+      } catch (navError) {
+        console.log('⚠️ Navigation slow but continuing:', navError.message);
+      }
 
-      // انتظار بسيط للتأكد من تحميل الصفحة
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      // انتظار بسيط
+      await new Promise(resolve => setTimeout(resolve, 3000));
 
       const currentUrl = this.page.url();
       console.log('🔗 URL after cookie import:', currentUrl);
