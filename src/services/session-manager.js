@@ -532,11 +532,12 @@ class OSNSessionManager {
 
       // التحقق من الجلسة بفتح صفحة OSN
       await this.page.goto('https://osnplus.com/', {
-        waitUntil: 'networkidle2',
-        timeout: 30000,
+        waitUntil: 'domcontentloaded',
+        timeout: 60000,
       });
 
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // انتظار بسيط للتأكد من تحميل الصفحة
+      await new Promise(resolve => setTimeout(resolve, 5000));
 
       const currentUrl = this.page.url();
       console.log('🔗 URL after cookie import:', currentUrl);
