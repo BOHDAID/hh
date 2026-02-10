@@ -209,7 +209,7 @@ serve(async (req) => {
 
       // Search ALL recent messages from newest to oldest
       let otp: string | null = null;
-      for (let i = messageIds.length - 1; i >= Math.max(0, messageIds.length - 5); i--) {
+      for (let i = messageIds.length - 1; i >= 0; i--) {
         try {
           const messageBody = await imap.fetchMessage(messageIds[i]);
           console.log(`📄 Message ${messageIds[i]} preview: ${messageBody.substring(0, 150)}`);
