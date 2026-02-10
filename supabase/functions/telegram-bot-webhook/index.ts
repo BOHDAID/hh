@@ -560,6 +560,10 @@ Deno.serve(async (req) => {
 
       // === طلب OTP (OSN أو ChatGPT) ===
       if (data === "get_otp" || data === "chatgpt_get_otp") {
+        // 🔥 تحديد النوع من callback_data مباشرة (لا نعتمد على الجلسة فقط)
+        const isChatGPT = data === "chatgpt_get_otp" || session.activationType === "chatgpt";
+        if (isChatGPT) session.activationType = "chatgpt";
+        
         session.retryCount = (session.retryCount || 0) + 1;
         
         await editTelegramMessage(botToken, chatId, messageId, "⏳ جاري البحث عن رمز التحقق من Gmail...");
@@ -567,11 +571,19 @@ Deno.serve(async (req) => {
         // استخدام بيانات Gmail المخزنة في الجلسة أو من osn_sessions
         let gmailAddress = session.gmailAddress;
         let gmailAppPassword = session.gmailAppPassword;
+        let accountPassword = session.accountPassword;
+        let accountEmail = session.accountEmail;
 
         if (!gmailAddress || !gmailAppPassword) {
           const sessionData = await getSessionForProduct(session.productId);
           gmailAddress = sessionData?.gmail_address || undefined;
           gmailAppPassword = sessionData?.gmail_app_password || undefined;
+          if (!accountEmail) accountEmail = sessionData?.email || sessionData?.gmail_address || "";
+          if (!accountPassword) accountPassword = sessionData?.account_password || "";
+          session.accountEmail = accountEmail;
+          session.accountPassword = accountPassword;
+          session.gmailAddress = gmailAddress;
+          session.gmailAppPassword = gmailAppPassword;
         }
         
         const otpResult = await getOTPFromSession(gmailAddress, gmailAppPassword);
@@ -579,13 +591,13 @@ Deno.serve(async (req) => {
         if (otpResult.success && otpResult.otp) {
           await saveOtpCode(session.activationCodeId, otpResult.otp);
           
-          if (session.activationType === "chatgpt") {
-            // ChatGPT: إرسال الرمز مع البيانات كاملة
+          if (isChatGPT) {
+            // ChatGPT: إرسال البريد + كلمة المرور + الرمز
             await editTelegramMessage(
               botToken, chatId, messageId,
-              `✅ <b>رمز التحقق جاهز!</b>\n\n` +
-              `📧 البريد: <code>${session.accountEmail}</code>\n` +
-              `🔑 كلمة المرور: <code>${session.accountPassword || "غير محدد"}</code>\n` +
+              `✅ <b>بيانات الحساب ورمز التحقق:</b>\n\n` +
+              `📧 البريد: <code>${accountEmail}</code>\n` +
+              `🔑 كلمة المرور: <code>${accountPassword || "غير محدد"}</code>\n` +
               `🔢 رمز التحقق: <code>${otpResult.otp}</code>\n\n` +
               `📝 <b>التعليمات:</b>\n` +
               `1️⃣ افتح ChatGPT\n` +
@@ -612,8 +624,8 @@ Deno.serve(async (req) => {
           const successButtons = invoiceUrl ? [[{ text: "🧾 عرض الإيصال / View Receipt", url: invoiceUrl }]] : undefined;
           await sendTelegramMessage(botToken, chatId, successMsg, successButtons as any);
         } else {
-          const retryCallbackData = session.activationType === "chatgpt" ? "chatgpt_get_otp" : "get_otp";
-          const appName = session.activationType === "chatgpt" ? "ChatGPT" : "OSN";
+          const retryCallbackData = isChatGPT ? "chatgpt_get_otp" : "get_otp";
+          const appName = isChatGPT ? "ChatGPT" : "OSN";
           
           const retryMessage = session.retryCount >= 3 
             ? `❌ لم يُعثر على رمز جديد.\n\n` +
