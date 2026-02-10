@@ -216,14 +216,15 @@ serve(async (req: Request) => {
             };
 
             for (const item of (existingItems || [])) {
-              // Check if product requires activation
+              // For unlimited products, always generate activation code
+              // (we already confirmed allUnlimited = true above)
               const { data: productData } = await adminClient
                 .from("products")
-                .select("requires_activation, name")
+                .select("name")
                 .eq("id", item.product_id)
                 .single();
               
-              if (!productData?.requires_activation) continue;
+              console.log(`Generating code for product ${item.product_id} (${productData?.name || 'unknown'})`);
 
               const code = generateCode();
               
