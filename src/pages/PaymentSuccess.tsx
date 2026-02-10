@@ -61,7 +61,9 @@ const PaymentSuccess = () => {
           .single();
         
         if (botSetting?.value) {
-          setBotUsername(botSetting.value);
+          // Clean username: remove @, remove full URL prefix
+          const clean = botSetting.value.replace(/^@/, '').replace(/^https?:\/\/t\.me\//i, '').trim();
+          setBotUsername(clean);
         }
       }
       setLoading(false);
@@ -155,11 +157,12 @@ const PaymentSuccess = () => {
                     <span className="text-sm font-medium">{t('paymentSuccess.getOtp')}</span>
                   </div>
                   <a
-                    href={`https://t.me/${botUsername}`}
+                    href={`https://t.me/${botUsername}?start=activate`}
                     target="_blank"
                     rel="noopener noreferrer"
+                    className="block"
                   >
-                    <Button className="w-full gap-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700">
+                    <Button className="w-full gap-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700" type="button">
                       <Bot className="h-5 w-5" />
                       {t('paymentSuccess.contactBot')} @{botUsername}
                       <ExternalLink className="h-4 w-4" />

@@ -242,7 +242,8 @@ const OrderInvoice = () => {
           .eq("key", "telegram_bot_username")
           .maybeSingle();
         if (botSetting?.value) {
-          setTelegramBotUsername(botSetting.value);
+          const clean = botSetting.value.replace(/^@/, '').replace(/^https?:\/\/t\.me\//i, '').trim();
+          setTelegramBotUsername(clean);
         }
       } catch (e) {
         console.warn("Failed to fetch bot username:", e);
