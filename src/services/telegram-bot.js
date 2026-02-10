@@ -429,15 +429,17 @@ async function sendSuccessMessage(chatId, session) {
   const storeUrl = await getStoreUrl();
   const orderId = session.orderId;
 
-  let receiptLine = '';
+  // استخدام زر Inline Keyboard للرابط بدلاً من HTML link
+  let inlineButtons = null;
   if (storeUrl && orderId) {
-    receiptLine = `\n\n🧾 <a href="${storeUrl}/order/${orderId}">عرض الإيصال / View Receipt</a>`;
+    const receiptUrl = `${storeUrl}/order/${orderId}`;
+    inlineButtons = [[{ text: '🧾 عرض الإيصال / View Receipt', url: receiptUrl }]];
   }
 
   await sendMessage(chatId, bi(
-    `🎉 <b>تم التفعيل بنجاح!</b>\n\nاستمتع بالخدمة! 🎬${receiptLine}\n\n⭐ <b>قيّم تجربتك:</b>\nساعدنا بتقييم المنتج في الموقع لنحسّن خدماتنا.`,
-    `🎉 <b>Activation successful!</b>\n\nEnjoy the service! 🎬${receiptLine}\n\n⭐ <b>Rate your experience:</b>\nHelp us by rating the product on our website.`
-  ));
+    `🎉 <b>تم التفعيل بنجاح!</b>\n\nاستمتع بالخدمة! 🎬\n\n⭐ <b>قيّم تجربتك:</b>\nساعدنا بتقييم المنتج في الموقع لنحسّن خدماتنا.`,
+    `🎉 <b>Activation successful!</b>\n\nEnjoy the service! 🎬\n\n⭐ <b>Rate your experience:</b>\nHelp us by rating the product on our website.`
+  ), inlineButtons);
 }
 
 // ============================================================
