@@ -21,6 +21,14 @@ import {
 import { Copy, Check, Clock, Shield, Star, ArrowRight, Loader2, RefreshCw, Printer, AlertCircle } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 
+interface ActivationCode {
+  code: string;
+  product_id: string;
+  status: string;
+  expires_at: string | null;
+  account_email: string | null;
+}
+
 interface OrderItem {
   id: string;
   product_id: string;
@@ -58,6 +66,8 @@ const OrderInvoice = () => {
 
   const [delivering, setDelivering] = useState(false);
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
+  const [activationCodes, setActivationCodes] = useState<ActivationCode[]>([]);
+  const [telegramBotUsername, setTelegramBotUsername] = useState<string | null>(null);
   const autoDeliveryAttemptedRef = useRef(false);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const pollCountRef = useRef(0);
@@ -196,6 +206,33 @@ const OrderInvoice = () => {
 
       setOrder(orderData);
 
+      // Fetch activation codes for this order
+      try {
+        const { data: codes } = await db
+          .from("activation_codes")
+          .select("code, product_id, status, expires_at, account_email")
+          .eq("order_id", orderId);
+        if (codes && codes.length > 0) {
+          setActivationCodes(codes as ActivationCode[]);
+        }
+      } catch (e) {
+        console.warn("Failed to fetch activation codes:", e);
+      }
+
+      // Fetch telegram bot username
+      try {
+        const { data: botSetting } = await db
+          .from("site_settings")
+          .select("value")
+          .eq("key", "telegram_bot_username")
+          .maybeSingle();
+        if (botSetting?.value) {
+          setTelegramBotUsername(botSetting.value);
+        }
+      } catch (e) {
+        console.warn("Failed to fetch bot username:", e);
+      }
+
       // Check if user already reviewed this product
       const { data: { session: authSession } } = await getAuthClient().auth.getSession();
       if (authSession?.user && orderData.order_items?.[0]?.product_id) {
@@ -220,8 +257,6 @@ const OrderInvoice = () => {
 
       if (needsDelivery && !autoDeliveryAttemptedRef.current) {
         autoDeliveryAttemptedRef.current = true;
-        // Attempt delivery (silent)
-        // We'll do this after setting loading to false
         setTimeout(() => {
           attemptDelivery({ silent: true });
         }, 500);
@@ -637,31 +672,89 @@ const OrderInvoice = () => {
                           {item.delivered_data}
                         </pre>
                       </div>
-                    ) : (
-                      <div className="bg-muted/50 rounded-lg p-4 text-center text-muted-foreground">
-                        {order.status === "pending" ? "في انتظار تأكيد الدفع" : "لم يتم تسليم البيانات بعد"}
+                    ) : (() => {
+                      // Check if there's an activation code for this product
+                      const itemCode = activationCodes.find(c => c.product_id === item.product_id);
+                      
+                      if (itemCode && order.status === "completed") {
+                        return (
+                          <div className="bg-muted rounded-lg p-4 space-y-4">
+                            {/* Activation Code */}
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-medium">🔑 كود التفعيل:</span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => copyToClipboard(itemCode.code, `code-${item.id}`)}
+                                >
+                                  {copied === `code-${item.id}` ? (
+                                    <Check className="h-4 w-4 text-green-500" />
+                                  ) : (
+                                    <Copy className="h-4 w-4" />
+                                  )}
+                                  <span className="mr-2">{copied === `code-${item.id}` ? "تم النسخ" : "نسخ"}</span>
+                                </Button>
+                              </div>
+                              <pre className="bg-background rounded p-3 text-lg font-mono text-center tracking-widest font-bold">
+                                {itemCode.code}
+                              </pre>
+                            </div>
 
-                        {needsDelivery && (
-                          <div className="mt-3 flex flex-col items-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={delivering}
-                              onClick={() => attemptDelivery()}
-                            >
-                              {delivering ? (
-                                <span className="inline-flex items-center gap-2">
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                  جاري التسليم...
-                                </span>
-                              ) : (
-                                "إعادة محاولة التسليم"
-                              )}
-                            </Button>
+                            {/* Telegram Bot Link */}
+                            {telegramBotUsername && (
+                              <div className="bg-primary/10 rounded-lg p-3 text-center space-y-2">
+                                <p className="text-sm">
+                                  📲 أرسل الكود إلى بوت التيليجرام لاستلام حسابك:
+                                </p>
+                                <a
+                                  href={`https://t.me/${telegramBotUsername}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg font-medium hover:opacity-90 transition-opacity"
+                                >
+                                  فتح البوت @{telegramBotUsername}
+                                  <ArrowRight className="h-4 w-4" />
+                                </a>
+                              </div>
+                            )}
+
+                            {/* Expiry info */}
+                            {itemCode.expires_at && (
+                              <p className="text-xs text-muted-foreground text-center">
+                                ⏰ صلاحية الكود تنتهي: {formatDateTimeArabic(itemCode.expires_at)}
+                              </p>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    )}
+                        );
+                      }
+
+                      return (
+                        <div className="bg-muted/50 rounded-lg p-4 text-center text-muted-foreground">
+                          {order.status === "pending" ? "في انتظار تأكيد الدفع" : "لم يتم تسليم البيانات بعد"}
+
+                          {needsDelivery && (
+                            <div className="mt-3 flex flex-col items-center gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={delivering}
+                                onClick={() => attemptDelivery()}
+                              >
+                                {delivering ? (
+                                  <span className="inline-flex items-center gap-2">
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    جاري التسليم...
+                                  </span>
+                                ) : (
+                                  "إعادة محاولة التسليم"
+                                )}
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 ))
               )}
