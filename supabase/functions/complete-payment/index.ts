@@ -155,10 +155,33 @@ serve(async (req: Request) => {
           }));
 
       if (deliveredProducts.length === 0) {
-        // Check if all items are from unlimited variants (OSN/cookies-based)
+        // Check if all items are from unlimited variants via product_account_id -> product_accounts -> variant_id
         let allUnlimited = true;
         for (const item of (existingItems || [])) {
-          const variantId = (item as any).variant_id;
+          let variantId: string | null = null;
+          
+          // Get variant_id through product_account_id
+          if ((item as any).product_account_id) {
+            const { data: pa } = await adminClient
+              .from("product_accounts")
+              .select("variant_id")
+              .eq("id", (item as any).product_account_id)
+              .single();
+            variantId = pa?.variant_id || null;
+          }
+          
+          // Fallback: check if the product has any unlimited variant
+          if (!variantId) {
+            const { data: unlimitedV } = await adminClient
+              .from("product_variants")
+              .select("id")
+              .eq("product_id", item.product_id)
+              .eq("is_unlimited", true)
+              .limit(1)
+              .maybeSingle();
+            variantId = unlimitedV?.id || null;
+          }
+
           if (variantId) {
             const { data: vd } = await adminClient.from("product_variants").select("is_unlimited").eq("id", variantId).single();
             if (!vd?.is_unlimited) { allUnlimited = false; break; }
@@ -168,21 +191,35 @@ serve(async (req: Request) => {
         }
 
         if (allUnlimited) {
+          // Fetch activation codes for this order to return them
+          const { data: existingCodes } = await adminClient
+            .from("activation_codes")
+            .select("code, product_id")
+            .eq("order_id", order_id);
+          
+          const activationCodesForResponse = (existingCodes || []).map((c: any) => ({
+            code: c.code,
+            product_id: c.product_id,
+          }));
+
           return new Response(
             JSON.stringify({
               success: true,
               message: "الطلب مكتمل — منتج غير محدود (يتم التفعيل تلقائياً)",
+              activation_codes: activationCodesForResponse.length > 0 ? activationCodesForResponse : null,
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
+        // Not unlimited and no delivered data - still return success for completed orders
         return new Response(
           JSON.stringify({
-            success: false,
-            error: "الطلب مكتمل لكن لا توجد بيانات تسليم لإرسالها بالإيميل",
+            success: true,
+            message: "الطلب مكتمل",
+            order_id: order_id,
           }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
