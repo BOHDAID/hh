@@ -265,21 +265,28 @@ async function getQRFromSession(): Promise<{ success: boolean; qrImage?: string;
   }
 }
 
-// 🔥 جلب OTP من خادم Render (قراءة Gmail)
+// 🔥 جلب OTP مباشرة عبر Edge Function (بدون Render)
 async function getOTPFromSession(gmailAddress?: string, gmailAppPassword?: string): Promise<{ success: boolean; otp?: string; error?: string }> {
-  const renderServerUrl = Deno.env.get("RENDER_SERVER_URL") || "https://angel-store.onrender.com";
-  const qrSecret = Deno.env.get("QR_AUTOMATION_SECRET") || "default-qr-secret-key";
-  
   try {
-    console.log(`🔄 Calling OTP API at ${renderServerUrl}/api/qr/get-otp for ${gmailAddress || 'unknown'}`);
+    if (!gmailAddress || !gmailAppPassword) {
+      return { success: false, error: "بيانات Gmail غير متوفرة" };
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+    const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+
+    console.log(`📧 Calling gmail-read-otp for: ${gmailAddress}`);
     
-    const response = await fetch(`${renderServerUrl}/api/qr/get-otp`, {
+    const response = await fetch(`${supabaseUrl}/functions/v1/gmail-read-otp`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${supabaseKey}`,
+      },
       body: JSON.stringify({ 
-        secret: qrSecret,
-        gmailAddress: gmailAddress,
-        gmailAppPassword: gmailAppPassword,
+        gmailAddress,
+        gmailAppPassword,
+        maxAgeMinutes: 5,
       }),
     });
 
