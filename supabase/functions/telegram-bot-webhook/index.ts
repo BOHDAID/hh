@@ -126,20 +126,21 @@ async function getSetting(key: string): Promise<string | null> {
   return data?.value || null;
 }
 
-// جلب إعدادات OTP للمنتج
-async function getOtpConfiguration(productId: string) {
+// جلب بيانات Gmail من osn_sessions (الجلسة النشطة)
+async function getGmailCredentials() {
   const { data, error } = await supabase
-    .from("otp_configurations")
-    .select("*")
-    .eq("product_id", productId)
+    .from("osn_sessions")
+    .select("gmail_address, gmail_app_password, email, variant_id")
     .eq("is_active", true)
+    .limit(1)
     .maybeSingle();
 
   if (error) {
-    console.error("Error fetching OTP configuration:", error);
+    console.error("Error fetching Gmail credentials from osn_sessions:", error);
     return null;
   }
 
+  console.log("📧 Gmail credentials found:", data?.gmail_address || "none");
   return data;
 }
 
@@ -438,10 +439,10 @@ Deno.serve(async (req) => {
         
         await editTelegramMessage(botToken, chatId, messageId, "⏳ جاري البحث عن رمز التحقق من Gmail...");
         
-        // جلب بيانات Gmail من otp_configurations
-        const otpConfig = await getOtpConfiguration(session.productId);
-        const gmailAddress = otpConfig?.gmail_address;
-        const gmailAppPassword = otpConfig?.gmail_app_password;
+        // جلب بيانات Gmail من osn_sessions
+        const gmailCreds = await getGmailCredentials();
+        const gmailAddress = gmailCreds?.gmail_address;
+        const gmailAppPassword = gmailCreds?.gmail_app_password;
         
         const otpResult = await getOTPFromSession(gmailAddress, gmailAppPassword);
         
@@ -531,25 +532,24 @@ Deno.serve(async (req) => {
       const productName = activationCode.products?.name || "المنتج";
       const productId = activationCode.product_id;
       
-      // جلب إعدادات OTP من الجدول
-      const otpConfig = await getOtpConfiguration(productId);
+      // جلب بيانات Gmail من osn_sessions
+      const gmailCreds = await getGmailCredentials();
       
-      if (!otpConfig) {
+      if (!gmailCreds || !gmailCreds.gmail_address) {
         await sendTelegramMessage(
           botToken, 
           chatId, 
-          `✅ كود صالح للمنتج: <b>${productName}</b>\n\n⚠️ هذا المنتج لا يتطلب تفعيل OTP.\nتواصل مع الدعم إذا كنت تحتاج مساعدة.`
+          `✅ كود صالح للمنتج: <b>${productName}</b>\n\n⚠️ لا توجد جلسة OSN نشطة مع بيانات Gmail.\nتواصل مع الدعم.`
         );
-        
-        await markCodeAsUsed(activationCode.id);
         
         return new Response(JSON.stringify({ ok: true }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      const accountEmail = otpConfig.gmail_address;
-      const activationTypes = (otpConfig.activation_type || "otp").split(",").map((t: string) => t.trim());
+      const accountEmail = gmailCreds.gmail_address;
+      // دعم QR و OTP معاً
+      const activationTypes = ["qr", "otp"];
 
       // تحديث كود التفعيل
       await updateActivationCode(
