@@ -168,10 +168,28 @@ const OtpConfigurationsManager = () => {
   };
 
   const fetchOsnSessions = async () => {
-    const { data, error } = await db
+    // Try with all columns first, fallback to basic columns if account_password doesn't exist
+    let data: any[] | null = null;
+    let error: any = null;
+    
+    const { data: d1, error: e1 } = await db
       .from("osn_sessions")
-      .select(`*`)
+      .select("id, variant_id, email, cookies, is_active, is_connected, last_activity, created_at, updated_at, gmail_address, gmail_app_password, account_password")
       .order("created_at", { ascending: false });
+    
+    if (e1 && e1.message?.includes("account_password")) {
+      // Column doesn't exist in external DB, fetch without it
+      const { data: d2, error: e2 } = await db
+        .from("osn_sessions")
+        .select("id, variant_id, email, cookies, is_active, is_connected, last_activity, created_at, updated_at, gmail_address, gmail_app_password")
+        .order("created_at", { ascending: false });
+      data = d2;
+      error = e2;
+    } else {
+      data = d1;
+      error = e1;
+    }
+    
     if (error) { console.error("Error fetching osn_sessions:", error); return; }
     if (!data) return;
 
