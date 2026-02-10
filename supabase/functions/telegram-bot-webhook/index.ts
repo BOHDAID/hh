@@ -434,8 +434,9 @@ Deno.serve(async (req) => {
             delete userSessions[chatId];
             
             const successMsg = `🎉 تم التفعيل بنجاح! استمتع بالخدمة.` +
-              (invoiceUrl ? `\n\n⭐ <b>قيّم تجربتك:</b>\n<a href="${invoiceUrl}">📄 اضغط هنا لعرض الإيصال وتقييم المنتج</a>` : `\n\n⭐ لا تنسَ تقييم المنتج في الموقع!`);
-            await sendTelegramMessage(botToken, chatId, successMsg);
+              `\n\n⭐ <b>قيّم تجربتك:</b>\nساعدنا بتقييم المنتج في الموقع لنحسّن خدماتنا.`;
+            const successButtons = invoiceUrl ? [[{ text: "🧾 عرض الإيصال / View Receipt", url: invoiceUrl }]] : undefined;
+            await sendTelegramMessage(botToken, chatId, successMsg, successButtons as any);
           } else {
             await editTelegramMessage(
               botToken, 
@@ -501,8 +502,9 @@ Deno.serve(async (req) => {
           delete userSessions[chatId];
           
           const successMsg2 = `🎉 تم التفعيل بنجاح! استمتع بالخدمة.` +
-            (invoiceUrl2 ? `\n\n⭐ <b>قيّم تجربتك:</b>\n<a href="${invoiceUrl2}">📄 اضغط هنا لعرض الإيصال وتقييم المنتج</a>` : `\n\n⭐ لا تنسَ تقييم المنتج في الموقع!`);
-          await sendTelegramMessage(botToken, chatId, successMsg2);
+            `\n\n⭐ <b>قيّم تجربتك:</b>\nساعدنا بتقييم المنتج في الموقع لنحسّن خدماتنا.`;
+          const successButtons2 = invoiceUrl2 ? [[{ text: "🧾 عرض الإيصال / View Receipt", url: invoiceUrl2 }]] : undefined;
+          await sendTelegramMessage(botToken, chatId, successMsg2, successButtons2 as any);
         } else {
           // لم يُجد الرمز - زر إعادة المحاولة
           const retryMessage = session.retryCount >= 3 
