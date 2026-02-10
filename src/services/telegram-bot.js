@@ -1,6 +1,7 @@
 // ============================================================
 // Telegram Bot Service - Long Polling Mode
 // يعمل مع خادم Express على Render
+// Bilingual: Arabic + English
 // ============================================================
 
 import { createClient } from '@supabase/supabase-js';
@@ -18,7 +19,14 @@ let pollingOffset = 0;
 // جلسات المستخدمين
 const userSessions = {};
 
-// تهيئة البوت
+// ============================================================
+// Bilingual message helper
+// ============================================================
+const bi = (ar, en) => `${ar}\n\n─────────\n\n${en}`;
+
+// ============================================================
+// Initialize Bot
+// ============================================================
 export async function initializeBot() {
   if (!EXTERNAL_SERVICE_ROLE_KEY) {
     console.log('⚠️ EXTERNAL_SUPABASE_SERVICE_ROLE_KEY not set. Bot disabled.');
@@ -27,14 +35,12 @@ export async function initializeBot() {
 
   supabase = createClient(EXTERNAL_SUPABASE_URL, EXTERNAL_SERVICE_ROLE_KEY);
 
-  // جلب توكن البوت من قاعدة البيانات
   const { data: tokenData } = await supabase
     .from('site_settings')
     .select('value')
     .eq('key', 'telegram_bot_token')
     .maybeSingle();
 
-  // أو من المتغيرات البيئية
   botToken = process.env.TELEGRAM_BOT_TOKEN || tokenData?.value;
 
   if (!botToken) {
@@ -46,7 +52,9 @@ export async function initializeBot() {
   return { success: true };
 }
 
-// بدء الـ Polling
+// ============================================================
+// Polling
+// ============================================================
 export async function startPolling() {
   if (isRunning) {
     console.log('⚠️ Bot already running');
@@ -54,22 +62,16 @@ export async function startPolling() {
   }
 
   const initResult = await initializeBot();
-  if (!initResult.success) {
-    return;
-  }
+  if (!initResult.success) return;
 
-  // 🔥 إيقاف أي جلسة قديمة قبل البدء
   console.log('🔄 Clearing any existing bot sessions...');
   try {
-    // حذف الـ webhook وإسقاط التحديثات المعلقة
     const deleteResponse = await fetch(
       `https://api.telegram.org/bot${botToken}/deleteWebhook?drop_pending_updates=true`,
       { method: 'POST' }
     );
     const deleteResult = await deleteResponse.json();
     console.log('✅ Webhook cleared:', deleteResult.ok ? 'Success' : deleteResult.description);
-    
-    // انتظار قليلاً للتأكد من إغلاق الجلسات القديمة
     await sleep(2000);
   } catch (err) {
     console.log('⚠️ Could not clear webhook:', err.message);
@@ -77,8 +79,6 @@ export async function startPolling() {
 
   isRunning = true;
   console.log('🚀 Telegram Bot started (Long Polling Mode)');
-
-  // حلقة الاستقبال
   pollLoop();
 }
 
@@ -86,14 +86,12 @@ async function pollLoop() {
   while (isRunning) {
     try {
       const updates = await getUpdates();
-      
       for (const update of updates) {
         pollingOffset = update.update_id + 1;
         await processUpdate(update);
       }
     } catch (error) {
       console.error('❌ Polling error:', error.message);
-      // انتظار قبل إعادة المحاولة
       await sleep(5000);
     }
   }
@@ -105,31 +103,20 @@ async function getUpdates() {
       `https://api.telegram.org/bot${botToken}/getUpdates?offset=${pollingOffset}&timeout=30`,
       { method: 'GET' }
     );
-    
     const data = await response.json();
-    
-    if (data.ok) {
-      return data.result || [];
-    } else {
-      console.error('❌ getUpdates error:', data.description);
-      return [];
-    }
+    return data.ok ? (data.result || []) : [];
   } catch (error) {
     console.error('❌ Fetch error:', error.message);
     return [];
   }
 }
 
-// معالجة التحديثات
 async function processUpdate(update) {
   try {
-    // معالجة Callback Query (الأزرار)
     if (update.callback_query) {
       await handleCallbackQuery(update.callback_query);
       return;
     }
-
-    // معالجة الرسائل النصية
     if (update.message) {
       await handleMessage(update.message);
     }
@@ -138,7 +125,21 @@ async function processUpdate(update) {
   }
 }
 
-// معالجة الرسائل
+// ============================================================
+// Get store URL from settings
+// ============================================================
+async function getStoreUrl() {
+  const { data } = await supabase
+    .from('site_settings')
+    .select('value')
+    .eq('key', 'store_url')
+    .maybeSingle();
+  return data?.value || null;
+}
+
+// ============================================================
+// Handle Messages
+// ============================================================
 async function handleMessage(message) {
   const chatId = message.chat.id.toString();
   const text = message.text?.trim() || '';
@@ -146,47 +147,75 @@ async function handleMessage(message) {
 
   console.log(`📩 Message from @${username || chatId}: ${text}`);
 
-  // أمر البدء
   if (text === '/start') {
-    await sendMessage(chatId, 
-      `🎉 <b>مرحباً بك في بوت التفعيل!</b>\n\n` +
-      `📝 أرسل لي <b>كود التفعيل</b> الذي استلمته بعد الشراء.\n\n` +
-      `⏰ الكود صالح لمدة 24 ساعة فقط.`
-    );
+    await sendMessage(chatId, bi(
+      `🎉 <b>مرحباً بك في بوت التفعيل!</b>\n\n📝 أرسل لي <b>كود التفعيل</b> الذي استلمته بعد الشراء.\n\n⏰ الكود صالح لمدة 24 ساعة فقط.`,
+      `🎉 <b>Welcome to the Activation Bot!</b>\n\n📝 Send me your <b>activation code</b> that you received after purchase.\n\n⏰ The code is valid for 24 hours only.`
+    ));
+    delete userSessions[chatId];
     return;
   }
 
-  // أمر المساعدة
   if (text === '/help') {
-    await sendMessage(chatId,
-      `📖 <b>كيفية الاستخدام:</b>\n\n` +
-      `1️⃣ اشترِ المنتج من الموقع\n` +
-      `2️⃣ ستستلم كود تفعيل (8 أحرف)\n` +
-      `3️⃣ أرسل الكود هنا\n` +
-      `4️⃣ اتبع التعليمات للتفعيل\n\n` +
-      `❓ للمساعدة: تواصل مع الدعم`
-    );
+    await sendMessage(chatId, bi(
+      `📖 <b>كيفية الاستخدام:</b>\n\n1️⃣ اشترِ المنتج من الموقع\n2️⃣ ستستلم كود تفعيل (8 أحرف)\n3️⃣ أرسل الكود هنا\n4️⃣ اتبع التعليمات للتفعيل\n\n❓ للمساعدة: تواصل مع الدعم`,
+      `📖 <b>How to use:</b>\n\n1️⃣ Buy the product from the website\n2️⃣ You'll receive an activation code (8 characters)\n3️⃣ Send the code here\n4️⃣ Follow the instructions\n\n❓ Need help? Contact support`
+    ));
     return;
   }
 
-  // التحقق من كود التفعيل (8 أحرف/أرقام)
+  // التحقق من كود التفعيل (6-10 أحرف/أرقام)
   if (/^[A-Z0-9]{6,10}$/i.test(text)) {
     await handleActivationCode(chatId, text.toUpperCase(), username);
     return;
   }
 
-  // رسالة غير مفهومة
-  await sendMessage(chatId,
-    `❓ لم أفهم رسالتك.\n\n` +
-    `📝 أرسل <b>كود التفعيل</b> أو اكتب /help للمساعدة.`
-  );
+  await sendMessage(chatId, bi(
+    `❓ لم أفهم رسالتك.\n\n📝 أرسل <b>كود التفعيل</b> أو اكتب /help للمساعدة.`,
+    `❓ I didn't understand your message.\n\n📝 Send your <b>activation code</b> or type /help for help.`
+  ));
 }
 
-// معالجة كود التفعيل
+// ============================================================
+// Handle Activation Code
+// ============================================================
 async function handleActivationCode(chatId, code, username) {
-  await sendMessage(chatId, '⏳ جاري التحقق من الكود...');
+  await sendMessage(chatId, bi('⏳ جاري التحقق من الكود...', '⏳ Verifying code...'));
 
-  // البحث عن الكود في قاعدة البيانات
+  // 1️⃣ Check if code exists but is already used
+  const { data: usedCode } = await supabase
+    .from('activation_codes')
+    .select('id, code, is_used, used_at')
+    .eq('code', code)
+    .eq('is_used', true)
+    .maybeSingle();
+
+  if (usedCode) {
+    await sendMessage(chatId, bi(
+      `⚠️ <b>الكود صحيح لكن تم استخدامه!</b>\n\n🔑 الكود: <code>${code}</code>\n❌ تم استخدام هذا الكود مرة واحدة فقط وانتهت صلاحيته.\n\n📞 إذا كنت تعتقد أن هناك خطأ، تواصل مع الدعم.`,
+      `⚠️ <b>Code is correct but already used!</b>\n\n🔑 Code: <code>${code}</code>\n❌ This code has been used once and is now expired.\n\n📞 If you believe this is an error, contact support.`
+    ));
+    return;
+  }
+
+  // 2️⃣ Check if code exists but expired
+  const { data: expiredCode } = await supabase
+    .from('activation_codes')
+    .select('id, code, expires_at')
+    .eq('code', code)
+    .eq('is_used', false)
+    .lte('expires_at', new Date().toISOString())
+    .maybeSingle();
+
+  if (expiredCode) {
+    await sendMessage(chatId, bi(
+      `⏰ <b>الكود منتهي الصلاحية!</b>\n\n🔑 الكود: <code>${code}</code>\n❌ انتهت صلاحية هذا الكود. تواصل مع الدعم للحصول على كود جديد.`,
+      `⏰ <b>Code has expired!</b>\n\n🔑 Code: <code>${code}</code>\n❌ This code has expired. Contact support for a new code.`
+    ));
+    return;
+  }
+
+  // 3️⃣ Search for valid code
   const { data: activationCode, error } = await supabase
     .from('activation_codes')
     .select(`
@@ -199,29 +228,31 @@ async function handleActivationCode(chatId, code, username) {
     .maybeSingle();
 
   if (error || !activationCode) {
-    await sendMessage(chatId,
-      `❌ <b>كود غير صالح!</b>\n\n` +
-      `تأكد من:\n` +
-      `• الكود صحيح\n` +
-      `• لم يتم استخدامه من قبل\n` +
-      `• لم تنتهِ صلاحيته (24 ساعة)`
-    );
+    await sendMessage(chatId, bi(
+      `❌ <b>كود غير صالح!</b>\n\nتأكد من:\n• الكود صحيح\n• لم يتم استخدامه من قبل\n• لم تنتهِ صلاحيته (24 ساعة)`,
+      `❌ <b>Invalid code!</b>\n\nMake sure:\n• The code is correct\n• It hasn't been used before\n• It hasn't expired (24 hours)`
+    ));
     return;
   }
 
-  // حفظ الجلسة
+  const productNameAr = activationCode.products?.name || 'المنتج';
+  const productNameEn = activationCode.products?.name_en || productNameAr;
+  const accountEmail = activationCode.account_email;
+
+  // Save session
   userSessions[chatId] = {
     activationCodeId: activationCode.id,
-    productName: activationCode.products?.name || 'Unknown',
+    productNameAr,
+    productNameEn,
     productId: activationCode.product_id,
+    orderId: activationCode.order_id,
     activationType: activationCode.products?.activation_type || 'otp',
-    accountEmail: activationCode.account_email,
-    accountPassword: activationCode.account_password,
+    accountEmail: accountEmail,
     step: 'choose_type',
     retryCount: 0,
   };
 
-  // تحديث الكود في قاعدة البيانات
+  // Update code in DB
   await supabase
     .from('activation_codes')
     .update({
@@ -232,81 +263,94 @@ async function handleActivationCode(chatId, code, username) {
     })
     .eq('id', activationCode.id);
 
-  // عرض خيارات التفعيل
-  await sendMessage(chatId,
-    `✅ <b>كود صالح!</b>\n\n` +
-    `📦 المنتج: <b>${activationCode.products?.name}</b>\n` +
-    `📧 البريد: <code>${activationCode.account_email}</code>\n\n` +
-    `📱 اختر طريقة التفعيل:`,
+  // Show activation type choices
+  const emailLine = accountEmail 
+    ? `\n📧 ${accountEmail}` 
+    : '';
+
+  await sendMessage(chatId, bi(
+    `✅ <b>كود صالح!</b>\n\n📦 المنتج: <b>${productNameAr}</b>${emailLine}\n\n📱 اختر طريقة التفعيل:`,
+    `✅ <b>Valid code!</b>\n\n📦 Product: <b>${productNameEn}</b>${emailLine}\n\n📱 Choose activation method:`
+  ), [
     [
-      [
-        { text: '📺 رمز QR (للتلفزيون)', callback_data: 'choose_qr' },
-        { text: '📱 رمز OTP (للموبايل)', callback_data: 'choose_otp' }
-      ]
+      { text: '📺 تلفزيون / TV (QR)', callback_data: 'choose_qr' },
+      { text: '📱 هاتف / Phone (OTP)', callback_data: 'choose_otp' }
     ]
-  );
+  ]);
 }
 
-// معالجة الأزرار
+// ============================================================
+// Handle Callback Queries (Buttons)
+// ============================================================
 async function handleCallbackQuery(callbackQuery) {
   const chatId = callbackQuery.message.chat.id.toString();
   const messageId = callbackQuery.message.message_id;
   const data = callbackQuery.data;
   const username = callbackQuery.from?.username || null;
 
-  // الرد على الضغطة
   await answerCallbackQuery(callbackQuery.id);
 
   const session = userSessions[chatId];
 
   if (!session) {
-    await editMessage(chatId, messageId, '❌ انتهت الجلسة. أرسل كود التفعيل مرة أخرى.');
+    await editMessage(chatId, messageId, bi(
+      '❌ انتهت الجلسة. أرسل كود التفعيل مرة أخرى.',
+      '❌ Session expired. Send your activation code again.'
+    ));
     return;
   }
 
-  // اختيار نوع التفعيل
+  // === Choose activation type ===
   if (data === 'choose_qr' || data === 'choose_otp') {
     const chosenType = data === 'choose_qr' ? 'qr' : 'otp';
     session.activationType = chosenType;
     session.step = 'awaiting_login';
 
-    const typeLabel = chosenType === 'qr' ? 'رمز QR 📺' : 'رمز OTP 📱';
+    const emailLine = session.accountEmail 
+      ? `\n📧 <code>${session.accountEmail}</code>` 
+      : '';
 
-    await editMessage(chatId, messageId,
-      `✅ اخترت: <b>${typeLabel}</b>\n\n` +
-      `📧 البريد: <code>${session.accountEmail}</code>\n` +
-      `🔑 كلمة المرور: <code>${session.accountPassword || 'راجع البريد'}</code>\n\n` +
-      `📝 <b>التعليمات:</b>\n` +
-      `1️⃣ افتح تطبيق OSN\n` +
-      `2️⃣ اختر "تسجيل الدخول"\n` +
-      `3️⃣ أدخل البريد وكلمة المرور\n` +
-      `4️⃣ بعد الدخول، اضغط الزر أدناه`,
-      [[{ text: '✅ سجلت دخول', callback_data: 'logged_in' }]]
-    );
+    if (chosenType === 'qr') {
+      await editMessage(chatId, messageId, bi(
+        `✅ اخترت: <b>تلفزيون (QR) 📺</b>${emailLine}\n\n📝 <b>التعليمات:</b>\n1️⃣ افتح تطبيق OSN على التلفزيون\n2️⃣ اختر "تسجيل الدخول بـ QR"\n3️⃣ اضغط الزر أدناه وسأرسل لك رمز QR`,
+        `✅ You chose: <b>TV (QR) 📺</b>${emailLine}\n\n📝 <b>Instructions:</b>\n1️⃣ Open OSN app on your TV\n2️⃣ Select "Login with QR"\n3️⃣ Press the button below and I'll send you the QR code`
+      ), [[{ text: '📺 أرسل لي QR / Send me QR', callback_data: 'logged_in' }]]);
+    } else {
+      await editMessage(chatId, messageId, bi(
+        `✅ اخترت: <b>هاتف (OTP) 📱</b>${emailLine}\n\n📝 <b>التعليمات:</b>\n1️⃣ افتح تطبيق OSN\n2️⃣ اختر "تسجيل الدخول"\n3️⃣ أدخل البريد أعلاه\n4️⃣ ⚠️ <b>يجب تسجيل الدخول أولاً قبل طلب الرمز</b>\n5️⃣ بعد الدخول، اضغط الزر أدناه`,
+        `✅ You chose: <b>Phone (OTP) 📱</b>${emailLine}\n\n📝 <b>Instructions:</b>\n1️⃣ Open OSN app\n2️⃣ Select "Login"\n3️⃣ Enter the email above\n4️⃣ ⚠️ <b>You must login first before requesting the code</b>\n5️⃣ After login, press the button below`
+      ), [[{ text: '✅ سجلت دخول / I logged in', callback_data: 'logged_in' }]]);
+    }
     return;
   }
 
-  // تأكيد تسجيل الدخول
+  // === Confirm login ===
   if (data === 'logged_in') {
     if (session.activationType === 'qr') {
-      // تفعيل QR
-      await editMessage(chatId, messageId, '⏳ جاري توليد رمز QR...');
+      // QR activation
+      await editMessage(chatId, messageId, bi(
+        '⏳ جاري توليد رمز QR...',
+        '⏳ Generating QR code...'
+      ));
 
       const qrResult = await getQRFromSession();
 
       if (qrResult.success && qrResult.qrImage) {
-        await sendPhoto(chatId, qrResult.qrImage, '✅ <b>رمز QR جاهز!</b>\n\n📺 امسح هذا الرمز من شاشة التلفزيون.');
+        await sendPhoto(chatId, qrResult.qrImage, bi(
+          '✅ <b>رمز QR جاهز!</b>\n\n📺 امسح هذا الرمز من شاشة التلفزيون.',
+          '✅ <b>QR Code ready!</b>\n\n📺 Scan this code from your TV screen.'
+        ));
         await markCodeAsUsed(session.activationCodeId);
+        await sendSuccessMessage(chatId, session);
         delete userSessions[chatId];
-        await sendMessage(chatId, '🎉 تم التفعيل بنجاح! استمتع بالخدمة.\n\n⭐ لا تنسَ تقييم المنتج!');
       } else {
-        await editMessage(chatId, messageId,
+        await editMessage(chatId, messageId, bi(
           `❌ فشل توليد رمز QR\n\n${qrResult.error || 'خطأ غير معروف'}\n\nجرب مرة أخرى:`,
-          [[{ text: '🔄 إعادة المحاولة', callback_data: 'logged_in' }]]
-        );
+          `❌ Failed to generate QR code\n\n${qrResult.error || 'Unknown error'}\n\nTry again:`
+        ), [[{ text: '🔄 إعادة / Retry', callback_data: 'logged_in' }]]);
       }
     } else {
-      // تفعيل OTP
+      // OTP activation
       session.step = 'awaiting_otp_request';
 
       await supabase
@@ -314,28 +358,27 @@ async function handleCallbackQuery(callbackQuery) {
         .update({ status: 'awaiting_otp', updated_at: new Date().toISOString() })
         .eq('id', session.activationCodeId);
 
-      await editMessage(chatId, messageId,
-        `✅ ممتاز!\n\n` +
-        `📱 الآن في تطبيق OSN:\n` +
-        `1️⃣ سيطلب منك رمز تحقق\n` +
-        `2️⃣ بعد أن يُرسل الرمز، اضغط الزر أدناه\n\n` +
-        `⏰ الرمز يصل خلال ثوانٍ`,
-        [[{ text: '🔑 أحضر لي الرمز', callback_data: 'get_otp' }]]
-      );
+      await editMessage(chatId, messageId, bi(
+        `✅ ممتاز!\n\n📱 الآن في تطبيق OSN:\n1️⃣ سيطلب منك رمز تحقق\n2️⃣ بعد أن يُرسل الرمز، اضغط الزر أدناه\n\n⏰ <b>ملاحظة:</b> الرمز يصل خلال ثوانٍ`,
+        `✅ Great!\n\n📱 Now in OSN app:\n1️⃣ It will ask for a verification code\n2️⃣ After the code is sent, press the button below\n\n⏰ <b>Note:</b> The code arrives within seconds`
+      ), [[{ text: '🔑 أحضر لي الرمز / Get my code', callback_data: 'get_otp' }]]);
     }
     return;
   }
 
-  // طلب OTP
+  // === Get OTP ===
   if (data === 'get_otp') {
     session.retryCount = (session.retryCount || 0) + 1;
 
-    await editMessage(chatId, messageId, '⏳ جاري البحث عن رمز التحقق...');
+    await editMessage(chatId, messageId, bi(
+      '⏳ جاري البحث عن رمز التحقق...',
+      '⏳ Searching for verification code...'
+    ));
 
     const otpResult = await getOTPFromSession();
 
     if (otpResult.success && otpResult.otp) {
-      // حفظ OTP
+      // Save OTP
       await supabase.from('otp_codes').insert({
         activation_code_id: session.activationCodeId,
         otp_code: otpResult.otp,
@@ -344,37 +387,54 @@ async function handleCallbackQuery(callbackQuery) {
         delivered_at: new Date().toISOString(),
       });
 
-      await editMessage(chatId, messageId,
-        `✅ <b>رمز التحقق:</b>\n\n` +
-        `<code>${otpResult.otp}</code>\n\n` +
-        `📱 أدخل هذا الرمز في تطبيق OSN.\n\n` +
-        `⚠️ الرمز صالح لمدة محدودة!`
-      );
+      await editMessage(chatId, messageId, bi(
+        `✅ <b>رمز التحقق:</b>\n\n<code>${otpResult.otp}</code>\n\n📱 أدخل هذا الرمز في تطبيق OSN.\n\n⚠️ الرمز صالح لمدة محدودة!`,
+        `✅ <b>Verification code:</b>\n\n<code>${otpResult.otp}</code>\n\n📱 Enter this code in the OSN app.\n\n⚠️ The code is valid for a limited time!`
+      ));
 
       await markCodeAsUsed(session.activationCodeId);
+      await sendSuccessMessage(chatId, session);
       delete userSessions[chatId];
-
-      await sendMessage(chatId, '🎉 تم التفعيل بنجاح! استمتع بالخدمة.\n\n⭐ لا تنسَ تقييم المنتج!');
     } else {
-      const retryMessage = session.retryCount >= 3
-        ? `❌ لم يُعثر على رمز جديد.\n\n` +
-          `📝 <b>تأكد من:</b>\n` +
-          `• فتح تطبيق OSN\n` +
-          `• طلب رمز التحقق من التطبيق\n` +
-          `• الانتظار حتى يصل الرمز\n\n` +
-          `ثم اضغط إعادة المحاولة:`
-        : `⏳ لم يُعثر على رمز حديث.\n\n` +
-          `📱 تأكد من أن التطبيق طلب الرمز، ثم اضغط:`;
+      const retryMsg = session.retryCount >= 3
+        ? bi(
+            `❌ لم يُعثر على رمز جديد.\n\n📝 <b>تأكد من:</b>\n• فتح تطبيق OSN\n• طلب رمز التحقق من التطبيق\n• الانتظار حتى يصل الرمز\n\nثم اضغط إعادة المحاولة:`,
+            `❌ No new code found.\n\n📝 <b>Make sure:</b>\n• OSN app is open\n• You requested the code from the app\n• Wait for the code to arrive\n\nThen press retry:`
+          )
+        : bi(
+            `⏳ لم يُعثر على رمز حديث.\n\n📱 تأكد من أن التطبيق طلب الرمز، ثم اضغط:`,
+            `⏳ No recent code found.\n\n📱 Make sure the app requested the code, then press:`
+          );
 
-      await editMessage(chatId, messageId, retryMessage,
-        [[{ text: '🔄 إعادة المحاولة', callback_data: 'get_otp' }]]
+      await editMessage(chatId, messageId, retryMsg,
+        [[{ text: '🔄 إعادة المحاولة / Retry', callback_data: 'get_otp' }]]
       );
     }
     return;
   }
 }
 
-// جلب QR من الجلسة
+// ============================================================
+// Success message with receipt link + rating
+// ============================================================
+async function sendSuccessMessage(chatId, session) {
+  const storeUrl = await getStoreUrl();
+  const orderId = session.orderId;
+
+  let receiptLine = '';
+  if (storeUrl && orderId) {
+    receiptLine = `\n\n🧾 <a href="${storeUrl}/order/${orderId}">عرض الإيصال / View Receipt</a>`;
+  }
+
+  await sendMessage(chatId, bi(
+    `🎉 <b>تم التفعيل بنجاح!</b>\n\nاستمتع بالخدمة! 🎬${receiptLine}\n\n⭐ <b>قيّم تجربتك:</b>\nساعدنا بتقييم المنتج في الموقع لنحسّن خدماتنا.`,
+    `🎉 <b>Activation successful!</b>\n\nEnjoy the service! 🎬${receiptLine}\n\n⭐ <b>Rate your experience:</b>\nHelp us by rating the product on our website.`
+  ));
+}
+
+// ============================================================
+// Session Manager Integration
+// ============================================================
 async function getQRFromSession() {
   try {
     const qrData = await sessionManager.getQRCode();
@@ -385,7 +445,6 @@ async function getQRFromSession() {
   }
 }
 
-// جلب OTP من الجلسة
 async function getOTPFromSession() {
   try {
     const otpData = await sessionManager.getOTP();
@@ -396,7 +455,6 @@ async function getOTPFromSession() {
   }
 }
 
-// تحديد الكود كمستخدم
 async function markCodeAsUsed(codeId) {
   await supabase
     .from('activation_codes')
@@ -412,12 +470,12 @@ async function markCodeAsUsed(codeId) {
 // ============================================================
 // Telegram API Helpers
 // ============================================================
-
 async function sendMessage(chatId, text, inlineKeyboard = null) {
   const body = {
     chat_id: chatId,
     text: text,
     parse_mode: 'HTML',
+    disable_web_page_preview: true,
   };
 
   if (inlineKeyboard) {
@@ -439,6 +497,7 @@ async function editMessage(chatId, messageId, text, inlineKeyboard = null) {
     message_id: messageId,
     text: text,
     parse_mode: 'HTML',
+    disable_web_page_preview: true,
   };
 
   if (inlineKeyboard) {
@@ -495,13 +554,14 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// إيقاف البوت
+// ============================================================
+// Bot Control
+// ============================================================
 export function stopPolling() {
   isRunning = false;
   console.log('🛑 Telegram Bot stopped');
 }
 
-// حالة البوت
 export function getBotStatus() {
   return {
     isRunning,
