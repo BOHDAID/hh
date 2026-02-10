@@ -471,14 +471,17 @@ const OtpConfigurationsManager = () => {
       )}
 
       {/* حالة الجلسة الحالية */}
-      {!serverSleeping && (
-        <Card className={`border-2 ${sessionStatus?.isLoggedIn ? 'border-primary/50 bg-primary/5' : 'border-muted/50 bg-muted/5'}`}>
+      {!serverSleeping && (() => {
+        const hasConnectedSession = osnSessions.some(s => s.is_connected);
+        const isConnected = sessionStatus?.isLoggedIn || hasConnectedSession;
+        return (
+        <Card className={`border-2 ${isConnected ? 'border-primary/50 bg-primary/5' : 'border-muted/50 bg-muted/5'}`}>
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                {sessionStatus?.isLoggedIn ? <Wifi className="h-5 w-5 text-primary" /> : <WifiOff className="h-5 w-5 text-muted-foreground" />}
+                {isConnected ? <Wifi className="h-5 w-5 text-primary" /> : <WifiOff className="h-5 w-5 text-muted-foreground" />}
                 <div>
-                  <p className="font-medium">{sessionStatus?.isLoggedIn ? "✅ الجلسة متصلة" : "⚠️ الجلسة غير متصلة"}</p>
+                  <p className="font-medium">{isConnected ? "✅ الجلسة متصلة" : "⚠️ الجلسة غير متصلة"}</p>
                   {sessionStatus?.email && <p className="text-sm text-muted-foreground">{sessionStatus.email}</p>}
                   {sessionStatus?.lastActivity && <p className="text-xs text-muted-foreground">آخر نشاط: {new Date(sessionStatus.lastActivity).toLocaleString("ar-SA")}</p>}
                 </div>
@@ -491,7 +494,8 @@ const OtpConfigurationsManager = () => {
             </div>
           </CardContent>
         </Card>
-      )}
+        );
+      })()}
 
       {/* ===== قسم جلسات الكوكيز المتعددة ===== */}
       <Card>
