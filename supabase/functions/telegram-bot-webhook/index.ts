@@ -265,17 +265,21 @@ async function getQRFromSession(): Promise<{ success: boolean; qrImage?: string;
 }
 
 // 🔥 جلب OTP من خادم Render (قراءة Gmail)
-async function getOTPFromSession(): Promise<{ success: boolean; otp?: string; error?: string }> {
+async function getOTPFromSession(gmailAddress?: string, gmailAppPassword?: string): Promise<{ success: boolean; otp?: string; error?: string }> {
   const renderServerUrl = Deno.env.get("RENDER_SERVER_URL") || "https://angel-store.onrender.com";
   const qrSecret = Deno.env.get("QR_AUTOMATION_SECRET") || "default-qr-secret-key";
   
   try {
-    console.log(`🔄 Calling OTP API at ${renderServerUrl}/api/qr/get-otp`);
+    console.log(`🔄 Calling OTP API at ${renderServerUrl}/api/qr/get-otp for ${gmailAddress || 'unknown'}`);
     
     const response = await fetch(`${renderServerUrl}/api/qr/get-otp`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ secret: qrSecret }),
+      body: JSON.stringify({ 
+        secret: qrSecret,
+        gmailAddress: gmailAddress,
+        gmailAppPassword: gmailAppPassword,
+      }),
     });
 
     const data = await response.json();
@@ -432,9 +436,14 @@ Deno.serve(async (req) => {
       if (data === "get_otp") {
         session.retryCount = (session.retryCount || 0) + 1;
         
-        await editTelegramMessage(botToken, chatId, messageId, "⏳ جاري البحث عن رمز التحقق...");
+        await editTelegramMessage(botToken, chatId, messageId, "⏳ جاري البحث عن رمز التحقق من Gmail...");
         
-        const otpResult = await getOTPFromSession();
+        // جلب بيانات Gmail من otp_configurations
+        const otpConfig = await getOtpConfiguration(session.productId);
+        const gmailAddress = otpConfig?.gmail_address;
+        const gmailAppPassword = otpConfig?.gmail_app_password;
+        
+        const otpResult = await getOTPFromSession(gmailAddress, gmailAppPassword);
         
         if (otpResult.success && otpResult.otp) {
           await saveOtpCode(session.activationCodeId, otpResult.otp);
