@@ -366,50 +366,58 @@ async function handleCallbackQuery(callbackQuery) {
     return;
   }
 
-  // === Get OTP ===
+  // === Get OTP (Auto-polling) ===
   if (data === 'get_otp') {
-    session.retryCount = (session.retryCount || 0) + 1;
-
     await editMessage(chatId, messageId, bi(
-      '⏳ جاري البحث عن رمز التحقق...',
-      '⏳ Searching for verification code...'
+      '⏳ جاري البحث عن رمز التحقق تلقائياً...\n\n🔄 سأحاول عدة مرات خلال 60 ثانية.',
+      '⏳ Searching for verification code automatically...\n\n🔄 I will retry multiple times over 60 seconds.'
     ));
 
-    const otpResult = await getOTPFromSession();
+    // محاولة تلقائية: 6 محاولات × 10 ثواني = 60 ثانية
+    const maxAttempts = 6;
+    const delayBetween = 10000; // 10 ثواني
 
-    if (otpResult.success && otpResult.otp) {
-      // Save OTP
-      await supabase.from('otp_codes').insert({
-        activation_code_id: session.activationCodeId,
-        otp_code: otpResult.otp,
-        source: 'auto',
-        is_delivered: true,
-        delivered_at: new Date().toISOString(),
-      });
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      console.log(`🔍 OTP attempt ${attempt}/${maxAttempts}...`);
 
-      await editMessage(chatId, messageId, bi(
-        `✅ <b>رمز التحقق:</b>\n\n<code>${otpResult.otp}</code>\n\n📱 أدخل هذا الرمز في تطبيق OSN.\n\n⚠️ الرمز صالح لمدة محدودة!`,
-        `✅ <b>Verification code:</b>\n\n<code>${otpResult.otp}</code>\n\n📱 Enter this code in the OSN app.\n\n⚠️ The code is valid for a limited time!`
-      ));
+      const otpResult = await getOTPFromSession();
 
-      await markCodeAsUsed(session.activationCodeId);
-      await sendSuccessMessage(chatId, session);
-      delete userSessions[chatId];
-    } else {
-      const retryMsg = session.retryCount >= 3
-        ? bi(
-            `❌ لم يُعثر على رمز جديد.\n\n📝 <b>تأكد من:</b>\n• فتح تطبيق OSN\n• طلب رمز التحقق من التطبيق\n• الانتظار حتى يصل الرمز\n\nثم اضغط إعادة المحاولة:`,
-            `❌ No new code found.\n\n📝 <b>Make sure:</b>\n• OSN app is open\n• You requested the code from the app\n• Wait for the code to arrive\n\nThen press retry:`
-          )
-        : bi(
-            `⏳ لم يُعثر على رمز حديث.\n\n📱 تأكد من أن التطبيق طلب الرمز، ثم اضغط:`,
-            `⏳ No recent code found.\n\n📱 Make sure the app requested the code, then press:`
-          );
+      if (otpResult.success && otpResult.otp) {
+        // تم العثور على الرمز!
+        await supabase.from('otp_codes').insert({
+          activation_code_id: session.activationCodeId,
+          otp_code: otpResult.otp,
+          source: 'auto',
+          is_delivered: true,
+          delivered_at: new Date().toISOString(),
+        });
 
-      await editMessage(chatId, messageId, retryMsg,
-        [[{ text: '🔄 إعادة المحاولة / Retry', callback_data: 'get_otp' }]]
-      );
+        await editMessage(chatId, messageId, bi(
+          `✅ <b>رمز التحقق:</b>\n\n<code>${otpResult.otp}</code>\n\n📱 أدخل هذا الرمز في تطبيق OSN.\n\n⚠️ الرمز صالح لمدة محدودة!`,
+          `✅ <b>Verification code:</b>\n\n<code>${otpResult.otp}</code>\n\n📱 Enter this code in the OSN app.\n\n⚠️ The code is valid for a limited time!`
+        ));
+
+        await markCodeAsUsed(session.activationCodeId);
+        await sendSuccessMessage(chatId, session);
+        delete userSessions[chatId];
+        return;
+      }
+
+      // لم يُعثر عليه بعد - تحديث الرسالة وانتظار
+      if (attempt < maxAttempts) {
+        await editMessage(chatId, messageId, bi(
+          `⏳ جاري البحث... (محاولة ${attempt}/${maxAttempts})\n\n🔄 الانتظار ${delayBetween / 1000} ثوانٍ ثم إعادة المحاولة...`,
+          `⏳ Searching... (attempt ${attempt}/${maxAttempts})\n\n🔄 Waiting ${delayBetween / 1000} seconds then retrying...`
+        ));
+        await sleep(delayBetween);
+      }
     }
+
+    // فشلت كل المحاولات
+    await editMessage(chatId, messageId, bi(
+      `❌ لم يُعثر على رمز بعد ${maxAttempts} محاولات.\n\n📝 <b>تأكد من:</b>\n• فتح تطبيق OSN\n• طلب رمز التحقق من التطبيق\n• وصول الرمز للبريد\n\nاضغط للمحاولة مرة أخرى:`,
+      `❌ No code found after ${maxAttempts} attempts.\n\n📝 <b>Make sure:</b>\n• OSN app is open\n• You requested the code\n• The code arrived in email\n\nPress to try again:`
+    ), [[{ text: '🔄 إعادة المحاولة / Retry', callback_data: 'get_otp' }]]);
     return;
   }
 }
