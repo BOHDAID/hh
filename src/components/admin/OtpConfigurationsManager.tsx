@@ -320,7 +320,7 @@ const OtpConfigurationsManager = () => {
       if (!chatgptPassword.trim()) { toast({ title: "خطأ", description: "يرجى إدخال كلمة مرور الحساب", variant: "destructive" }); return; }
       setImportingCookies(true);
       try {
-        const { error: insertError } = await db.from("osn_sessions").insert({
+        const { error: insertError } = await (db.from("osn_sessions") as any).insert({
           variant_id: selectedVariantId,
           email: manualEmail.trim(),
           cookies: [],
@@ -382,7 +382,7 @@ const OtpConfigurationsManager = () => {
   };
 
   const handleSaveSmtp = async (sessionId: string) => {
-    const { error } = await db.from("osn_sessions").update({
+    const { error } = await (db.from("osn_sessions") as any).update({
       gmail_address: smtpGmailAddress.trim() || null,
       gmail_app_password: smtpGmailAppPassword.trim() || null,
       account_password: smtpAccountPassword.trim() || null,
