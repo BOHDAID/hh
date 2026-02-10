@@ -113,8 +113,6 @@ const OtpConfigurationsManager = () => {
   const [smtpAccountPassword, setSmtpAccountPassword] = useState("");
   const [sessionType, setSessionType] = useState<"osn" | "chatgpt">("osn");
   const [chatgptPassword, setChatgptPassword] = useState("");
-  const [chatgptGmailAddress, setChatgptGmailAddress] = useState("");
-  const [chatgptGmailAppPassword, setChatgptGmailAppPassword] = useState("");
 
   const [form, setForm] = useState({
     product_id: "",
@@ -317,39 +315,7 @@ const OtpConfigurationsManager = () => {
     if (!selectedVariantId) { toast({ title: "خطأ", description: "يرجى اختيار المنتج الفرعي", variant: "destructive" }); return; }
     if (!manualEmail.trim()) { toast({ title: "خطأ", description: "يرجى إدخال إيميل الحساب", variant: "destructive" }); return; }
 
-    // ChatGPT type: no cookies needed
-    if (sessionType === "chatgpt") {
-      if (!chatgptPassword.trim()) { toast({ title: "خطأ", description: "يرجى إدخال كلمة مرور الحساب", variant: "destructive" }); return; }
-      setImportingCookies(true);
-      try {
-        const { error: insertError } = await db.from("osn_sessions").insert({
-          variant_id: selectedVariantId,
-          email: manualEmail.trim(),
-          cookies: [], // empty cookies for ChatGPT
-          is_active: true,
-          is_connected: true,
-          last_activity: new Date().toISOString(),
-          account_password: chatgptPassword.trim(),
-          gmail_address: chatgptGmailAddress.trim() || null,
-          gmail_app_password: chatgptGmailAppPassword.trim() || null,
-        });
-        if (insertError) {
-          toast({ title: "❌ خطأ", description: insertError.message, variant: "destructive" });
-        } else {
-          const { error: unlimitedError } = await db.from("product_variants").update({ is_unlimited: true }).eq("id", selectedVariantId);
-          if (unlimitedError) console.error("Failed to set variant as unlimited:", unlimitedError);
-          toast({ title: "✅ تم إنشاء جلسة ChatGPT بنجاح", description: `${manualEmail.trim()} — المنتج الفرعي أصبح غير محدود` });
-        }
-        setCookieDialogOpen(false); setCookieText(""); setSelectedVariantId(""); setManualEmail("");
-        setChatgptPassword(""); setChatgptGmailAddress(""); setChatgptGmailAppPassword(""); setSessionType("osn");
-        await Promise.all([fetchOsnSessions(), fetchSessionStatus()]);
-      } catch (error: any) {
-        toast({ title: "❌ خطأ", description: error.message, variant: "destructive" });
-      } finally { setImportingCookies(false); }
-      return;
-    }
-
-    // OSN type: requires cookies
+    // Both types require cookies
     if (!cookieText.trim()) { toast({ title: "خطأ", description: "يرجى لصق الكوكيز أولاً", variant: "destructive" }); return; }
 
     setImportingCookies(true);
@@ -370,6 +336,7 @@ const OtpConfigurationsManager = () => {
           is_active: true,
           is_connected: true,
           last_activity: new Date().toISOString(),
+          account_password: chatgptPassword.trim() || null,
         });
         if (insertError) {
           toast({ title: "⚠️ تم الاستيراد لكن فشل الحفظ", description: insertError.message, variant: "destructive" });
@@ -378,7 +345,7 @@ const OtpConfigurationsManager = () => {
           if (unlimitedError) console.error("Failed to set variant as unlimited:", unlimitedError);
           toast({ title: "✅ تم استيراد الكوكيز بنجاح", description: `الجلسة متصلة${finalEmail ? ` - ${finalEmail}` : ''} — المنتج الفرعي أصبح غير محدود` });
         }
-        setCookieDialogOpen(false); setCookieText(""); setSelectedVariantId(""); setManualEmail(""); setSessionType("osn");
+        setCookieDialogOpen(false); setCookieText(""); setSelectedVariantId(""); setManualEmail(""); setSessionType("osn"); setChatgptPassword("");
         await Promise.all([fetchOsnSessions(), fetchSessionStatus()]);
       } else {
         toast({ title: "❌ فشل استيراد الكوكيز", description: result.error || "الكوكيز غير صالحة", variant: "destructive" });
@@ -845,7 +812,7 @@ const OtpConfigurationsManager = () => {
       )}
 
       {/* ديالوج إنشاء جلسة جديدة */}
-      <Dialog open={cookieDialogOpen} onOpenChange={(open) => { setCookieDialogOpen(open); if (!open) { setSessionType("osn"); setChatgptPassword(""); setChatgptGmailAddress(""); setChatgptGmailAppPassword(""); } }}>
+      <Dialog open={cookieDialogOpen} onOpenChange={(open) => { setCookieDialogOpen(open); if (!open) { setSessionType("osn"); setChatgptPassword(""); } }}>
         <DialogContent className="max-w-lg" dir="rtl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -864,7 +831,7 @@ const OtpConfigurationsManager = () => {
                   className={`p-3 rounded-lg border text-center transition-all ${sessionType === "osn" ? "border-primary bg-primary/10 text-primary font-medium" : "border-border hover:border-primary/50"}`}
                 >
                   <Cookie className="h-5 w-5 mx-auto mb-1" />
-                  <span className="text-sm">OSN (كوكيز)</span>
+                  <span className="text-sm">OSN</span>
                 </button>
                 <button
                   type="button"
@@ -872,7 +839,7 @@ const OtpConfigurationsManager = () => {
                   className={`p-3 rounded-lg border text-center transition-all ${sessionType === "chatgpt" ? "border-primary bg-primary/10 text-primary font-medium" : "border-border hover:border-primary/50"}`}
                 >
                   <Key className="h-5 w-5 mx-auto mb-1" />
-                  <span className="text-sm">ChatGPT (بيانات)</span>
+                  <span className="text-sm">ChatGPT</span>
                 </button>
               </div>
             </div>
@@ -907,64 +874,35 @@ const OtpConfigurationsManager = () => {
               />
             </div>
 
-            {/* حقول ChatGPT */}
+            {/* كلمة مرور الحساب - اختياري */}
             {sessionType === "chatgpt" && (
-              <>
-                <div className="space-y-2">
-                  <Label>كلمة مرور الحساب <span className="text-destructive">*</span></Label>
-                  <Input
-                    type="password"
-                    placeholder="كلمة مرور ChatGPT"
-                    value={chatgptPassword}
-                    onChange={(e) => setChatgptPassword(e.target.value)}
-                    dir="ltr"
-                  />
-                  <p className="text-xs text-muted-foreground">تُرسل للعميل عبر البوت مع الإيميل</p>
-                </div>
-                <div className="space-y-2">
-                  <Label>Gmail لقراءة OTP</Label>
-                  <Input
-                    type="email"
-                    placeholder="example@gmail.com"
-                    value={chatgptGmailAddress}
-                    onChange={(e) => setChatgptGmailAddress(e.target.value)}
-                    dir="ltr"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Gmail App Password</Label>
-                  <Input
-                    type="password"
-                    placeholder="xxxx xxxx xxxx xxxx"
-                    value={chatgptGmailAppPassword}
-                    onChange={(e) => setChatgptGmailAppPassword(e.target.value)}
-                    dir="ltr"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" className="text-primary underline">إنشاء App Password من هنا</a>
-                  </p>
-                </div>
-              </>
+              <div className="space-y-2">
+                <Label>كلمة مرور الحساب</Label>
+                <Input
+                  type="password"
+                  placeholder="كلمة مرور الحساب"
+                  value={chatgptPassword}
+                  onChange={(e) => setChatgptPassword(e.target.value)}
+                  dir="ltr"
+                />
+                <p className="text-xs text-muted-foreground">يمكنك تعديلها لاحقاً من إعدادات الجلسة</p>
+              </div>
             )}
 
-            {/* حقول OSN - كوكيز */}
-            {sessionType === "osn" && (
-              <>
-                <div className="space-y-2">
-                  <Label>كوكيز OSN (JSON) <span className="text-destructive">*</span></Label>
-                  <Textarea
-                    placeholder={'[\n  {\n    "name": "cookie_name",\n    "value": "cookie_value",\n    "domain": ".osnplus.com"\n  }\n]'}
-                    value={cookieText}
-                    onChange={(e) => setCookieText(e.target.value)}
-                    dir="ltr"
-                    className="min-h-[150px] font-mono text-xs"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    استخدم إضافة "Cookie-Editor" لتصدير الكوكيز.
-                  </p>
-                </div>
-              </>
-            )}
+            {/* كوكيز - مطلوبة لكلا النوعين */}
+            <div className="space-y-2">
+              <Label>كوكيز (JSON) <span className="text-destructive">*</span></Label>
+              <Textarea
+                placeholder={'[\n  {\n    "name": "cookie_name",\n    "value": "cookie_value",\n    "domain": ".example.com"\n  }\n]'}
+                value={cookieText}
+                onChange={(e) => setCookieText(e.target.value)}
+                dir="ltr"
+                className="min-h-[150px] font-mono text-xs"
+              />
+              <p className="text-xs text-muted-foreground">
+                استخدم إضافة "Cookie-Editor" لتصدير الكوكيز.
+              </p>
+            </div>
 
             <div className="flex items-start gap-2 p-3 rounded-lg border bg-muted/50">
               <AlertCircle className="h-4 w-4 text-muted-foreground mt-0.5" />
@@ -972,9 +910,10 @@ const OtpConfigurationsManager = () => {
                 {sessionType === "chatgpt" ? (
                   <>
                     <p><strong>الخطوات:</strong></p>
-                    <p>1. أدخل إيميل وكلمة مرور حساب ChatGPT</p>
-                    <p>2. أضف بيانات Gmail لقراءة OTP تلقائياً</p>
-                    <p>3. اختر المنتج الفرعي واضغط "إنشاء"</p>
+                    <p>1. سجّل دخول في ChatGPT من متصفحك</p>
+                    <p>2. استخدم إضافة Cookie-Editor لتصدير الكوكيز</p>
+                    <p>3. أدخل الإيميل وكلمة المرور (اختياري) والصق الكوكيز</p>
+                    <p>4. بعد الإنشاء يمكنك إضافة بيانات Gmail من إعدادات الجلسة</p>
                   </>
                 ) : (
                   <>
@@ -992,7 +931,7 @@ const OtpConfigurationsManager = () => {
             <Button variant="outline" onClick={() => setCookieDialogOpen(false)}>إلغاء</Button>
             <Button onClick={handleImportCookies} disabled={importingCookies}>
               {importingCookies && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
-              {sessionType === "chatgpt" ? "إنشاء" : "استيراد"}
+              استيراد
             </Button>
           </DialogFooter>
         </DialogContent>
