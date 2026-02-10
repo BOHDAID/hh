@@ -5,7 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
-import { Upload, Loader2, CheckCircle, Infinity, Package } from "lucide-react";
+import { Upload, Loader2, CheckCircle, Infinity, Package, HandHelping } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -48,6 +48,12 @@ const BulkAccountImport = ({ products, onImportComplete }: BulkAccountImportProp
   const [unlimitedVariants, setUnlimitedVariants] = useState<ProductVariant[]>([]);
   const [unlimitedAccountData, setUnlimitedAccountData] = useState("");
   const [savingUnlimited, setSavingUnlimited] = useState(false);
+
+  // For on-demand
+  const [onDemandProduct, setOnDemandProduct] = useState("");
+  const [onDemandVariant, setOnDemandVariant] = useState("");
+  const [onDemandVariants, setOnDemandVariants] = useState<ProductVariant[]>([]);
+  const [savingOnDemand, setSavingOnDemand] = useState(false);
 
   const fetchVariants = async (productId: string) => {
     setLoadingVariants(true);
@@ -96,6 +102,40 @@ const BulkAccountImport = ({ products, onImportComplete }: BulkAccountImportProp
     } catch {
       setUnlimitedVariants([]);
     }
+  };
+
+  const fetchOnDemandVariants = async (productId: string) => {
+    setOnDemandVariant("");
+    try {
+      const { data } = await db
+        .from("product_variants")
+        .select("*")
+        .eq("product_id", productId)
+        .order("display_order", { ascending: true });
+      setOnDemandVariants(data || []);
+    } catch {
+      setOnDemandVariants([]);
+    }
+  };
+
+  const handleSaveOnDemand = async () => {
+    if (!onDemandVariant) {
+      toast({ title: "خطأ", description: "اختر الخيار الفرعي", variant: "destructive" });
+      return;
+    }
+    setSavingOnDemand(true);
+    try {
+      const { error } = await db
+        .from("product_variants")
+        .update({ fulfillment_type: "on_demand" } as any)
+        .eq("id", onDemandVariant);
+      if (error) throw error;
+      toast({ title: "تم الحفظ", description: "تم تعيين الخيار كـ 'عند الطلب' - الطلبات ستنتظر تفعيلك اليدوي" });
+      onImportComplete();
+    } catch (err: any) {
+      toast({ title: "خطأ", description: err.message, variant: "destructive" });
+    }
+    setSavingOnDemand(false);
   };
 
   const handleBulkImport = async () => {
@@ -228,14 +268,18 @@ const BulkAccountImport = ({ products, onImportComplete }: BulkAccountImportProp
   return (
     <div className="glass rounded-xl p-6 space-y-4">
       <Tabs defaultValue="bulk" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 mb-4">
+        <TabsList className="grid w-full grid-cols-3 mb-4">
           <TabsTrigger value="bulk" className="gap-2">
             <Package className="h-4 w-4" />
-            استيراد بالجملة
+            بالجملة
           </TabsTrigger>
           <TabsTrigger value="unlimited" className="gap-2">
             <Infinity className="h-4 w-4" />
-            حساب دائم
+            دائم
+          </TabsTrigger>
+          <TabsTrigger value="on_demand" className="gap-2">
+            <HandHelping className="h-4 w-4" />
+            عند الطلب
           </TabsTrigger>
         </TabsList>
 
@@ -413,6 +457,80 @@ user3@email.com:password789`}
               <Infinity className="h-4 w-4" />
             )}
             حفظ كحساب دائم
+          </Button>
+        </TabsContent>
+
+        {/* On-Demand Tab */}
+        <TabsContent value="on_demand" className="space-y-4">
+          <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/30 mb-4">
+            <div className="flex items-center gap-2 text-blue-500 font-medium mb-1">
+              <HandHelping className="h-5 w-5" />
+              حسابات عند الطلب (تفعيل يدوي)
+            </div>
+            <p className="text-sm text-muted-foreground">
+              الطلب لن يكتمل تلقائياً - سيبقى "قيد التفعيل" حتى تفعّله يدوياً من صفحة الطلبات. الرسالة التي تظهر للعميل يمكنك تغييرها من إعدادات الموقع.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>اختر المنتج</Label>
+            <Select 
+              value={onDemandProduct} 
+              onValueChange={(value) => {
+                setOnDemandProduct(value);
+                fetchOnDemandVariants(value);
+              }}
+            >
+              <SelectTrigger className="glass">
+                <SelectValue placeholder="اختر منتج..." />
+              </SelectTrigger>
+              <SelectContent>
+                {products.map((product) => (
+                  <SelectItem key={product.id} value={product.id}>
+                    {product.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {onDemandProduct && onDemandVariants.length > 0 && (
+            <div className="space-y-2">
+              <Label>اختر الخيار الفرعي *</Label>
+              <Select value={onDemandVariant} onValueChange={setOnDemandVariant}>
+                <SelectTrigger className="glass">
+                  <SelectValue placeholder="اختر خيار فرعي..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {onDemandVariants.map((variant) => (
+                    <SelectItem key={variant.id} value={variant.id}>
+                      {variant.name} - ${variant.price}
+                      {(variant as any).fulfillment_type === "on_demand" && " 🤝"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {onDemandProduct && onDemandVariants.length === 0 && (
+            <div className="text-sm text-blue-500 p-3 rounded-lg bg-blue-500/10">
+              ⚠️ هذا المنتج ليس له خيارات فرعية. أضف خيار فرعي أولاً.
+            </div>
+          )}
+
+          <Button
+            variant="hero"
+            onClick={handleSaveOnDemand}
+            disabled={savingOnDemand || !onDemandVariant}
+            className="w-full gap-2"
+          >
+            {savingOnDemand ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <HandHelping className="h-4 w-4" />
+            )}
+            تعيين كحساب عند الطلب
           </Button>
         </TabsContent>
       </Tabs>

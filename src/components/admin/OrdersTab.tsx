@@ -4,7 +4,9 @@ import { formatDateShortArabic } from "@/lib/formatDate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Eye, RefreshCw, Package, Search, Copy, Check, Shield, Clock, FileText, User, Mail } from "lucide-react";
+import { Loader2, Eye, RefreshCw, Package, Search, Copy, Check, Shield, Clock, FileText, User, Mail, Filter } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -49,6 +51,7 @@ const OrdersTab = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [copied, setCopied] = useState(false);
   const [warrantyCountdown, setWarrantyCountdown] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   useEffect(() => {
     fetchOrders();
@@ -155,17 +158,39 @@ const OrdersTab = () => {
         description: error.message,
         variant: "destructive",
       });
-    } else {
-      toast({
-        title: "تم التحديث",
-        description: "تم تحديث حالة الطلب",
-      });
-      fetchOrders();
-      if (selectedOrder?.id === orderId) {
-        setSelectedOrder({ ...selectedOrder, status });
+      return;
+    }
+
+    // If marking as completed, send email notification
+    if (status === "completed" && selectedOrder) {
+      try {
+        const storeUrl = window.location.origin;
+        await invokeCloudFunctionPublic("send-delivery-email", {
+          order_id: orderId,
+          store_url: storeUrl,
+        });
+      } catch (err) {
+        console.error("Email error:", err);
       }
     }
+
+    toast({
+      title: "تم التحديث",
+      description: status === "completed" ? "تم إكمال الطلب وإشعار العميل" : "تم تحديث حالة الطلب",
+    });
+    fetchOrders();
+    if (selectedOrder?.id === orderId) {
+      setSelectedOrder({ ...selectedOrder, status });
+    }
   };
+
+  const filteredOrders = orders.filter((order) => {
+    if (statusFilter === "all") return true;
+    if (statusFilter === "completed") return order.status === "completed";
+    if (statusFilter === "pending_activation") return order.payment_status === "completed" && order.status !== "completed";
+    if (statusFilter === "pending_payment") return order.payment_status !== "completed";
+    return true;
+  });
 
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
@@ -214,7 +239,7 @@ const OrdersTab = () => {
       </div>
 
       {/* Search Bar */}
-      <div className="flex gap-3 mb-6">
+      <div className="flex gap-3 mb-4">
         <Input
           placeholder="ابحث برقم الطلب (مثال: ORD-20260129)..."
           value={searchQuery}
@@ -229,14 +254,30 @@ const OrdersTab = () => {
         </Button>
       </div>
 
-      {orders.length === 0 ? (
+      {/* Filter Tabs */}
+      <Tabs value={statusFilter} onValueChange={setStatusFilter} className="mb-6">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="all">الكل ({orders.length})</TabsTrigger>
+          <TabsTrigger value="completed">
+            مكتمل ({orders.filter(o => o.status === "completed").length})
+          </TabsTrigger>
+          <TabsTrigger value="pending_activation">
+            قيد التفعيل ({orders.filter(o => o.payment_status === "completed" && o.status !== "completed").length})
+          </TabsTrigger>
+          <TabsTrigger value="pending_payment">
+            قيد الدفع ({orders.filter(o => o.payment_status !== "completed").length})
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {filteredOrders.length === 0 ? (
         <div className="text-center py-12">
           <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <p className="text-muted-foreground">لا توجد طلبات حتى الآن</p>
+          <p className="text-muted-foreground">لا توجد طلبات في هذا التصنيف</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {orders.map((order) => (
+          {filteredOrders.map((order) => (
             <div
               key={order.id}
               className="glass rounded-xl p-4 flex items-center justify-between"

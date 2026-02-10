@@ -923,6 +923,7 @@ export type Database = {
           description: string | null
           description_en: string | null
           display_order: number | null
+          fulfillment_type: string
           id: string
           image_url: string | null
           is_active: boolean | null
@@ -940,6 +941,7 @@ export type Database = {
           description?: string | null
           description_en?: string | null
           display_order?: number | null
+          fulfillment_type?: string
           id?: string
           image_url?: string | null
           is_active?: boolean | null
@@ -957,6 +959,7 @@ export type Database = {
           description?: string | null
           description_en?: string | null
           display_order?: number | null
+          fulfillment_type?: string
           id?: string
           image_url?: string | null
           is_active?: boolean | null
