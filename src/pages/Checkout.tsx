@@ -29,6 +29,7 @@ interface SelectedVariant {
   name: string;
   price: number;
   is_unlimited?: boolean | null;
+  warranty_days?: number | null;
 }
 
 type PaymentMethod = "paypal" | "crypto" | "wallet" | "lemonsqueezy" | "cryptomus" | "oxapay" | "sellauth";
@@ -131,7 +132,7 @@ const Checkout = () => {
 
           const { data: vData, error: vError } = await db
             .from("product_variants")
-            .select("id, name, price, is_unlimited")
+            .select("id, name, price, is_unlimited, warranty_days")
             .eq("id", variantId)
             .eq("product_id", productId)
             .eq("is_active", true)
@@ -1085,6 +1086,7 @@ const Checkout = () => {
                 stockCount={stockCount}
                 flashSalePrice={flashSalePrice}
                 originalPrice={originalPrice}
+                variantWarrantyDays={selectedVariant?.warranty_days}
               />
             </div>
           </div>
