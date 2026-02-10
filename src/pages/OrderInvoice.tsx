@@ -164,6 +164,19 @@ const OrderInvoice = () => {
       if (updatedOrder) {
         setOrder(updatedOrder);
       }
+
+      // Re-fetch activation codes (may have been generated)
+      try {
+        const { data: codes } = await db
+          .from("activation_codes")
+          .select("code, product_id, status, expires_at, account_email")
+          .eq("order_id", orderId!);
+        if (codes && codes.length > 0) {
+          setActivationCodes(codes as ActivationCode[]);
+        }
+      } catch (e) {
+        console.warn("Failed to re-fetch activation codes:", e);
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Unknown error";
       setDeliveryError(msg);
