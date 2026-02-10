@@ -207,24 +207,33 @@ serve(async (req) => {
         );
       }
 
-      // Fetch latest message (last in list)
-      const latestId = messageIds[messageIds.length - 1];
-      const messageBody = await imap.fetchMessage(latestId);
-      console.log(`📄 Message body preview: ${messageBody.substring(0, 200)}`);
-
-      const otp = extractOTP(messageBody);
+      // Search ALL recent messages from newest to oldest
+      let otp: string | null = null;
+      for (let i = messageIds.length - 1; i >= Math.max(0, messageIds.length - 10); i--) {
+        try {
+          const messageBody = await imap.fetchMessage(messageIds[i]);
+          console.log(`📄 Message ${messageIds[i]} preview: ${messageBody.substring(0, 150)}`);
+          
+          otp = extractOTP(messageBody);
+          if (otp) {
+            console.log(`✅ OTP found in message ${messageIds[i]}: ${otp}`);
+            break;
+          }
+        } catch (fetchErr) {
+          console.log(`⚠️ Failed to fetch message ${messageIds[i]}, skipping`);
+        }
+      }
       
       await imap.close();
 
       if (otp) {
-        console.log(`✅ OTP found: ${otp}`);
         return new Response(
           JSON.stringify({ success: true, otp }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       } else {
         return new Response(
-          JSON.stringify({ success: false, error: "لم يُعثر على رمز OTP في الرسائل" }),
+          JSON.stringify({ success: false, error: "لم يُعثر على رمز OTP في آخر " + messageIds.length + " رسالة" }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
