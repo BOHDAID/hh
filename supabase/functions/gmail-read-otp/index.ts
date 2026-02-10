@@ -7,7 +7,7 @@ const corsHeaders = {
 
 /**
  * قراءة OTP من Gmail مباشرة عبر IMAP باستخدام Deno TCP
- * بدون الحاجة لسيرفر Render
+ * نسخة محسّنة للموثوقية العالية
  */
 
 class IMAPClient {
@@ -22,28 +22,41 @@ class IMAPClient {
     this.conn = await Deno.connectTls({ hostname: host, port });
     this.reader = this.conn.readable.getReader();
     // Read greeting
-    await this.readResponse();
+    await this.readUntilComplete();
   }
 
-  private async readResponse(): Promise<string> {
+  /**
+   * قراءة البيانات حتى تكتمل - تتعامل مع chunks متعددة
+   */
+  private async readUntilComplete(timeoutMs = 10000): Promise<string> {
     let result = this.buffer;
     this.buffer = "";
     
-    const timeout = 10000; // 10 seconds
     const start = Date.now();
     
     while (true) {
-      if (Date.now() - start > timeout) {
-        throw new Error("IMAP read timeout");
+      if (Date.now() - start > timeoutMs) {
+        console.log(`⚠️ Read timeout after ${timeoutMs}ms, returning what we have (${result.length} bytes)`);
+        break;
       }
       
-      const { value, done } = await this.reader!.read();
-      if (done) break;
-      
-      result += this.decoder.decode(value);
-      
-      // Check if we have a complete response
-      if (result.includes("\r\n")) {
+      try {
+        // استخدام Promise.race مع timeout لكل قراءة
+        const readPromise = this.reader!.read();
+        const timeoutPromise = new Promise<{value: undefined, done: true}>((resolve) => 
+          setTimeout(() => resolve({value: undefined, done: true}), 3000)
+        );
+        
+        const { value, done } = await Promise.race([readPromise, timeoutPromise]);
+        if (done || !value) break;
+        
+        result += this.decoder.decode(value);
+        
+        // إذا انتهى بـ \r\n فهذا يعني اكتمال السطر
+        if (result.endsWith("\r\n")) {
+          break;
+        }
+      } catch {
         break;
       }
     }
@@ -51,23 +64,40 @@ class IMAPClient {
     return result;
   }
 
+  /**
+   * قراءة حتى نجد tag الاستجابة - أكثر موثوقية
+   */
   private async readUntilTag(tag: string): Promise<string> {
     let result = "";
-    const timeout = 15000;
+    const timeout = 30000; // 30 ثانية للرسائل الكبيرة
     const start = Date.now();
     
     while (true) {
       if (Date.now() - start > timeout) {
-        throw new Error("IMAP tag read timeout");
+        console.log(`⚠️ Tag read timeout for ${tag}, got ${result.length} bytes`);
+        break;
       }
       
-      const { value, done } = await this.reader!.read();
-      if (done) break;
-      
-      result += this.decoder.decode(value);
-      
-      // Check if response contains our tag completion
-      if (result.includes(`${tag} OK`) || result.includes(`${tag} NO`) || result.includes(`${tag} BAD`)) {
+      try {
+        const readPromise = this.reader!.read();
+        const timeoutPromise = new Promise<{value: undefined, done: true}>((resolve) => 
+          setTimeout(() => resolve({value: undefined, done: true}), 5000)
+        );
+        
+        const { value, done } = await Promise.race([readPromise, timeoutPromise]);
+        if (done || !value) {
+          // إعطاء فرصة أخرى قبل الخروج
+          await new Promise(r => setTimeout(r, 500));
+          continue;
+        }
+        
+        result += this.decoder.decode(value);
+        
+        // التحقق من اكتمال الاستجابة
+        if (result.includes(`${tag} OK`) || result.includes(`${tag} NO`) || result.includes(`${tag} BAD`)) {
+          break;
+        }
+      } catch {
         break;
       }
     }
@@ -88,33 +118,49 @@ class IMAPClient {
 
   async login(email: string, password: string): Promise<boolean> {
     const response = await this.sendCommand(`LOGIN "${email}" "${password}"`);
-    return response.includes("OK");
+    const ok = response.includes("OK");
+    if (!ok) {
+      console.error("❌ Login failed response:", response.substring(0, 200));
+    }
+    return ok;
   }
 
   async selectInbox(): Promise<void> {
-    await this.sendCommand("SELECT INBOX");
+    const response = await this.sendCommand("SELECT INBOX");
+    console.log("📬 INBOX info:", response.substring(0, 300));
   }
 
   async searchRecent(minutes: number = 5): Promise<number[]> {
-    // Search for recent unseen messages
     const sinceDate = new Date();
     sinceDate.setMinutes(sinceDate.getMinutes() - minutes);
     
-    // Format date for IMAP: DD-Mon-YYYY
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const dateStr = `${sinceDate.getDate()}-${months[sinceDate.getMonth()]}-${sinceDate.getFullYear()}`;
     
+    // بحث أوسع - كل الرسائل من اليوم
     const response = await this.sendCommand(`SEARCH SINCE ${dateStr}`);
+    console.log("🔍 Search response:", response.substring(0, 500));
     
-    // Parse message IDs from response
     const match = response.match(/\* SEARCH([\d\s]*)/);
     if (!match || !match[1].trim()) return [];
     
     return match[1].trim().split(/\s+/).map(Number).filter(n => !isNaN(n));
   }
 
+  /**
+   * جلب الرسالة كاملة - HEADER + BODY
+   */
   async fetchMessage(msgId: number): Promise<string> {
-    const response = await this.sendCommand(`FETCH ${msgId} BODY[TEXT]`);
+    // جلب الرسالة كاملة بما في ذلك العناوين والجسم
+    const response = await this.sendCommand(`FETCH ${msgId} (BODY[HEADER.FIELDS (FROM SUBJECT DATE)] BODY[TEXT])`);
+    return response;
+  }
+
+  /**
+   * جلب الرسالة بتنسيق RFC822 كامل كبديل
+   */
+  async fetchFullMessage(msgId: number): Promise<string> {
+    const response = await this.sendCommand(`FETCH ${msgId} RFC822`);
     return response;
   }
 
@@ -128,40 +174,89 @@ class IMAPClient {
   }
 }
 
+/**
+ * استخراج OTP محسّن - يتعامل مع تنسيقات متعددة
+ */
 function extractOTP(text: string): string | null {
   if (!text) return null;
 
-  // Clean up base64 / quoted-printable artifacts
   let cleaned = text;
   
-  // Try to decode base64 content
+  // فك تشفير base64 إذا كان المحتوى مشفر
   try {
-    if (/^[A-Za-z0-9+/=\s]+$/.test(text.trim())) {
-      const decoded = atob(text.replace(/\s/g, ''));
-      cleaned = decoded;
+    // البحث عن أجزاء base64 في النص
+    const base64Chunks = text.match(/[A-Za-z0-9+/=]{20,}/g);
+    if (base64Chunks) {
+      for (const chunk of base64Chunks) {
+        try {
+          const decoded = atob(chunk);
+          // إذا احتوى الفك على أرقام، أضفه للبحث
+          if (/\d{4,8}/.test(decoded)) {
+            cleaned += " " + decoded;
+          }
+        } catch {}
+      }
     }
   } catch {}
 
-  // Remove HTML tags
-  cleaned = cleaned.replace(/<[^>]*>/g, ' ');
-  // Remove extra whitespace
-  cleaned = cleaned.replace(/\s+/g, ' ');
+  // فك quoted-printable
+  cleaned = cleaned.replace(/=([0-9A-F]{2})/gi, (_, hex) => {
+    return String.fromCharCode(parseInt(hex, 16));
+  });
+  cleaned = cleaned.replace(/=\r?\n/g, ''); // soft line breaks
 
+  // إزالة HTML
+  cleaned = cleaned.replace(/<[^>]*>/g, ' ');
+  // إزالة whitespace زائد
+  cleaned = cleaned.replace(/\s+/g, ' ');
+  
+  console.log(`🔍 Cleaned text for OTP extraction (first 300 chars): ${cleaned.substring(0, 300)}`);
+
+  // أنماط البحث - من الأكثر تحديداً للأقل
   const patterns = [
-    /(?:code|رمز|OTP|verification|التحقق)[:\s]*(\d{4,8})/i,
-    /(\d{6})/,  // Most common: 6 digits
-    /(\d{4})/,  // 4 digits
-    /(\d{8})/,  // 8 digits
+    // OSN specific patterns
+    /(?:verification|code|رمز|التحقق|otp|pin)[:\s]*[#]?(\d{4,8})/i,
+    /(\d{4,8})[:\s]*(?:is your|هو رمز|verification|code|رمز)/i,
+    // Generic "Your code is XXXX"
+    /(?:your|the)\s+(?:code|otp|pin|verification)\s+(?:is|:)\s*(\d{4,8})/i,
+    // Code alone on a line or surrounded by spaces
+    /(?:^|\s)(\d{6})(?:\s|$|\.|,)/m,
+    // Any 6-digit number (most common OTP length)
+    /(\d{6})/,
+    // 4-digit fallback
+    /(\d{4})/,
   ];
 
   for (const pattern of patterns) {
     const match = cleaned.match(pattern);
     if (match && match[1]) {
+      console.log(`✅ OTP matched with pattern: ${pattern.source} => ${match[1]}`);
       return match[1];
     }
   }
 
   return null;
+}
+
+/**
+ * التحقق من عمر الرسالة بدقة الدقائق
+ */
+function isMessageRecent(messageText: string, maxAgeMinutes: number): boolean {
+  // البحث عن تاريخ الرسالة في الهيدر
+  const dateMatch = messageText.match(/Date:\s*(.+?)(?:\r?\n)/i);
+  if (!dateMatch) return true; // إذا ما لقينا تاريخ، نعتبرها حديثة
+  
+  try {
+    const msgDate = new Date(dateMatch[1].trim());
+    const now = new Date();
+    const diffMinutes = (now.getTime() - msgDate.getTime()) / (1000 * 60);
+    
+    console.log(`📅 Message date: ${msgDate.toISOString()}, age: ${diffMinutes.toFixed(1)} minutes`);
+    
+    return diffMinutes <= maxAgeMinutes;
+  } catch {
+    return true; // إذا فشل التحليل، نعتبرها حديثة
+  }
 }
 
 serve(async (req) => {
@@ -179,7 +274,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`📧 Reading OTP from Gmail: ${gmailAddress}`);
+    console.log(`📧 Reading OTP from Gmail: ${gmailAddress}, maxAge: ${maxAgeMinutes} min`);
 
     const imap = new IMAPClient();
     
@@ -189,9 +284,13 @@ serve(async (req) => {
 
       const loggedIn = await imap.login(gmailAddress, gmailAppPassword);
       if (!loggedIn) {
-        throw new Error("فشل تسجيل الدخول - تأكد من كلمة مرور التطبيق");
+        await imap.close();
+        return new Response(
+          JSON.stringify({ success: false, error: "فشل تسجيل الدخول - تأكد من كلمة مرور التطبيق (App Password)" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
-      console.log("✅ Logged in");
+      console.log("✅ Logged in successfully");
 
       await imap.selectInbox();
       console.log("✅ INBOX selected");
@@ -202,25 +301,50 @@ serve(async (req) => {
       if (messageIds.length === 0) {
         await imap.close();
         return new Response(
-          JSON.stringify({ success: false, error: "لا توجد رسائل جديدة في آخر " + maxAgeMinutes + " دقائق" }),
+          JSON.stringify({ 
+            success: false, 
+            error: `لا توجد رسائل جديدة. تأكد أن التطبيق أرسل رمز التحقق للبريد ${gmailAddress}`,
+            details: { messagesChecked: 0, maxAgeMinutes }
+          }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-      // Search ALL recent messages from newest to oldest
+      // البحث من الأحدث للأقدم
       let otp: string | null = null;
+      let messagesChecked = 0;
+      
       for (let i = messageIds.length - 1; i >= 0; i--) {
         try {
+          messagesChecked++;
           const messageBody = await imap.fetchMessage(messageIds[i]);
-          console.log(`📄 Message ${messageIds[i]} preview: ${messageBody.substring(0, 150)}`);
+          
+          // التحقق من عمر الرسالة بدقة
+          if (!isMessageRecent(messageBody, maxAgeMinutes)) {
+            console.log(`⏭️ Message ${messageIds[i]} is older than ${maxAgeMinutes} minutes, skipping`);
+            continue;
+          }
+          
+          console.log(`📄 Message ${messageIds[i]} (${messageBody.length} bytes), preview: ${messageBody.substring(0, 200)}`);
           
           otp = extractOTP(messageBody);
           if (otp) {
             console.log(`✅ OTP found in message ${messageIds[i]}: ${otp}`);
             break;
           }
+          
+          // إذا لم نجد OTP بالطريقة العادية، جرب RFC822 الكامل
+          if (!otp && messageBody.length < 500) {
+            console.log(`🔄 Short message, trying full RFC822 fetch...`);
+            const fullMessage = await imap.fetchFullMessage(messageIds[i]);
+            otp = extractOTP(fullMessage);
+            if (otp) {
+              console.log(`✅ OTP found in full message ${messageIds[i]}: ${otp}`);
+              break;
+            }
+          }
         } catch (fetchErr) {
-          console.log(`⚠️ Failed to fetch message ${messageIds[i]}, skipping`);
+          console.log(`⚠️ Failed to fetch message ${messageIds[i]}: ${fetchErr.message}`);
         }
       }
       
@@ -228,19 +352,23 @@ serve(async (req) => {
 
       if (otp) {
         return new Response(
-          JSON.stringify({ success: true, otp }),
+          JSON.stringify({ success: true, otp, messagesChecked }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       } else {
         return new Response(
-          JSON.stringify({ success: false, error: "لم يُعثر على رمز OTP في آخر " + messageIds.length + " رسالة" }),
+          JSON.stringify({ 
+            success: false, 
+            error: `تم فحص ${messagesChecked} رسالة ولم يُعثر على رمز OTP. تأكد أن التطبيق أرسل الرمز فعلاً.`,
+            details: { messagesChecked, totalMessages: messageIds.length, maxAgeMinutes }
+          }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
     } catch (imapError) {
       console.error("❌ IMAP Error:", imapError);
-      await imap.close();
+      try { await imap.close(); } catch {}
       throw imapError;
     }
 
