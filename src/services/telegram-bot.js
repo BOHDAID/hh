@@ -447,8 +447,44 @@ async function getQRFromSession() {
 
 async function getOTPFromSession() {
   try {
-    const otpData = await sessionManager.getOTP();
-    return otpData;
+    // جلب جلسة نشطة من قاعدة البيانات للحصول على بيانات Gmail
+    const { data: sessions } = await supabase
+      .from('osn_sessions')
+      .select('gmail_address, gmail_app_password, variant_id')
+      .eq('is_active', true)
+      .eq('is_connected', true)
+      .limit(1);
+
+    const session = sessions?.[0];
+    if (!session?.gmail_address || !session?.gmail_app_password) {
+      return { success: false, error: 'لا توجد جلسة نشطة ببيانات Gmail' };
+    }
+
+    // استدعاء Edge Function لقراءة OTP من Gmail
+    const SUPABASE_URL = process.env.VITE_EXTERNAL_SUPABASE_URL || EXTERNAL_SUPABASE_URL;
+    const CLOUD_URL = process.env.SUPABASE_URL || 'https://wueacwqzafxsvowlqbwh.supabase.co';
+    const CLOUD_ANON = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
+
+    const response = await fetch(`${CLOUD_URL}/functions/v1/gmail-read-otp`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${CLOUD_ANON}`,
+      },
+      body: JSON.stringify({
+        gmailAddress: session.gmail_address,
+        gmailAppPassword: session.gmail_app_password,
+        maxAgeMinutes: 5,
+      }),
+    });
+
+    const result = await response.json();
+    console.log('📧 Gmail OTP result:', JSON.stringify(result));
+
+    if (result.success && result.otp) {
+      return { success: true, otp: result.otp };
+    }
+    return { success: false, error: result.error || 'لم يتم العثور على رمز OTP' };
   } catch (error) {
     console.error('❌ OTP fetch error:', error.message);
     return { success: false, error: error.message };
