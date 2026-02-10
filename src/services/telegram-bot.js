@@ -455,44 +455,69 @@ async function getQRFromSession() {
 
 async function getOTPFromSession() {
   try {
-    // جلب جلسة نشطة من قاعدة البيانات للحصول على بيانات Gmail
-    const { data: sessions } = await supabase
-      .from('osn_sessions')
-      .select('gmail_address, gmail_app_password, variant_id')
-      .eq('is_active', true)
-      .eq('is_connected', true)
-      .limit(1);
-
-    const session = sessions?.[0];
-    if (!session?.gmail_address || !session?.gmail_app_password) {
-      return { success: false, error: 'لا توجد جلسة نشطة ببيانات Gmail' };
-    }
-
-    // استدعاء Edge Function لقراءة OTP من Gmail
-    const SUPABASE_URL = process.env.VITE_EXTERNAL_SUPABASE_URL || EXTERNAL_SUPABASE_URL;
+    // osn_sessions مخزن في Lovable Cloud وليس في قاعدة البيانات الخارجية
     const CLOUD_URL = process.env.SUPABASE_URL || 'https://wueacwqzafxsvowlqbwh.supabase.co';
+    const CLOUD_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const CLOUD_ANON = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
 
-    const response = await fetch(`${CLOUD_URL}/functions/v1/gmail-read-otp`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${CLOUD_ANON}`,
-      },
-      body: JSON.stringify({
-        gmailAddress: session.gmail_address,
-        gmailAppPassword: session.gmail_app_password,
-        maxAgeMinutes: 5,
-      }),
-    });
+    // استخدام Lovable Cloud للوصول لـ osn_sessions
+    const { createClient } = await import('@supabase/supabase-js');
+    const cloudDb = createClient(CLOUD_URL, CLOUD_SERVICE_KEY || CLOUD_ANON);
 
-    const result = await response.json();
-    console.log('📧 Gmail OTP result:', JSON.stringify(result));
+    const { data: sessions, error: dbError } = await cloudDb
+      .from('osn_sessions')
+      .select('gmail_address, gmail_app_password, variant_id, email')
+      .eq('is_active', true)
+      .eq('is_connected', true)
+      .limit(5);
 
-    if (result.success && result.otp) {
-      return { success: true, otp: result.otp };
+    if (dbError) {
+      console.error('❌ DB Error fetching osn_sessions:', dbError.message);
+      return { success: false, error: 'خطأ في قراءة جلسات قاعدة البيانات: ' + dbError.message };
     }
-    return { success: false, error: result.error || 'لم يتم العثور على رمز OTP' };
+
+    console.log(`📊 Found ${sessions?.length || 0} active connected sessions`);
+
+    // البحث في كل الجلسات النشطة التي لديها بيانات Gmail
+    const validSessions = (sessions || []).filter(s => s.gmail_address && s.gmail_app_password);
+    
+    if (validSessions.length === 0) {
+      console.error('❌ No sessions with Gmail credentials found');
+      return { success: false, error: 'لا توجد جلسة نشطة ببيانات Gmail. تأكد من إضافة عنوان Gmail وكلمة مرور التطبيق في إعدادات الجلسة.' };
+    }
+
+    console.log(`📧 Trying ${validSessions.length} sessions with Gmail credentials`);
+
+    // جرب كل جلسة حتى يُعثر على OTP
+    for (const session of validSessions) {
+      console.log(`📧 Trying Gmail: ${session.gmail_address}`);
+      
+      try {
+        const response = await fetch(`${CLOUD_URL}/functions/v1/gmail-read-otp`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${CLOUD_ANON}`,
+          },
+          body: JSON.stringify({
+            gmailAddress: session.gmail_address,
+            gmailAppPassword: session.gmail_app_password,
+            maxAgeMinutes: 5,
+          }),
+        });
+
+        const result = await response.json();
+        console.log(`📧 Gmail OTP result for ${session.gmail_address}:`, JSON.stringify(result));
+
+        if (result.success && result.otp) {
+          return { success: true, otp: result.otp };
+        }
+      } catch (fetchErr) {
+        console.error(`❌ Edge function error for ${session.gmail_address}:`, fetchErr.message);
+      }
+    }
+
+    return { success: false, error: 'لم يُعثر على رمز OTP في أي من الجلسات النشطة' };
   } catch (error) {
     console.error('❌ OTP fetch error:', error.message);
     return { success: false, error: error.message };
