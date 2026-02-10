@@ -275,11 +275,89 @@ serve(async (req: Request) => {
             }
           }
 
+          // === إرسال إيميل بكود التفعيل للمنتجات unlimited ===
+          let emailSentUnlimited = false;
+          let emailErrorUnlimited: string | null = null;
+
+          const { data: profileUnlimited } = await adminClient
+            .from("profiles")
+            .select("email, full_name")
+            .eq("user_id", order.user_id)
+            .single();
+
+          if (profileUnlimited?.email && activationCodesForResponse.length > 0) {
+            try {
+              const cloudUrlForEmail = Deno.env.get("SUPABASE_URL") || "";
+              const cloudServiceKeyForEmail = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+
+              const { data: storeNameSettingU } = await adminClient
+                .from("site_settings")
+                .select("value")
+                .eq("key", "store_name")
+                .single();
+              const storeNameU = storeNameSettingU?.value || "Digital Store";
+
+              const { data: botUsernameSettingU } = await adminClient
+                .from("site_settings")
+                .select("value")
+                .eq("key", "telegram_bot_username")
+                .maybeSingle();
+              const telegramBotU = botUsernameSettingU?.value?.replace(/^@/, '') || "";
+
+              if (cloudUrlForEmail && cloudServiceKeyForEmail) {
+                // Build products list for email
+                const productsForEmail = (existingItems || []).map((i: any) => ({
+                  name: i.products?.name || "منتج",
+                  account_data: i.delivered_data || "سيتم التفعيل عبر البوت",
+                  quantity: i.quantity || 1,
+                }));
+
+                const emailPayloadU: Record<string, unknown> = {
+                  to_email: profileUnlimited.email,
+                  customer_name: profileUnlimited.full_name || "",
+                  order_number: order.order_number,
+                  order_id: order_id,
+                  user_id: order.user_id,
+                  products: productsForEmail.length > 0 ? productsForEmail : [{ name: "اشتراك", account_data: "يتم التفعيل عبر بوت تيليجرام", quantity: 1 }],
+                  total_amount: order.total_amount,
+                  warranty_expires_at: order.warranty_expires_at || new Date().toISOString(),
+                  activation_code: activationCodesForResponse[0]?.code,
+                  activation_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                  telegram_bot_username: telegramBotU,
+                };
+
+                console.log("Sending activation email for unlimited product to:", profileUnlimited.email);
+                const emailResp = await fetch(`${cloudUrlForEmail}/functions/v1/send-delivery-email`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${cloudServiceKeyForEmail}`,
+                  },
+                  body: JSON.stringify(emailPayloadU),
+                });
+
+                const emailRes = await emailResp.json();
+                if (emailResp.ok && emailRes.success) {
+                  emailSentUnlimited = true;
+                  console.log("✅ Activation email sent for unlimited product");
+                } else {
+                  emailErrorUnlimited = emailRes.error || "Unknown email error";
+                  console.error("❌ Activation email failed:", emailErrorUnlimited);
+                }
+              }
+            } catch (err) {
+              emailErrorUnlimited = err instanceof Error ? err.message : "Email error";
+              console.error("❌ Activation email exception:", err);
+            }
+          }
+
           return new Response(
             JSON.stringify({
               success: true,
               message: "الطلب مكتمل — منتج غير محدود (يتم التفعيل تلقائياً)",
               activation_codes: activationCodesForResponse.length > 0 ? activationCodesForResponse : null,
+              email_sent: emailSentUnlimited,
+              email_error: emailErrorUnlimited,
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
@@ -771,7 +849,7 @@ serve(async (req: Request) => {
     let emailSent = false;
     let emailError: string | null = null;
     
-    if (profile?.email && deliveredProducts.length > 0) {
+    if (profile?.email && (deliveredProducts.length > 0 || activationCodes.length > 0)) {
       try {
         const cloudUrl = Deno.env.get("SUPABASE_URL") || "";
         const cloudServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -786,7 +864,7 @@ serve(async (req: Request) => {
           .eq("key", "telegram_bot_username")
           .maybeSingle();
         
-        const telegramBotUsername = botUsernameSetting?.value || "";
+        const telegramBotUsername = (botUsernameSetting?.value || "").replace(/^@/, '');
         
         // تحديد كود التفعيل الأول (إذا كان موجوداً)
         const firstActivationCode = activationCodes.length > 0 ? activationCodes[0] : null;
@@ -795,13 +873,22 @@ serve(async (req: Request) => {
           : undefined;
         
         if (cloudUrl && cloudServiceKey) {
+          // إذا كانت المنتجات unlimited وما فيه delivered_data، نضيف placeholder
+          const emailProducts = deliveredProducts.length > 0 
+            ? deliveredProducts 
+            : activationCodes.map(ac => ({
+                name: ac.product_name || "اشتراك",
+                account_data: "يتم التفعيل عبر بوت تيليجرام",
+                quantity: 1,
+              }));
+
           const emailPayload: Record<string, unknown> = {
             to_email: profile.email,
             customer_name: profile.full_name || "",
             order_number: order.order_number,
             order_id: order_id,
             user_id: order.user_id,
-            products: deliveredProducts,
+            products: emailProducts,
             total_amount: order.total_amount,
             warranty_expires_at: warrantyExpiry.toISOString(),
             store_name: storeName,
