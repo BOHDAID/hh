@@ -110,6 +110,7 @@ const OtpConfigurationsManager = () => {
   const [editingEmailValue, setEditingEmailValue] = useState("");
   const [smtpGmailAddress, setSmtpGmailAddress] = useState("");
   const [smtpGmailAppPassword, setSmtpGmailAppPassword] = useState("");
+  const [smtpAccountPassword, setSmtpAccountPassword] = useState("");
 
   const [form, setForm] = useState({
     product_id: "",
@@ -354,9 +355,10 @@ const OtpConfigurationsManager = () => {
     const { error } = await db.from("osn_sessions").update({
       gmail_address: smtpGmailAddress.trim() || null,
       gmail_app_password: smtpGmailAppPassword.trim() || null,
+      account_password: smtpAccountPassword.trim() || null,
     }).eq("id", sessionId);
     if (error) toast({ title: "❌ خطأ", description: error.message, variant: "destructive" });
-    else { toast({ title: "✅ تم حفظ بيانات SMTP" }); setSmtpEditSessionId(null); await fetchOsnSessions(); }
+    else { toast({ title: "✅ تم حفظ البيانات" }); setSmtpEditSessionId(null); await fetchOsnSessions(); }
   };
 
   const handleDeleteSession = async (sessionId: string) => {
@@ -583,8 +585,9 @@ const OtpConfigurationsManager = () => {
                           setSmtpEditSessionId(smtpEditSessionId === session.id ? null : session.id);
                           setSmtpGmailAddress(session.gmail_address || "");
                           setSmtpGmailAppPassword(session.gmail_app_password || "");
+                          setSmtpAccountPassword((session as any).account_password || "");
                         }}
-                        title="إعدادات SMTP"
+                        title="إعدادات SMTP وكلمة المرور"
                       >
                         <Mail className="h-4 w-4" />
                       </Button>
@@ -600,19 +603,32 @@ const OtpConfigurationsManager = () => {
                     </div>
                   </div>
                   {/* Gmail SMTP info or edit */}
-                  {session.gmail_address && smtpEditSessionId !== session.id && (
-                    <div className="flex items-center gap-4 pt-1 border-t border-border/50 text-xs text-muted-foreground" dir="ltr">
-                      <div className="flex items-center gap-1">
-                        <Mail className="h-3 w-3" />
-                        <span>{session.gmail_address}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Key className="h-3 w-3" />
-                        <span>{showPasswords[session.id] ? session.gmail_app_password : "••••••••"}</span>
-                        <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setShowPasswords(prev => ({ ...prev, [session.id]: !prev[session.id] }))}>
-                          {showPasswords[session.id] ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                        </Button>
-                      </div>
+                  {(session.gmail_address || (session as any).account_password) && smtpEditSessionId !== session.id && (
+                    <div className="flex items-center gap-4 pt-1 border-t border-border/50 text-xs text-muted-foreground flex-wrap" dir="ltr">
+                      {session.gmail_address && (
+                        <div className="flex items-center gap-1">
+                          <Mail className="h-3 w-3" />
+                          <span>{session.gmail_address}</span>
+                        </div>
+                      )}
+                      {session.gmail_app_password && (
+                        <div className="flex items-center gap-1">
+                          <Key className="h-3 w-3" />
+                          <span>{showPasswords[session.id] ? session.gmail_app_password : "••••••••"}</span>
+                          <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setShowPasswords(prev => ({ ...prev, [session.id]: !prev[session.id] }))}>
+                            {showPasswords[session.id] ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                          </Button>
+                        </div>
+                      )}
+                      {(session as any).account_password && (
+                        <div className="flex items-center gap-1">
+                          <span className="text-primary font-medium">🔐</span>
+                          <span>{showPasswords[`${session.id}_acc`] ? (session as any).account_password : "••••"}</span>
+                          <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setShowPasswords(prev => ({ ...prev, [`${session.id}_acc`]: !prev[`${session.id}_acc`] }))}>
+                            {showPasswords[`${session.id}_acc`] ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   )}
                   {smtpEditSessionId === session.id && (
@@ -620,6 +636,11 @@ const OtpConfigurationsManager = () => {
                       <p className="text-xs font-medium flex items-center gap-1"><Mail className="h-3 w-3" />بيانات Gmail SMTP</p>
                       <Input type="email" placeholder="example@gmail.com" value={smtpGmailAddress} onChange={(e) => setSmtpGmailAddress(e.target.value)} dir="ltr" className="h-8 text-xs" />
                       <Input type="password" placeholder="Gmail App Password" value={smtpGmailAppPassword} onChange={(e) => setSmtpGmailAppPassword(e.target.value)} dir="ltr" className="h-8 text-xs" />
+                      <div className="pt-1">
+                        <p className="text-xs font-medium flex items-center gap-1 mb-1"><Key className="h-3 w-3" />كلمة مرور الحساب (للعميل)</p>
+                        <Input type="password" placeholder="كلمة مرور ChatGPT/الحساب" value={smtpAccountPassword} onChange={(e) => setSmtpAccountPassword(e.target.value)} dir="ltr" className="h-8 text-xs" />
+                        <p className="text-[10px] text-muted-foreground mt-1">يُرسل للعميل مع البريد ورمز OTP عبر البوت</p>
+                      </div>
                       <div className="flex items-center justify-between">
                         <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline">إنشاء App Password</a>
                         <div className="flex gap-1">

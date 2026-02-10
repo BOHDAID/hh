@@ -575,6 +575,7 @@ export type Database = {
       }
       osn_sessions: {
         Row: {
+          account_password: string | null
           cookies: Json
           created_at: string | null
           email: string | null
@@ -588,6 +589,7 @@ export type Database = {
           variant_id: string
         }
         Insert: {
+          account_password?: string | null
           cookies: Json
           created_at?: string | null
           email?: string | null
@@ -601,6 +603,7 @@ export type Database = {
           variant_id: string
         }
         Update: {
+          account_password?: string | null
           cookies?: Json
           created_at?: string | null
           email?: string | null
