@@ -59,8 +59,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    // جلب Bot Token - من المتغير البيئي أولاً ثم من الإعدادات
-    const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN") || await getSetting("telegram_bot_token");
+    // جلب Bot Token - من الإعدادات أولاً ثم من المتغير البيئي
+    const botToken = await getSetting("telegram_bot_token") || Deno.env.get("TELEGRAM_BOT_TOKEN");
     if (!botToken) {
       return new Response(JSON.stringify({ error: "Bot token not configured. Set TELEGRAM_BOT_TOKEN in Cloud Secrets." }), {
         status: 400,
