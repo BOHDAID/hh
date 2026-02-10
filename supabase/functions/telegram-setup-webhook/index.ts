@@ -59,10 +59,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    // جلب Bot Token
-    const botToken = await getSetting("telegram_bot_token");
+    // جلب Bot Token - من المتغير البيئي أولاً ثم من الإعدادات
+    const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN") || await getSetting("telegram_bot_token");
     if (!botToken) {
-      return new Response(JSON.stringify({ error: "Bot token not configured" }), {
+      return new Response(JSON.stringify({ error: "Bot token not configured. Set TELEGRAM_BOT_TOKEN in Cloud Secrets." }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         url: webhookUrl,
-        allowed_updates: ["message"],
+        allowed_updates: ["message", "callback_query"],
       }),
     });
 
