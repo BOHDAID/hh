@@ -6,9 +6,9 @@ import { externalSupabase } from './externalSupabase';
 // قاعدة البيانات الخارجية تُستخدم فقط للتخزين
 // ============================================================
 
-// Lovable Cloud URL (hardcoded - يعمل في أي بيئة نشر)
-const CLOUD_URL = 'https://umzjbcmrdknmyhgmkatp.supabase.co';
-const CLOUD_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVtempiY21yZGtubXloZ21rYXRwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyMTM3NTcsImV4cCI6MjA4NTc4OTc1N30.3zeoswlw_roTxe_SSgwYDMl4X5od7R6xI-3ahVwUS7U';
+// Lovable Cloud URL
+const CLOUD_URL = 'https://wueacwqzafxsvowlqbwh.supabase.co';
+const CLOUD_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind1ZWFjd3F6YWZ4c3Zvd2xxYndoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2NTQ4NjYsImV4cCI6MjA4NjIzMDg2Nn0.oAm52uJqIMD5jWjy2iJJuioTKMv0Xl1ayZEbXjj33Ug';
 
 // ============================================================
 // خريطة أسماء الدوال → الـ Slugs
