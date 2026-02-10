@@ -455,16 +455,8 @@ async function getQRFromSession() {
 
 async function getOTPFromSession() {
   try {
-    // osn_sessions مخزن في Lovable Cloud وليس في قاعدة البيانات الخارجية
-    const CLOUD_URL = process.env.SUPABASE_URL || 'https://wueacwqzafxsvowlqbwh.supabase.co';
-    const CLOUD_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const CLOUD_ANON = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
-
-    // استخدام Lovable Cloud للوصول لـ osn_sessions
-    const { createClient } = await import('@supabase/supabase-js');
-    const cloudDb = createClient(CLOUD_URL, CLOUD_SERVICE_KEY || CLOUD_ANON);
-
-    const { data: sessions, error: dbError } = await cloudDb
+    // osn_sessions مخزن في قاعدة البيانات الخارجية
+    const { data: sessions, error: dbError } = await supabase
       .from('osn_sessions')
       .select('gmail_address, gmail_app_password, variant_id, email')
       .eq('is_active', true)
@@ -487,6 +479,10 @@ async function getOTPFromSession() {
     }
 
     console.log(`📧 Trying ${validSessions.length} sessions with Gmail credentials`);
+
+    // Edge Function في Lovable Cloud
+    const CLOUD_URL = process.env.SUPABASE_URL || 'https://wueacwqzafxsvowlqbwh.supabase.co';
+    const CLOUD_ANON = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
 
     // جرب كل جلسة حتى يُعثر على OTP
     for (const session of validSessions) {
