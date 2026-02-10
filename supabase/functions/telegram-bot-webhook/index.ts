@@ -377,6 +377,65 @@ interface UserSession {
 
 const userSessions: Record<string, UserSession> = {};
 
+// 🔥 إعادة بناء الجلسة من قاعدة البيانات إذا ضاعت من الذاكرة
+async function reconstructSession(chatId: string): Promise<UserSession | null> {
+  try {
+    // البحث عن كود تفعيل نشط مرتبط بهذا المستخدم
+    const { data: code, error } = await supabase
+      .from("activation_codes")
+      .select(`
+        id, product_id, account_email, account_password, status,
+        products:product_id (name, name_en, activation_type)
+      `)
+      .eq("telegram_chat_id", chatId)
+      .eq("is_used", false)
+      .in("status", ["in_progress", "awaiting_otp", "chatgpt_awaiting_otp"])
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !code) {
+      console.log(`🔍 No active activation code found for chat ${chatId}`);
+      return null;
+    }
+
+    const productName = (code as any).products?.name || "المنتج";
+    const activationType = (code as any).products?.activation_type || "otp";
+    const productId = code.product_id;
+
+    // جلب بيانات Gmail من الجلسة
+    const sessionData = await getSessionForProduct(productId);
+
+    // تحديد الخطوة بناءً على الحالة
+    let step: UserSession["step"] = "awaiting_login";
+    if (activationType === "chatgpt") {
+      step = "chatgpt_awaiting_otp";
+    } else if (code.status === "awaiting_otp") {
+      step = "awaiting_otp_request";
+    }
+
+    const reconstructed: UserSession = {
+      activationCodeId: code.id,
+      productName,
+      productId,
+      activationType,
+      accountEmail: code.account_email || sessionData?.email || sessionData?.gmail_address || "",
+      accountPassword: code.account_password || sessionData?.account_password || "",
+      step,
+      retryCount: 0,
+      gmailAddress: sessionData?.gmail_address || undefined,
+      gmailAppPassword: sessionData?.gmail_app_password || undefined,
+    };
+
+    console.log(`✅ Session reconstructed for chat ${chatId}: ${productName} (${activationType})`);
+    userSessions[chatId] = reconstructed;
+    return reconstructed;
+  } catch (err) {
+    console.error("❌ Failed to reconstruct session:", err);
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -408,7 +467,13 @@ Deno.serve(async (req) => {
 
       await answerCallbackQuery(botToken, callbackQuery.id);
 
-      const session = userSessions[chatId];
+      // محاولة استعادة الجلسة من الذاكرة أو من قاعدة البيانات
+      let session = userSessions[chatId];
+      
+      if (!session) {
+        console.log(`⚠️ Session lost for ${chatId}, attempting reconstruction...`);
+        session = await reconstructSession(chatId);
+      }
       
       if (!session) {
         await editTelegramMessage(botToken, chatId, messageId, "❌ انتهت الجلسة. أرسل كود التفعيل مرة أخرى.");
@@ -634,7 +699,7 @@ Deno.serve(async (req) => {
 
         // تحديث كود التفعيل
         await updateActivationCode(
-          activationCode.id, chatId, username, "in_progress",
+          activationCode.id, chatId, username, "chatgpt_awaiting_otp",
           accountEmail, accountPassword
         );
 
