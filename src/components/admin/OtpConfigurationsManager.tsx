@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { db } from "@/lib/supabaseClient";
-import { supabase } from "@/integrations/supabase/client";
+// osn_sessions يُقرأ من db (الخارجي) مباشرة
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -123,10 +123,19 @@ const OtpConfigurationsManager = () => {
   // ==================== API Helpers ====================
 
   const callOsnSession = async (action: string, params: Record<string, any> = {}) => {
-    const { data, error } = await supabase.functions.invoke("osn-session", {
-      body: { action, ...params },
+    const CLOUD_URL = import.meta.env.VITE_SUPABASE_URL;
+    const CLOUD_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    const response = await fetch(`${CLOUD_URL}/functions/v1/osn-session`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${CLOUD_KEY}`,
+        'apikey': CLOUD_KEY,
+      },
+      body: JSON.stringify({ action, ...params }),
     });
-    if (error) throw new Error(error.message || "فشل الاتصال بالسيرفر");
+    if (!response.ok) throw new Error("فشل الاتصال بالسيرفر");
+    const data = await response.json();
     if (data.hint?.includes("sleep")) setServerSleeping(true);
     else setServerSleeping(false);
     return data;
@@ -156,7 +165,7 @@ const OtpConfigurationsManager = () => {
   };
 
   const fetchOsnSessions = async () => {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("osn_sessions")
       .select(`*`)
       .order("created_at", { ascending: false });
@@ -169,7 +178,7 @@ const OtpConfigurationsManager = () => {
         const extracted = extractInfoFromCookies(Array.isArray(session.cookies) ? session.cookies : []);
         if (extracted) {
           session.email = extracted;
-          supabase.from("osn_sessions").update({ email: extracted }).eq("id", session.id).then(() => {});
+          db.from("osn_sessions").update({ email: extracted }).eq("id", session.id).then(() => {});
         }
       }
     }
@@ -315,7 +324,7 @@ const OtpConfigurationsManager = () => {
       const result = await callOsnSession("import-cookies", { cookies, email: finalEmail });
 
       if (result.success) {
-        const { error: insertError } = await supabase.from("osn_sessions").insert({
+        const { error: insertError } = await db.from("osn_sessions").insert({
           variant_id: selectedVariantId,
           email: finalEmail,
           cookies: cookies,
@@ -342,7 +351,7 @@ const OtpConfigurationsManager = () => {
   };
 
   const handleSaveSmtp = async (sessionId: string) => {
-    const { error } = await supabase.from("osn_sessions").update({
+    const { error } = await db.from("osn_sessions").update({
       gmail_address: smtpGmailAddress.trim() || null,
       gmail_app_password: smtpGmailAppPassword.trim() || null,
     }).eq("id", sessionId);
@@ -353,7 +362,7 @@ const OtpConfigurationsManager = () => {
   const handleDeleteSession = async (sessionId: string) => {
     if (!confirm("هل أنت متأكد من حذف هذه الجلسة؟")) return;
     setDeletingSessionId(sessionId);
-    const { error } = await supabase.from("osn_sessions").delete().eq("id", sessionId);
+    const { error } = await db.from("osn_sessions").delete().eq("id", sessionId);
     if (error) toast({ title: "خطأ", description: "فشل في حذف الجلسة", variant: "destructive" });
     else { toast({ title: "✅ تم حذف الجلسة" }); await fetchOsnSessions(); }
     setDeletingSessionId(null);
@@ -545,7 +554,7 @@ const OtpConfigurationsManager = () => {
                           {editingEmailSessionId === session.id ? (
                             <form className="flex items-center gap-1" onSubmit={async (e) => {
                               e.preventDefault();
-                              const { error } = await supabase.from("osn_sessions").update({ email: editingEmailValue.trim() }).eq("id", session.id);
+                              const { error } = await db.from("osn_sessions").update({ email: editingEmailValue.trim() }).eq("id", session.id);
                               if (!error) { toast({ title: "✅ تم تحديث الإيميل" }); setEditingEmailSessionId(null); await fetchOsnSessions(); }
                               else toast({ title: "❌ خطأ", description: error.message, variant: "destructive" });
                             }}>
