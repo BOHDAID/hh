@@ -318,12 +318,14 @@ serve(async (req: Request) => {
     console.log(`Processing ${orderItems.length} items for delivery`);
 
     for (const item of orderItems) {
-      const productType = item.products?.product_type || "account";
+      const rawProductType = item.products?.product_type || "account";
+      // Normalize: support both English "account" and Arabic "حساب"
+      const isAccountType = rawProductType === "account" || rawProductType === "حساب";
       const productName = item.products?.name || "منتج";
 
-      console.log(`Item ${item.id}: type=${productType}, has_delivered_data=${!!item.delivered_data}, product_id=${item.product_id}`);
+      console.log(`Item ${item.id}: type=${rawProductType}, isAccount=${isAccountType}, has_delivered_data=${!!item.delivered_data}, product_id=${item.product_id}`);
 
-      if (productType === "account" && !item.delivered_data) {
+      if (isAccountType && !item.delivered_data) {
         const variantId = (item as any).variant_id;
         
         console.log(`Looking for account: product_id=${item.product_id}, variant_id=${variantId || 'NULL'}`);
