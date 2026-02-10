@@ -236,6 +236,28 @@ async function saveOtpCode(activationCodeId: string, otpCode: string) {
     });
 }
 
+// جلب رابط الإيصال من كود التفعيل
+async function getInvoiceUrl(activationCodeId: string): Promise<string | null> {
+  const { data: code } = await supabase
+    .from("activation_codes")
+    .select("order_id")
+    .eq("id", activationCodeId)
+    .maybeSingle();
+
+  if (!code?.order_id) return null;
+
+  // جلب رابط الموقع من الإعدادات
+  const { data: setting } = await supabase
+    .from("site_settings")
+    .select("value")
+    .in("key", ["store_url", "site_url"])
+    .limit(1)
+    .maybeSingle();
+
+  const siteUrl = setting?.value || "https://id-preview--67cd80b3-ced1-482c-8caf-99d63ed5b92f.lovable.app";
+  return `${siteUrl}/order/${code.order_id}`;
+}
+
 // 🔥 جلب QR من خادم Render (الجلسة المستمرة)
 async function getQRFromSession(): Promise<{ success: boolean; qrImage?: string; error?: string }> {
   const renderServerUrl = Deno.env.get("RENDER_SERVER_URL") || "https://angel-store.onrender.com";
@@ -408,9 +430,12 @@ Deno.serve(async (req) => {
             );
             
             await markCodeAsUsed(session.activationCodeId);
+            const invoiceUrl = await getInvoiceUrl(session.activationCodeId);
             delete userSessions[chatId];
             
-            await sendTelegramMessage(botToken, chatId, "🎉 تم التفعيل بنجاح! استمتع بالخدمة.\n\n⭐ لا تنسَ تقييم المنتج في الموقع!");
+            const successMsg = `🎉 تم التفعيل بنجاح! استمتع بالخدمة.` +
+              (invoiceUrl ? `\n\n⭐ <b>قيّم تجربتك:</b>\n<a href="${invoiceUrl}">📄 اضغط هنا لعرض الإيصال وتقييم المنتج</a>` : `\n\n⭐ لا تنسَ تقييم المنتج في الموقع!`);
+            await sendTelegramMessage(botToken, chatId, successMsg);
           } else {
             await editTelegramMessage(
               botToken, 
@@ -472,13 +497,12 @@ Deno.serve(async (req) => {
           );
           
           await markCodeAsUsed(session.activationCodeId);
+          const invoiceUrl2 = await getInvoiceUrl(session.activationCodeId);
           delete userSessions[chatId];
           
-          await sendTelegramMessage(
-            botToken, 
-            chatId, 
-            "🎉 تم التفعيل بنجاح! استمتع بالخدمة.\n\n⭐ لا تنسَ تقييم المنتج في الموقع!"
-          );
+          const successMsg2 = `🎉 تم التفعيل بنجاح! استمتع بالخدمة.` +
+            (invoiceUrl2 ? `\n\n⭐ <b>قيّم تجربتك:</b>\n<a href="${invoiceUrl2}">📄 اضغط هنا لعرض الإيصال وتقييم المنتج</a>` : `\n\n⭐ لا تنسَ تقييم المنتج في الموقع!`);
+          await sendTelegramMessage(botToken, chatId, successMsg2);
         } else {
           // لم يُجد الرمز - زر إعادة المحاولة
           const retryMessage = session.retryCount >= 3 
