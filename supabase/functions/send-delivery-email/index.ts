@@ -178,8 +178,9 @@ const handler = async (req: Request): Promise<Response> => {
           })
         : "24 ساعة من الآن";
 
-      const botLink = telegram_bot_username 
-        ? `https://t.me/${telegram_bot_username}` 
+      const cleanBotUsername = telegram_bot_username?.replace(/^@/, '') || '';
+      const botLink = cleanBotUsername
+        ? `https://t.me/${cleanBotUsername}` 
         : "#";
 
       activationCodeHtml = `
