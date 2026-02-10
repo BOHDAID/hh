@@ -220,13 +220,15 @@ const OrderInvoice = () => {
       setOrder(orderData);
 
       // Fetch activation codes for this order
+      let codes: ActivationCode[] | null = null;
       try {
-        const { data: codes } = await db
+        const { data: codesData } = await db
           .from("activation_codes")
           .select("code, product_id, status, expires_at, account_email")
           .eq("order_id", orderId);
-        if (codes && codes.length > 0) {
-          setActivationCodes(codes as ActivationCode[]);
+        if (codesData && codesData.length > 0) {
+          codes = codesData as ActivationCode[];
+          setActivationCodes(codes);
         }
       } catch (e) {
         console.warn("Failed to fetch activation codes:", e);
@@ -261,14 +263,22 @@ const OrderInvoice = () => {
         }
       }
 
-      // Auto-attempt delivery once for wallet orders if delivered_data is missing
+      // Auto-attempt delivery in two cases:
+      // 1. Wallet orders that are not yet completed and missing delivered_data
+      // 2. Completed orders that have no delivered_data AND no activation codes (unlimited products needing code generation)
       const needsDelivery =
         orderData.payment_method === "wallet" &&
         orderData.status !== "completed" &&
         Array.isArray(orderData.order_items) &&
         orderData.order_items.some((it) => !it?.delivered_data);
 
-      if (needsDelivery && !autoDeliveryAttemptedRef.current) {
+      const needsCodeGeneration =
+        orderData.status === "completed" &&
+        Array.isArray(orderData.order_items) &&
+        orderData.order_items.every((it) => !it?.delivered_data) &&
+        (!codes || codes.length === 0);
+
+      if ((needsDelivery || needsCodeGeneration) && !autoDeliveryAttemptedRef.current) {
         autoDeliveryAttemptedRef.current = true;
         setTimeout(() => {
           attemptDelivery({ silent: true });
