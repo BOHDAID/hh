@@ -112,16 +112,21 @@ async function sendTelegramPhoto(botToken: string, chatId: string, photoBase64: 
 
 // جلب إعداد من قاعدة البيانات أو المتغيرات البيئية
 async function getSetting(key: string): Promise<string | null> {
-  if (key === "telegram_bot_token") {
-    return Deno.env.get("TELEGRAM_BOT_TOKEN") || null;
-  }
-  
+  // جلب من قاعدة البيانات أولاً
   const { data } = await supabase
     .from("site_settings")
     .select("value")
     .eq("key", key)
     .maybeSingle();
-  return data?.value || null;
+  
+  if (data?.value) return data.value;
+  
+  // fallback للمتغيرات البيئية
+  if (key === "telegram_bot_token") {
+    return Deno.env.get("TELEGRAM_BOT_TOKEN") || null;
+  }
+  
+  return null;
 }
 
 // جلب بيانات Gmail من osn_sessions (الجلسة النشطة) - يدعم تحديد المنتج
