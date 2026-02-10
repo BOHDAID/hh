@@ -35,8 +35,10 @@ const DashboardTab = () => {
         .select("*", { count: "exact", head: true })
         .eq("is_active", true);
 
-      // جلب عدد الطلبات
-      const { data: orders } = await db.from("orders").select("*");
+      // جلب إجمالي الطلبات
+      const { count: ordersCount } = await db
+        .from("orders")
+        .select("*", { count: "exact", head: true });
 
       // جلب عدد المستخدمين
       const { count: customersCount } = await db
@@ -56,22 +58,39 @@ const DashboardTab = () => {
         .eq("is_unlimited", true)
         .eq("is_active", true);
 
-      // الطلبات المكتملة = status AND payment_status كلاهما completed
-      const completedOrders = orders?.filter(
-        (o) => o.status === "completed" && o.payment_status === "completed"
-      ) || [];
-      const totalSales = completedOrders.reduce(
-        (sum, o) => sum + Number(o.total_amount),
+      // جلب الطلبات المكتملة - نتحقق من كل الحالات الممكنة
+      const { data: completedOrders } = await db
+        .from("orders")
+        .select("total_amount, status, payment_status")
+        .in("status", ["completed", "delivered"])
+        .in("payment_status", ["completed", "paid"]);
+
+      // إذا لم نجد شيء، نجرب بدون فلتر payment_status
+      let finalCompleted = completedOrders || [];
+      let totalSales = 0;
+      
+      if (finalCompleted.length === 0) {
+        // جرب فقط بحالة status = completed
+        const { data: altCompleted } = await db
+          .from("orders")
+          .select("total_amount, status, payment_status")
+          .in("status", ["completed", "delivered"]);
+        
+        finalCompleted = altCompleted || [];
+      }
+
+      totalSales = finalCompleted.reduce(
+        (sum, o) => sum + Number(o.total_amount || 0),
         0
       );
 
-      // الحسابات المتوفرة = الحسابات العادية + الخيارات الدائمة (كل واحد يحسب كـ ∞)
+      // الحسابات المتوفرة = الحسابات العادية + الخيارات الدائمة
       const totalAvailable = (accountsCount || 0) + (unlimitedCount || 0);
 
       setStats({
         totalProducts: productsCount || 0,
-        totalOrders: orders?.length || 0,
-        completedOrders: completedOrders.length,
+        totalOrders: ordersCount || 0,
+        completedOrders: finalCompleted.length,
         totalCustomers: customersCount || 0,
         totalSales,
         availableAccounts: totalAvailable,
