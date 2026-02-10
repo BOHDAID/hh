@@ -269,13 +269,16 @@ async function getQRFromSession(): Promise<{ success: boolean; qrImage?: string;
 async function getOTPFromSession(gmailAddress?: string, gmailAppPassword?: string): Promise<{ success: boolean; otp?: string; error?: string }> {
   try {
     if (!gmailAddress || !gmailAppPassword) {
+      console.error("❌ Gmail credentials missing! address:", gmailAddress, "password:", gmailAppPassword ? "set" : "missing");
       return { success: false, error: "بيانات Gmail غير متوفرة" };
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-    const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+    // استخدام SUPABASE_URL الداخلي + SERVICE_ROLE_KEY للاستدعاء الداخلي
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || EXTERNAL_SUPABASE_URL;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_ANON_KEY") || EXTERNAL_SERVICE_ROLE_KEY;
 
     console.log(`📧 Calling gmail-read-otp for: ${gmailAddress}`);
+    console.log(`🔗 Using URL: ${supabaseUrl}/functions/v1/gmail-read-otp`);
     
     const response = await fetch(`${supabaseUrl}/functions/v1/gmail-read-otp`, {
       method: "POST",
@@ -286,11 +289,13 @@ async function getOTPFromSession(gmailAddress?: string, gmailAppPassword?: strin
       body: JSON.stringify({ 
         gmailAddress,
         gmailAppPassword,
-        maxAgeMinutes: 5,
+        maxAgeMinutes: 10,
       }),
     });
 
+    console.log(`📬 gmail-read-otp response status: ${response.status}`);
     const data = await response.json();
+    console.log(`📬 gmail-read-otp response:`, JSON.stringify(data));
     
     if (data.success && data.otp) {
       console.log("✅ OTP fetched successfully:", data.otp);
