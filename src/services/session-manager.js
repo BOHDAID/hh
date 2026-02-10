@@ -340,10 +340,33 @@ class OSNSessionManager {
   }
 
   /**
-   * جلب OTP - غير متاح في الوضع الخفيف (لا يوجد Gmail Reader)
+   * جلب OTP من Gmail عبر GmailReader
+   * @param {string} gmailAddress - عنوان Gmail
+   * @param {string} gmailAppPassword - كلمة مرور التطبيق
    */
-  async getClientOTP() {
-    return { success: false, error: 'OTP غير متاح في الوضع الخفيف' };
+  async getClientOTP(gmailAddress, gmailAppPassword) {
+    if (!gmailAddress || !gmailAppPassword) {
+      return { success: false, error: 'بيانات Gmail غير متوفرة' };
+    }
+
+    try {
+      const GmailReader = (await import('./gmail-reader.js')).default;
+      const reader = new GmailReader(gmailAddress, gmailAppPassword);
+      
+      console.log(`📧 Reading OTP from Gmail: ${gmailAddress}`);
+      const result = await reader.getLatestOTP(5); // آخر 5 دقائق
+      
+      if (result.success && result.otp) {
+        console.log(`✅ OTP found from Gmail: ${result.otp}`);
+        return { success: true, otp: result.otp };
+      } else {
+        console.log(`❌ No OTP found: ${result.error}`);
+        return { success: false, error: result.error || 'لم يتم العثور على رمز OTP' };
+      }
+    } catch (error) {
+      console.error('❌ Gmail OTP Error:', error.message);
+      return { success: false, error: `خطأ في قراءة Gmail: ${error.message}` };
+    }
   }
 }
 

@@ -113,7 +113,7 @@ router.post('/get-qr', express.json(), async (req, res) => {
  */
 router.post('/get-otp', express.json(), async (req, res) => {
   try {
-    const { secret } = req.body;
+    const { secret, gmailAddress, gmailAppPassword } = req.body;
 
     // التحقق من المفتاح السري
     const expectedSecret = process.env.QR_AUTOMATION_SECRET || 'default-qr-secret-key';
@@ -121,10 +121,10 @@ router.post('/get-otp', express.json(), async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    console.log('🔑 Get OTP request received');
+    console.log('🔑 Get OTP request received for:', gmailAddress || 'unknown');
 
-    // جلب OTP
-    const result = await sessionManager.getClientOTP();
+    // جلب OTP مع بيانات Gmail
+    const result = await sessionManager.getClientOTP(gmailAddress, gmailAppPassword);
 
     if (result.success) {
       console.log('✅ OTP fetched successfully:', result.otp);
