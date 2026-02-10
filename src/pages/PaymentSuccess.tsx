@@ -3,9 +3,9 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { CheckCircle, Mail, ArrowRight, Loader2, Key, Bot, Copy, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { db } from "@/lib/supabaseClient";
 import { toast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
 
 interface ActivationCode {
   code: string;
@@ -14,6 +14,7 @@ interface ActivationCode {
 }
 
 const PaymentSuccess = () => {
+  const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const orderId = searchParams.get("order_id");
@@ -25,7 +26,6 @@ const PaymentSuccess = () => {
   useEffect(() => {
     const fetchOrderAndActivationCodes = async () => {
       if (orderId) {
-        // جلب معلومات الطلب
         const { data: orderData } = await db
           .from("orders")
           .select("order_number")
@@ -36,7 +36,6 @@ const PaymentSuccess = () => {
           setOrderNumber(orderData.order_number);
         }
 
-        // جلب أكواد التفعيل للطلب
         const { data: codesData } = await db
           .from("activation_codes")
           .select(`
@@ -49,13 +48,12 @@ const PaymentSuccess = () => {
         if (codesData && codesData.length > 0) {
           const codes: ActivationCode[] = codesData.map((c: any) => ({
             code: c.code,
-            product_name: c.products?.name || 'منتج',
+            product_name: c.products?.name || t('products.title'),
             product_id: c.product_id,
           }));
           setActivationCodes(codes);
         }
 
-        // جلب اسم البوت من الإعدادات
         const { data: botSetting } = await db
           .from("site_settings")
           .select("value")
@@ -70,13 +68,13 @@ const PaymentSuccess = () => {
     };
 
     fetchOrderAndActivationCodes();
-  }, [orderId]);
+  }, [orderId, t]);
 
   const copyCode = (code: string) => {
     navigator.clipboard.writeText(code);
     toast({
-      title: "تم النسخ!",
-      description: "تم نسخ كود التفعيل",
+      title: t('paymentSuccess.copied'),
+      description: t('paymentSuccess.codeCopied'),
     });
   };
 
@@ -104,14 +102,14 @@ const PaymentSuccess = () => {
         {/* Success Message */}
         <div className="space-y-4">
           <h1 className="text-3xl font-bold text-foreground">
-            تم الدفع بنجاح! 🎉
+            {t('paymentSuccess.title')}
           </h1>
           <p className="text-lg text-muted-foreground">
-            شكراً لثقتك بنا، تم استلام دفعتك بنجاح
+            {t('paymentSuccess.subtitle')}
           </p>
           {orderNumber && (
             <p className="text-sm text-muted-foreground">
-              رقم الطلب: <span className="font-mono font-bold text-foreground">{orderNumber}</span>
+              {t('paymentSuccess.orderNumber')}: <span className="font-mono font-bold text-foreground">{orderNumber}</span>
             </p>
           )}
         </div>
@@ -122,7 +120,7 @@ const PaymentSuccess = () => {
             <CardContent className="p-6 space-y-4">
               <div className="flex items-center justify-center gap-3">
                 <Key className="h-6 w-6 text-primary" />
-                <span className="text-lg font-semibold text-foreground">أكواد التفعيل</span>
+                <span className="text-lg font-semibold text-foreground">{t('paymentSuccess.activationCodes')}</span>
               </div>
               
               <div className="space-y-3">
@@ -143,7 +141,7 @@ const PaymentSuccess = () => {
                         className="gap-2"
                       >
                         <Copy className="h-4 w-4" />
-                        نسخ
+                        {t('paymentSuccess.copy')}
                       </Button>
                     </div>
                   </div>
@@ -154,7 +152,7 @@ const PaymentSuccess = () => {
                 <div className="pt-4 border-t border-border/50">
                   <div className="flex items-center justify-center gap-2 mb-3">
                     <Bot className="h-5 w-5 text-blue-500" />
-                    <span className="text-sm font-medium">للحصول على رمز OTP:</span>
+                    <span className="text-sm font-medium">{t('paymentSuccess.getOtp')}</span>
                   </div>
                   <a
                     href={`https://t.me/${botUsername}`}
@@ -163,12 +161,12 @@ const PaymentSuccess = () => {
                   >
                     <Button className="w-full gap-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700">
                       <Bot className="h-5 w-5" />
-                      تواصل مع البوت @{botUsername}
+                      {t('paymentSuccess.contactBot')} @{botUsername}
                       <ExternalLink className="h-4 w-4" />
                     </Button>
                   </a>
                   <p className="text-xs text-muted-foreground mt-2">
-                    أرسل كود التفعيل للبوت للحصول على رمز OTP
+                    {t('paymentSuccess.sendCodeToBot')}
                   </p>
                 </div>
               )}
@@ -180,15 +178,15 @@ const PaymentSuccess = () => {
         <div className="bg-primary/10 border border-primary/30 rounded-2xl p-6 space-y-3">
           <div className="flex items-center justify-center gap-3">
             <Mail className="h-6 w-6 text-primary" />
-            <span className="text-lg font-semibold text-foreground">تفقد إيميلك الآن!</span>
+            <span className="text-lg font-semibold text-foreground">{t('paymentSuccess.checkEmail')}</span>
           </div>
           <p className="text-sm text-muted-foreground">
-            تم إرسال تفاصيل الحساب وإيصال الدفع إلى بريدك الإلكتروني.
+            {t('paymentSuccess.emailSent')}
             <br />
-            قد يستغرق الوصول بضع دقائق.
+            {t('paymentSuccess.emailDelay')}
           </p>
           <p className="text-xs text-muted-foreground/80">
-            💡 تأكد من فحص مجلد "الرسائل غير المرغوب فيها" (Spam) إذا لم تجد الرسالة.
+            {t('paymentSuccess.checkSpam')}
           </p>
         </div>
 
@@ -199,7 +197,7 @@ const PaymentSuccess = () => {
               onClick={() => navigate(`/order/${orderId}`)}
               className="gap-2"
             >
-              عرض تفاصيل الطلب
+              {t('paymentSuccess.viewOrderDetails')}
               <ArrowRight className="h-4 w-4 rotate-180" />
             </Button>
           )}
@@ -207,24 +205,24 @@ const PaymentSuccess = () => {
             variant="outline"
             onClick={() => navigate("/my-orders")}
           >
-            طلباتي
+            {t('paymentSuccess.myOrders')}
           </Button>
           <Button
             variant="ghost"
             onClick={() => navigate("/")}
           >
-            الصفحة الرئيسية
+            {t('paymentSuccess.homepage')}
           </Button>
         </div>
 
         {/* Support Notice */}
         <p className="text-xs text-muted-foreground">
-          هل واجهت مشكلة؟{" "}
+          {t('paymentSuccess.needHelp')}{" "}
           <button
             onClick={() => navigate("/support")}
             className="text-primary hover:underline"
           >
-            تواصل مع الدعم
+            {t('paymentSuccess.contactSupport')}
           </button>
         </p>
       </div>

@@ -94,6 +94,11 @@ serve(async (req: Request) => {
     // Admin client to bypass RLS for delivery operations
     const adminClient = createClient(externalUrl, externalServiceKey);
 
+    // Cloud client for accessing osn_sessions (stored in Lovable Cloud)
+    const cloudUrl = Deno.env.get("SUPABASE_URL") || "";
+    const cloudSvcKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    const cloudClient = cloudUrl && cloudSvcKey ? createClient(cloudUrl, cloudSvcKey) : null;
+
     if (!order_id) {
       return new Response(
         JSON.stringify({ error: "Order ID is required" }),
@@ -537,25 +542,94 @@ serve(async (req: Request) => {
         
         const activationCode = generateCode();
         
+        // جلب البريد من osn_sessions (Cloud DB) للمنتجات غير المحدودة
+        let accountEmail: string | null = null;
+        try {
+          // Get the variant for this item from the delivered product_account
+          const { data: deliveredItem } = await adminClient
+            .from("order_items")
+            .select("product_account_id")
+            .eq("id", item.id)
+            .single();
+          
+          if (deliveredItem?.product_account_id) {
+            const { data: pa } = await adminClient
+              .from("product_accounts")
+              .select("variant_id")
+              .eq("id", deliveredItem.product_account_id)
+              .single();
+            
+            if (pa?.variant_id && cloudClient) {
+              const { data: osnSession } = await cloudClient
+                .from("osn_sessions")
+                .select("email")
+                .eq("variant_id", pa.variant_id)
+                .eq("is_active", true)
+                .limit(1)
+                .maybeSingle();
+              
+              if (osnSession?.email) {
+                accountEmail = osnSession.email;
+                console.log(`Found OSN email for variant ${pa.variant_id}: ${accountEmail}`);
+              }
+            }
+          }
+          
+          // Fallback: try finding unlimited variant for this product
+          if (!accountEmail && cloudClient) {
+            const { data: unlimitedVariants } = await adminClient
+              .from("product_variants")
+              .select("id")
+              .eq("product_id", item.product_id)
+              .eq("is_unlimited", true);
+            
+            if (unlimitedVariants && unlimitedVariants.length > 0) {
+              for (const v of unlimitedVariants) {
+                const { data: session } = await cloudClient
+                  .from("osn_sessions")
+                  .select("email")
+                  .eq("variant_id", v.id)
+                  .eq("is_active", true)
+                  .limit(1)
+                  .maybeSingle();
+                
+                if (session?.email) {
+                  accountEmail = session.email;
+                  console.log(`Found OSN email via unlimited variant ${v.id}: ${accountEmail}`);
+                  break;
+                }
+              }
+            }
+          }
+        } catch (emailErr) {
+          console.error("Error fetching OSN session email:", emailErr);
+        }
+        
         // إنشاء سجل كود التفعيل
+        const insertData: Record<string, unknown> = {
+          code: activationCode,
+          user_id: order.user_id,
+          product_id: item.product_id,
+          order_id: order_id,
+          order_item_id: item.id,
+          status: 'pending',
+          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        };
+        
+        if (accountEmail) {
+          insertData.account_email = accountEmail;
+        }
+        
         const { data: codeData, error: codeError } = await adminClient
           .from("activation_codes")
-          .insert({
-            code: activationCode,
-            user_id: order.user_id,
-            product_id: item.product_id,
-            order_id: order_id,
-            order_item_id: item.id,
-            status: 'pending',
-            expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 ساعة
-          })
+          .insert(insertData)
           .select()
           .single();
         
         if (codeError) {
           console.error(`Error creating activation code for product ${item.product_id}:`, codeError.message);
         } else {
-          console.log(`✅ Created activation code ${activationCode} for product ${item.product_id}`);
+          console.log(`✅ Created activation code ${activationCode} for product ${item.product_id} (email: ${accountEmail || 'none'})`);
           activationCodes.push({
             code: activationCode,
             product_name: productData.name || 'منتج',

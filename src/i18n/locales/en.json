@@ -218,5 +218,26 @@
     "title": "Customer Reviews",
     "writeReview": "Write a Review",
     "noReviews": "No reviews yet"
+  },
+  "paymentSuccess": {
+    "title": "Payment Successful! 🎉",
+    "subtitle": "Thank you for your trust, your payment has been received",
+    "orderNumber": "Order Number",
+    "activationCodes": "Activation Codes",
+    "copy": "Copy",
+    "copied": "Copied!",
+    "codeCopied": "Activation code copied",
+    "getOtp": "To get OTP code:",
+    "contactBot": "Contact Bot",
+    "sendCodeToBot": "Send the activation code to the bot to get your OTP",
+    "checkEmail": "Check your email now!",
+    "emailSent": "Account details and payment receipt have been sent to your email.",
+    "emailDelay": "It may take a few minutes to arrive.",
+    "checkSpam": "💡 Make sure to check your Spam folder if you don't find the email.",
+    "viewOrderDetails": "View Order Details",
+    "myOrders": "My Orders",
+    "homepage": "Homepage",
+    "needHelp": "Having an issue?",
+    "contactSupport": "Contact Support"
   }
 }
