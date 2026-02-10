@@ -197,10 +197,82 @@ serve(async (req: Request) => {
             .select("code, product_id")
             .eq("order_id", order_id);
           
-          const activationCodesForResponse = (existingCodes || []).map((c: any) => ({
+          let activationCodesForResponse = (existingCodes || []).map((c: any) => ({
             code: c.code,
             product_id: c.product_id,
           }));
+
+          // If no codes exist yet, generate them now (order was completed before code generation was added)
+          if (activationCodesForResponse.length === 0) {
+            console.log("No activation codes found for completed unlimited order, generating now...");
+            
+            const generateCode = (): string => {
+              const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+              let code = '';
+              for (let i = 0; i < 8; i++) {
+                code += chars.charAt(Math.floor(Math.random() * chars.length));
+              }
+              return code;
+            };
+
+            for (const item of (existingItems || [])) {
+              // Check if product requires activation
+              const { data: productData } = await adminClient
+                .from("products")
+                .select("requires_activation, name")
+                .eq("id", item.product_id)
+                .single();
+              
+              if (!productData?.requires_activation) continue;
+
+              const code = generateCode();
+              
+              // Get account email from OSN session via cloud
+              let accountEmail: string | null = null;
+              try {
+                if (cloudClient) {
+                  const { data: unlimitedVariants } = await adminClient
+                    .from("product_variants")
+                    .select("id")
+                    .eq("product_id", item.product_id)
+                    .eq("is_unlimited", true);
+                  
+                  for (const v of (unlimitedVariants || [])) {
+                    const { data: session } = await cloudClient
+                      .from("osn_sessions")
+                      .select("email")
+                      .eq("variant_id", v.id)
+                      .eq("is_active", true)
+                      .limit(1)
+                      .maybeSingle();
+                    if (session?.email) { accountEmail = session.email; break; }
+                  }
+                }
+              } catch (e) { console.error("Error fetching OSN email:", e); }
+
+              const insertData: Record<string, unknown> = {
+                code,
+                user_id: order.user_id,
+                product_id: item.product_id,
+                order_id: order_id,
+                order_item_id: item.id,
+                status: 'pending',
+                expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+              };
+              if (accountEmail) insertData.account_email = accountEmail;
+
+              const { error: codeErr } = await adminClient
+                .from("activation_codes")
+                .insert(insertData);
+              
+              if (!codeErr) {
+                console.log(`✅ Generated activation code ${code} for completed order`);
+                activationCodesForResponse.push({ code, product_id: item.product_id });
+              } else {
+                console.error("Failed to insert activation code:", codeErr.message);
+              }
+            }
+          }
 
           return new Response(
             JSON.stringify({
