@@ -79,8 +79,8 @@ const ProductDetailsModal = ({
 
       // For each variant, get actual stock using secure function
       if (variantsData && variantsData.length > 0) {
-        const variantsWithStock = await Promise.all(
-          variantsData.map(async (variant) => {
+      const variantsWithStock = await Promise.all(
+          variantsData.map(async (variant: any) => {
             // Check if variant is unlimited
             if (variant.is_unlimited) {
               return { ...variant, stock: -1 };
@@ -242,7 +242,7 @@ const ProductDetailsModal = ({
                               {variant.description}
                             </p>
                           )}
-                          <div className="mt-1">
+                          <div className="mt-1 flex items-center gap-2">
                             <span className={`text-xs ${variant.stock === -1 ? "text-amber-500" : variant.stock > 0 ? "text-emerald-500" : "text-destructive"}`}>
                               {variant.stock === -1 
                                 ? (isRTL ? "∞ دائم" : "∞ Unlimited") 
@@ -250,6 +250,11 @@ const ProductDetailsModal = ({
                                   ? `${variant.stock} ${isRTL ? "متوفر" : "in stock"}` 
                                   : (isRTL ? "نفذ المخزون" : "Out of stock")}
                             </span>
+                            {(variant as any).warranty_days > 0 && (
+                              <span className="text-xs text-blue-500">
+                                🛡️ {formatWarrantyDays((variant as any).warranty_days)}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>

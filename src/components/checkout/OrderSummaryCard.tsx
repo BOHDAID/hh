@@ -31,6 +31,7 @@ interface OrderSummaryCardProps {
   stockCount: number;
   flashSalePrice?: number | null;
   originalPrice?: number | null;
+  variantWarrantyDays?: number | null;
 }
 
 const OrderSummaryCard = ({
@@ -42,6 +43,7 @@ const OrderSummaryCard = ({
   stockCount,
   flashSalePrice,
   originalPrice,
+  variantWarrantyDays,
 }: OrderSummaryCardProps) => {
   const unitPrice = unitPriceProp ?? product.price;
   const totalAmount = unitPrice * quantity;
@@ -120,6 +122,13 @@ const OrderSummaryCard = ({
               </span>
             </div>
           </div>
+
+          {variantWarrantyDays && variantWarrantyDays > 0 && (
+            <div className="flex justify-between text-xs sm:text-sm">
+              <span className="text-muted-foreground">الضمان</span>
+              <span className="text-blue-500 font-medium">🛡️ {formatWarrantyDays(variantWarrantyDays)}</span>
+            </div>
+          )}
 
           <div className="border-t pt-2 sm:pt-3 flex justify-between">
             <span className="font-bold text-sm sm:text-lg">الإجمالي</span>
