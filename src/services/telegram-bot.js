@@ -560,15 +560,8 @@ async function enterTVCodeFromSession(tvCode) {
   }
 }
 
-async function getQRFromSession() {
-  try {
-    const qrData = await sessionManager.getQRCode();
-    return qrData;
-  } catch (error) {
-    console.error('❌ QR fetch error:', error.message);
-    return { success: false, error: error.message };
-  }
-}
+
+
 
 async function getOTPFromSession(senderFilter = null) {
   try {
