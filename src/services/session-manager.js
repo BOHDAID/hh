@@ -253,26 +253,43 @@ class OSNSessionManager {
           value: c.value,
           domain: c.domain || '.osnplus.com',
           path: c.path || '/',
-          secure: c.secure || false,
+          secure: c.secure !== undefined ? c.secure : true,
           httpOnly: c.httpOnly || false,
+          sameSite: c.sameSite || 'Lax',
           ...(c.expirationDate ? { expires: c.expirationDate } : {}),
         }));
         await page.setCookie(...puppeteerCookies);
         console.log('✅ [enterTVCode] Cookies set');
 
-        // الذهاب لصفحة ربط التلفزيون
-        console.log('🌐 [enterTVCode] Navigating to https://osnplus.com/en/login/tv ...');
+        // الخطوة 1: زيارة الصفحة الرئيسية أولاً لتفعيل الكوكيز في المتصفح
+        console.log('🌐 [enterTVCode] Step 1: Visiting homepage to activate cookies...');
+        try {
+          await page.goto('https://osnplus.com/', {
+            waitUntil: 'domcontentloaded',
+            timeout: 20000,
+          });
+        } catch (navErr) {
+          console.log('⚠️ [enterTVCode] Homepage nav timeout, continuing:', navErr.message);
+        }
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        const homeUrl = page.url();
+        console.log('🔗 [enterTVCode] Homepage URL:', homeUrl);
+
+        // الخطوة 2: الآن نذهب لصفحة ربط التلفزيون
+        console.log('🌐 [enterTVCode] Step 2: Navigating to /en/login/tv ...');
         try {
           await page.goto('https://osnplus.com/en/login/tv', {
             waitUntil: 'domcontentloaded',
             timeout: 30000,
           });
-          console.log('✅ [enterTVCode] Navigation complete');
+          console.log('✅ [enterTVCode] TV page navigation complete');
         } catch (navErr) {
-          console.log('⚠️ [enterTVCode] Navigation timeout but continuing:', navErr.message);
+          console.log('⚠️ [enterTVCode] TV page timeout but continuing:', navErr.message);
         }
 
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        // انتظار أطول للتأكد من تحميل الصفحة بالكامل
+        await new Promise(resolve => setTimeout(resolve, 5000));
 
         const currentUrl = page.url();
         console.log('🔗 [enterTVCode] Current URL:', currentUrl);
@@ -286,32 +303,39 @@ class OSNSessionManager {
           console.log('⚠️ [enterTVCode] Screenshot failed:', ssErr.message);
         }
 
-        // التحقق أن الجلسة لا تزال صالحة - بفحص محتوى الصفحة وليس URL فقط
-        // لأن URL يبقى /login/tv حتى لو عرض صفحة تسجيل الدخول العادية
-        const pageTextCheck = await page.evaluate(() => document.body?.innerText?.toLowerCase() || '');
-        const isLoginPage = pageTextCheck.includes('continue with google') || 
-                           pageTextCheck.includes('continue with apple') ||
-                           pageTextCheck.includes('continue with facebook') ||
-                           pageTextCheck.includes('sign up or login') ||
-                           pageTextCheck.includes('more ways to sign up');
-        
+        // البحث عن حقول الإدخال أولاً - الأولوية لوجود الحقول
         const hasCodeInputs = await page.$$eval(
-          'input[type="tel"], input[type="number"], input[inputmode="numeric"]',
+          'input[type="tel"], input[type="number"], input[inputmode="numeric"], input[maxlength="1"]',
           inputs => inputs.length
         ).catch(() => 0);
 
-        console.log(`🔍 [enterTVCode] Page analysis: isLoginPage=${isLoginPage}, codeInputsFound=${hasCodeInputs}`);
+        console.log(`🔍 [enterTVCode] Code inputs found: ${hasCodeInputs}`);
 
-        if (isLoginPage && hasCodeInputs === 0) {
-          console.error('❌ [enterTVCode] Page shows LOGIN form instead of TV code form! Cookies are expired or invalid.');
-          this.isLoggedIn = false;
-          this.storedCookies = null;
-          return { 
-            success: false, 
-            error: 'الكوكيز منتهية أو غير صالحة - الموقع يعرض صفحة تسجيل الدخول بدل صفحة كود التلفزيون. يرجى استيراد كوكيز جديدة من الجلسة.',
-            screenshot: beforeScreenshot ? `data:image/png;base64,${beforeScreenshot}` : null,
-            finalUrl: currentUrl,
-          };
+        // فقط إذا لم نجد أي حقول، نفحص محتوى الصفحة
+        if (hasCodeInputs === 0) {
+          const pageTextCheck = await page.evaluate(() => document.body?.innerText?.substring(0, 1000)?.toLowerCase() || '');
+          console.log('📄 [enterTVCode] Page text (first 500):', pageTextCheck.substring(0, 500));
+          
+          const isLoginPage = pageTextCheck.includes('continue with google') || 
+                             pageTextCheck.includes('continue with apple') ||
+                             pageTextCheck.includes('sign up or login') ||
+                             pageTextCheck.includes('create your account');
+
+          if (isLoginPage) {
+            console.error('❌ [enterTVCode] Login page detected with NO code inputs. Session invalid.');
+            this.isLoggedIn = false;
+            this.storedCookies = null;
+            return { 
+              success: false, 
+              error: 'الكوكيز غير فعالة - الموقع يعرض صفحة تسجيل الدخول. يرجى تحديث الكوكيز.',
+              screenshot: beforeScreenshot ? `data:image/png;base64,${beforeScreenshot}` : null,
+              finalUrl: currentUrl,
+            };
+          }
+          
+          // ربما الصفحة لم تحمل بعد - ننتظر أكثر
+          console.log('⏳ [enterTVCode] No inputs yet, waiting 5 more seconds...');
+          await new Promise(resolve => setTimeout(resolve, 5000));
         }
 
         // انتظار إضافي للتأكد أن الحقول جاهزة
