@@ -19,6 +19,7 @@ interface Product {
   platform: string | null;
   warranty_days: number | null;
   sales_count: number | null;
+  average_rating: number | null;
   categories?: { name: string; name_en: string | null } | null;
   available_stock?: number;
 }
@@ -218,6 +219,7 @@ const ProductsSection = () => {
                     platform={product.platform || undefined}
                     warranty_days={product.warranty_days || undefined}
                     sales_count={product.sales_count || 0}
+                    average_rating={product.average_rating || 0}
                   />
                 </motion.div>
               ))}

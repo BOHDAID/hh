@@ -44,6 +44,7 @@ interface ProductDetailsModalProps {
     warranty_days?: number;
     platform?: string;
     sales_count?: number;
+    average_rating?: number;
   } | null;
 }
 
@@ -120,7 +121,8 @@ const ProductDetailsModal = ({
   if (!product) return null;
 
   const hasVariants = variants.length > 0;
-  const salesCount = (product as any).sales_count || 0;
+  const salesCount = product.sales_count || 0;
+  const averageRating = product.average_rating || 0;
   // For unlimited products (stock = -1), show as unlimited, otherwise sum the stock
   const totalVariantStock = variants.reduce((sum, v) => {
     if (v.stock === -1) return sum + 999; // Treat unlimited as high number for display
@@ -191,13 +193,22 @@ const ProductDetailsModal = ({
                 </div>
               )}
               {/* Star Rating */}
-              <div className="flex items-center gap-0.5 mt-1">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <Star
-                    key={star}
-                    className="h-4 w-4 text-yellow-500 fill-yellow-500"
-                  />
-                ))}
+              <div className="flex items-center gap-1 mt-1">
+                <div className="flex items-center gap-0.5">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star
+                      key={star}
+                      className={`h-4 w-4 ${
+                        star <= Math.round(averageRating)
+                          ? "text-yellow-500 fill-yellow-500"
+                          : "text-muted-foreground/30"
+                      }`}
+                    />
+                  ))}
+                </div>
+                {averageRating > 0 && (
+                  <span className="text-sm text-muted-foreground">({averageRating.toFixed(1)})</span>
+                )}
               </div>
             </div>
           </div>
