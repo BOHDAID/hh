@@ -78,20 +78,31 @@ class OSNSessionManager {
       const puppeteer = (await import('puppeteer')).default;
       const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable';
       
-      console.log('🌐 Opening lightweight browser...');
+      console.log(`🌐 [_withBrowser] Opening browser... (executablePath: ${executablePath})`);
+      console.log(`🌐 [_withBrowser] Memory usage: ${JSON.stringify(process.memoryUsage().rss / 1024 / 1024)} MB`);
+      
       browser = await puppeteer.launch({
         headless: 'new',
         executablePath,
         args: this._getChromeArgs(),
+        timeout: 30000,
       });
 
+      console.log('✅ [_withBrowser] Browser launched successfully');
       const result = await fn(browser);
       return result;
+    } catch (browserError) {
+      console.error('❌ [_withBrowser] Browser error:', browserError.message);
+      console.error('❌ [_withBrowser] Stack:', browserError.stack?.substring(0, 300));
+      return { 
+        success: false, 
+        error: `فشل تشغيل المتصفح: ${browserError.message}. تأكد أن Chrome مثبت على السيرفر (Docker image).`,
+      };
     } finally {
       if (browser) {
         try {
           await browser.close();
-          console.log('✅ Browser closed - RAM freed');
+          console.log('✅ [_withBrowser] Browser closed - RAM freed');
         } catch {}
       }
     }
