@@ -332,7 +332,7 @@ class OSNSessionManager {
 
       // الذهاب لصفحة ربط التلفزيون
       try {
-        await page.goto('https://osnplus.com/en-ma/login/tv', {
+        await page.goto('https://osnplus.com/en/login/tv', {
           waitUntil: 'domcontentloaded',
           timeout: 25000,
         });
