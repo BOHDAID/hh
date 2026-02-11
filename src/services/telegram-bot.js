@@ -167,7 +167,6 @@ async function handleMessage(message) {
   // === انتظار كود التلفزيون ===
   const session = userSessions[chatId];
   if (session && session.step === 'awaiting_tv_code') {
-    // المستخدم أرسل كود التلفزيون
     const tvCode = text.replace(/[\s\-]/g, '').toUpperCase();
     if (tvCode.length < 4 || tvCode.length > 8) {
       await sendMessage(chatId, bi(
@@ -177,35 +176,19 @@ async function handleMessage(message) {
       return;
     }
 
+    // حفظ الكود وطلب التأكيد قبل الإدخال
+    session.pendingTvCode = tvCode;
+    session.step = 'confirm_tv_code';
+
     await sendMessage(chatId, bi(
-      `⏳ جاري إدخال الكود <code>${tvCode}</code> في موقع OSN...\n\n⌛ انتظر قليلاً...`,
-      `⏳ Entering code <code>${tvCode}</code> on OSN website...\n\n⌛ Please wait...`
-    ));
-
-    const tvResult = await enterTVCodeFromSession(tvCode);
-
-    if (tvResult.success) {
-      // إرسال صورة النتيجة
-      if (tvResult.screenshot) {
-        await sendPhoto(chatId, tvResult.screenshot, bi(
-          tvResult.paired
-            ? '✅ <b>تم ربط التلفزيون بنجاح!</b>\n\n📺 يمكنك الآن مشاهدة المحتوى على تلفزيونك.'
-            : '📺 <b>تم إدخال الكود.</b>\n\n✅ تحقق من شاشة التلفزيون - يجب أن يكون متصلاً الآن.',
-          tvResult.paired
-            ? '✅ <b>TV linked successfully!</b>\n\n📺 You can now watch content on your TV.'
-            : '📺 <b>Code entered.</b>\n\n✅ Check your TV screen - it should be connected now.'
-        ));
-      }
-
-      await markCodeAsUsed(session.activationCodeId);
-      await sendSuccessMessage(chatId, session);
-      delete userSessions[chatId];
-    } else {
-      await sendMessage(chatId, bi(
-        `❌ فشل إدخال الكود\n\n${tvResult.error || 'خطأ غير معروف'}\n\n📝 تأكد أن الكود صحيح وأرسله مرة أخرى:`,
-        `❌ Failed to enter the code\n\n${tvResult.error || 'Unknown error'}\n\n📝 Make sure the code is correct and send it again:`
-      ));
-    }
+      `📺 الكود الذي أرسلته: <code>${tvCode}</code>\n\n⚠️ <b>تأكد أن هذا هو الكود الصحيح المعروض على شاشة التلفزيون!</b>\n\nهل تريد المتابعة؟`,
+      `📺 The code you sent: <code>${tvCode}</code>\n\n⚠️ <b>Make sure this is the correct code shown on your TV screen!</b>\n\nDo you want to proceed?`
+    ), [
+      [
+        { text: '✅ نعم، تابع / Yes, proceed', callback_data: 'confirm_tv_yes' },
+        { text: '❌ لا، أعد الإدخال / No, re-enter', callback_data: 'confirm_tv_no' }
+      ]
+    ]);
     return;
   }
 
@@ -416,6 +399,63 @@ async function handleCallbackQuery(callbackQuery) {
       `✅ ممتاز!\n\n📱 الآن في تطبيق OSN:\n1️⃣ سيطلب منك رمز تحقق\n2️⃣ بعد أن يُرسل الرمز، اضغط الزر أدناه\n\n⏰ <b>ملاحظة:</b> الرمز يصل خلال ثوانٍ`,
       `✅ Great!\n\n📱 Now in OSN app:\n1️⃣ It will ask for a verification code\n2️⃣ After the code is sent, press the button below\n\n⏰ <b>Note:</b> The code arrives within seconds`
     ), [[{ text: '🔑 أحضر لي الرمز / Get my code', callback_data: 'get_otp' }]]);
+    return;
+  }
+
+  // === تأكيد كود التلفزيون ===
+  if (data === 'confirm_tv_yes') {
+    const tvCode = session.pendingTvCode;
+    if (!tvCode) {
+      await editMessage(chatId, messageId, bi(
+        '❌ انتهت الجلسة. أرسل كود التفعيل مرة أخرى.',
+        '❌ Session expired. Send your activation code again.'
+      ));
+      delete userSessions[chatId];
+      return;
+    }
+
+    await editMessage(chatId, messageId, bi(
+      `⏳ جاري إدخال الكود <code>${tvCode}</code> في موقع OSN...\n\n⌛ انتظر قليلاً...`,
+      `⏳ Entering code <code>${tvCode}</code> on OSN website...\n\n⌛ Please wait...`
+    ));
+
+    const tvResult = await enterTVCodeFromSession(tvCode);
+
+    if (tvResult.success && tvResult.paired) {
+      if (tvResult.screenshot) {
+        await sendPhoto(chatId, tvResult.screenshot, bi(
+          '✅ <b>تم ربط التلفزيون بنجاح!</b>\n\n📺 يمكنك الآن مشاهدة المحتوى على تلفزيونك.',
+          '✅ <b>TV linked successfully!</b>\n\n📺 You can now watch content on your TV.'
+        ));
+      }
+      await markCodeAsUsed(session.activationCodeId);
+      await sendSuccessMessage(chatId, session);
+      delete userSessions[chatId];
+    } else {
+      // فشل - عرض النتيجة وطلب المحاولة مرة أخرى
+      if (tvResult.screenshot) {
+        await sendPhoto(chatId, tvResult.screenshot, bi(
+          '❌ <b>فشل ربط التلفزيون</b>\n\nيبدو أن الكود غير صحيح أو منتهي.',
+          '❌ <b>TV linking failed</b>\n\nThe code seems incorrect or expired.'
+        ));
+      }
+      session.step = 'awaiting_tv_code';
+      delete session.pendingTvCode;
+      await sendMessage(chatId, bi(
+        '📝 أرسل الكود الصحيح المعروض على شاشة التلفزيون مرة أخرى:',
+        '📝 Send the correct code shown on your TV screen again:'
+      ));
+    }
+    return;
+  }
+
+  if (data === 'confirm_tv_no') {
+    session.step = 'awaiting_tv_code';
+    delete session.pendingTvCode;
+    await editMessage(chatId, messageId, bi(
+      '📝 حسناً، أرسل الكود الصحيح المعروض على شاشة التلفزيون:',
+      '📝 OK, send the correct code shown on your TV screen:'
+    ));
     return;
   }
 
