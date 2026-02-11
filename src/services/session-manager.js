@@ -265,49 +265,61 @@ class OSNSessionManager {
         return { success: false, error: 'الكوكيز منتهية - يرجى استيراد كوكيز جديدة' };
       }
 
-      // البحث عن حقل إدخال الكود
-      const codeInputSelectors = [
-        'input[type="text"]',
-        'input[type="tel"]',
-        'input[inputmode="numeric"]',
-        'input[placeholder*="code" i]',
-        'input[placeholder*="رمز" i]',
-        'input[name*="code" i]',
-        'input[name*="pin" i]',
-      ];
+      // انتظار إضافي للتأكد أن الحقول جاهزة
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
-      let codeInput = null;
-      for (const selector of codeInputSelectors) {
-        codeInput = await page.$(selector);
-        if (codeInput) {
-          console.log(`✅ Found code input: ${selector}`);
-          break;
-        }
-      }
+      // البحث عن حقول الإدخال - OSN عادة 5 حقول منفصلة
+      const allInputs = await page.$$('input[type="text"], input[type="tel"], input[type="number"], input[inputmode="numeric"]');
+      console.log(`🔍 Found ${allInputs.length} input fields on page`);
 
-      // إذا كان هناك عدة حقول (كل حقل لرقم واحد)
-      const allInputs = await page.$$('input[type="text"], input[type="tel"], input[inputmode="numeric"]');
-      
-      if (allInputs.length >= 4 && allInputs.length <= 8) {
-        // حقول منفصلة لكل رقم (مثل OTP inputs)
-        console.log(`📝 Found ${allInputs.length} separate input fields - entering digits one by one`);
-        const digits = tvCode.replace(/\s/g, '').split('');
-        for (let i = 0; i < Math.min(digits.length, allInputs.length); i++) {
-          await allInputs[i].click();
-          await allInputs[i].type(digits[i], { delay: 100 });
+      const digits = tvCode.replace(/[\s\-]/g, '').split('');
+      console.log(`📝 Code digits to enter: ${digits.join(', ')} (${digits.length} digits)`);
+
+      if (allInputs.length >= digits.length) {
+        // حقول منفصلة لكل رقم (OSN يستخدم 5 حقول)
+        console.log(`📝 Using ${digits.length} separate input fields`);
+        for (let i = 0; i < digits.length; i++) {
+          // مسح أي قيمة قديمة أولاً
+          await allInputs[i].click({ clickCount: 3 });
+          await page.keyboard.press('Backspace');
+          await new Promise(resolve => setTimeout(resolve, 100));
+          await allInputs[i].type(digits[i], { delay: 150 });
+          await new Promise(resolve => setTimeout(resolve, 200));
         }
-      } else if (codeInput) {
-        // حقل واحد
-        console.log('📝 Found single input field - entering full code');
-        await codeInput.click();
-        await codeInput.type(tvCode, { delay: 50 });
+        console.log('✅ All digits entered successfully');
+      } else if (allInputs.length === 1) {
+        // حقل واحد - ندخل الكود كامل
+        console.log('📝 Single input field - entering full code');
+        await allInputs[0].click({ clickCount: 3 });
+        await page.keyboard.press('Backspace');
+        await allInputs[0].type(tvCode, { delay: 100 });
       } else {
-        // لم نجد حقل - نحاول الكتابة مباشرة
-        console.log('⚠️ No input found, trying keyboard input...');
-        await page.keyboard.type(tvCode, { delay: 100 });
+        // محاولة بحث متقدمة
+        const advancedSelectors = [
+          'input[placeholder*="code" i]',
+          'input[placeholder*="رمز" i]',
+          'input[name*="code" i]',
+          'input[name*="pin" i]',
+        ];
+        let found = false;
+        for (const selector of advancedSelectors) {
+          const input = await page.$(selector);
+          if (input) {
+            console.log(`✅ Found input via: ${selector}`);
+            await input.click({ clickCount: 3 });
+            await page.keyboard.press('Backspace');
+            await input.type(tvCode, { delay: 100 });
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          console.log('⚠️ No input found, trying keyboard input directly...');
+          await page.keyboard.type(tvCode, { delay: 150 });
+        }
       }
 
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
       // البحث عن زر التأكيد والضغط عليه
       const confirmButton = await this._findButton(page, [
@@ -331,24 +343,32 @@ class OSNSessionManager {
       const resultScreenshot = await page.screenshot({ encoding: 'base64' });
       const finalUrl = page.url();
       
-      // محاولة اكتشاف النجاح
+      // محاولة اكتشاف النجاح - كلمات متعددة
       const pageContent = await page.evaluate(() => document.body.innerText.toLowerCase());
-      const isSuccess = pageContent.includes('success') || 
-                        pageContent.includes('connected') || 
-                        pageContent.includes('paired') ||
-                        pageContent.includes('نجاح') ||
-                        pageContent.includes('تم الربط') ||
-                        pageContent.includes('مرتبط');
+      const successKeywords = [
+        'success', 'connected', 'paired', 'linked', 'activated', 'done',
+        'نجاح', 'تم الربط', 'مرتبط', 'تم التفعيل', 'تم بنجاح', 'مفعّل',
+        'device linked', 'tv linked', 'enjoy watching'
+      ];
+      const failKeywords = [
+        'invalid', 'expired', 'wrong', 'error', 'try again',
+        'غير صحيح', 'منتهي', 'خطأ', 'حاول مرة أخرى'
+      ];
+      const isSuccess = successKeywords.some(k => pageContent.includes(k));
+      const isFailed = failKeywords.some(k => pageContent.includes(k));
 
       this.lastActivity = new Date();
 
       return {
         success: true,
         paired: isSuccess,
+        failed: isFailed,
         screenshot: `data:image/png;base64,${resultScreenshot}`,
         finalUrl,
         message: isSuccess 
           ? 'تم ربط التلفزيون بنجاح!' 
+          : isFailed
+          ? 'فشل ربط التلفزيون - الكود غير صحيح أو منتهي'
           : 'تم إدخال الكود - تحقق من الصورة للنتيجة',
       };
     });
