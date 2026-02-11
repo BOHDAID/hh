@@ -242,20 +242,27 @@ function extractOTP(text: string): string | null {
  * التحقق من عمر الرسالة بدقة الدقائق
  */
 function isMessageRecent(messageText: string, maxAgeMinutes: number): boolean {
-  // البحث عن تاريخ الرسالة في الهيدر
   const dateMatch = messageText.match(/Date:\s*(.+?)(?:\r?\n)/i);
-  if (!dateMatch) return true; // إذا ما لقينا تاريخ، نعتبرها حديثة
+  if (!dateMatch) {
+    console.log("⚠️ No date header found - skipping message (strict mode)");
+    return false; // بدون تاريخ = نتجاهلها
+  }
   
   try {
     const msgDate = new Date(dateMatch[1].trim());
+    if (isNaN(msgDate.getTime())) {
+      console.log("⚠️ Invalid date format - skipping message");
+      return false;
+    }
     const now = new Date();
     const diffMinutes = (now.getTime() - msgDate.getTime()) / (1000 * 60);
     
-    console.log(`📅 Message date: ${msgDate.toISOString()}, age: ${diffMinutes.toFixed(1)} minutes`);
+    console.log(`📅 Message date: ${msgDate.toISOString()}, age: ${diffMinutes.toFixed(1)} minutes, max: ${maxAgeMinutes}`);
     
-    return diffMinutes <= maxAgeMinutes;
+    return diffMinutes >= 0 && diffMinutes <= maxAgeMinutes;
   } catch {
-    return true; // إذا فشل التحليل، نعتبرها حديثة
+    console.log("⚠️ Date parse error - skipping message");
+    return false;
   }
 }
 
