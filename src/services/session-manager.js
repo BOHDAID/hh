@@ -482,34 +482,6 @@ class OSNSessionManager {
         return cookie;
       });
   }
-          screenshot: resultScreenshot ? `data:image/png;base64,${resultScreenshot}` : (beforeScreenshot ? `data:image/png;base64,${beforeScreenshot}` : null),
-          finalUrl,
-          message: isSuccess 
-            ? 'تم ربط التلفزيون بنجاح!' 
-            : isFailed
-            ? 'فشل ربط التلفزيون - الكود غير صحيح أو منتهي'
-            : 'تم إدخال الكود - تحقق من الصورة للنتيجة',
-        };
-      } catch (innerError) {
-        console.error('❌ [enterTVCode] INNER ERROR:', innerError.message);
-        console.error('❌ [enterTVCode] Stack:', innerError.stack?.substring(0, 500));
-        
-        // محاولة أخذ screenshot حتى عند الخطأ
-        let errorScreenshot = null;
-        if (page) {
-          try {
-            errorScreenshot = await page.screenshot({ encoding: 'base64' });
-          } catch {}
-        }
-
-        return {
-          success: false,
-          error: `خطأ أثناء إدخال الكود: ${innerError.message}`,
-          screenshot: errorScreenshot ? `data:image/png;base64,${errorScreenshot}` : null,
-        };
-      }
-    });
-  }
 
   /**
    * بحث عن زر بالنص
