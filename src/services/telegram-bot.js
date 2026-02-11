@@ -280,6 +280,15 @@ async function handleActivationCode(chatId, code, username) {
     return;
   }
 
+  // === التحقق من أن الكود لم يُفعّل من حساب تيليجرام آخر ===
+  if (activationCode.telegram_chat_id && activationCode.telegram_chat_id !== chatId) {
+    await sendMessage(chatId, bi(
+      `⚠️ <b>هذا الكود مرتبط بحساب آخر!</b>\n\n🔑 الكود: <code>${code}</code>\n❌ تم تفعيل هذا الكود بالفعل من حساب تيليجرام آخر.\n🚫 لا يمكن استخدام الكود من حسابين مختلفين.\n\n📞 إذا كنت تعتقد أن هناك خطأ، تواصل مع الدعم.`,
+      `⚠️ <b>This code is linked to another account!</b>\n\n🔑 Code: <code>${code}</code>\n❌ This code has already been activated from another Telegram account.\n🚫 You cannot use the same code from two different accounts.\n\n📞 If you believe this is an error, contact support.`
+    ));
+    return;
+  }
+
   const productNameAr = activationCode.products?.name || 'المنتج';
   const productNameEn = activationCode.products?.name_en || productNameAr;
   const accountEmail = activationCode.account_email;
