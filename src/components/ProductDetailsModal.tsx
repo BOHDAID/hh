@@ -192,19 +192,22 @@ const ProductDetailsModal = ({
                   <span>{isRTL ? `تم البيع ${salesCount} مرة` : `${salesCount} sold`}</span>
                 </div>
               )}
-              {/* Star Rating */}
+              {/* Star Rating - show 5 full stars if no rating, otherwise show actual */}
               <div className="flex items-center gap-1 mt-1">
                 <div className="flex items-center gap-0.5">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <Star
-                      key={star}
-                      className={`h-4 w-4 ${
-                        star <= Math.round(averageRating)
-                          ? "text-yellow-500 fill-yellow-500"
-                          : "text-muted-foreground/30"
-                      }`}
-                    />
-                  ))}
+                  {[1, 2, 3, 4, 5].map((star) => {
+                    const displayRating = averageRating > 0 ? averageRating : 5;
+                    return (
+                      <Star
+                        key={star}
+                        className={`h-4 w-4 ${
+                          star <= Math.round(displayRating)
+                            ? "text-yellow-500 fill-yellow-500"
+                            : "text-muted-foreground/30"
+                        }`}
+                      />
+                    );
+                  })}
                 </div>
                 {averageRating > 0 && (
                   <span className="text-sm text-muted-foreground">({averageRating.toFixed(1)})</span>
