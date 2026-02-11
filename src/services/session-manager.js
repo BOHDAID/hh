@@ -177,6 +177,10 @@ class OSNSessionManager {
         'send', 'verify', 'get code'
       ]);
       
+      // تسجيل الوقت قبل الضغط على Continue لتجاهل أي OTP قديم
+      const otpRequestTime = new Date().toISOString();
+      console.log(`⏱️ [Login] OTP request timestamp: ${otpRequestTime}`);
+      
       if (continueBtn) {
         const btnText = await page.evaluate(el => el.textContent?.trim(), continueBtn);
         console.log(`🔘 [Login] Clicking: "${btnText}"`);
@@ -188,7 +192,7 @@ class OSNSessionManager {
 
       // ====== الخطوة 5: انتظار إرسال OTP ======
       console.log('⏳ [Login] Step 5: Waiting for OTP to be sent...');
-      await this._sleep(5000);
+      await this._sleep(8000); // انتظار 8 ثواني لإعطاء وقت كافي لوصول الرسالة
 
       // التحقق من وجود حقل OTP
       let otpInputs = await page.$$('input[type="tel"], input[type="number"], input[inputmode="numeric"], input[maxlength="1"]');
@@ -262,8 +266,9 @@ class OSNSessionManager {
             body: JSON.stringify({
               gmailAddress,
               gmailAppPassword,
-              maxAgeMinutes: 5,
+              maxAgeMinutes: 3,
               senderFilter: 'osn',
+              notBefore: otpRequestTime, // تجاهل أي رسالة قبل هذا الوقت
             }),
           });
           

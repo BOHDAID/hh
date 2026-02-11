@@ -272,7 +272,7 @@ serve(async (req) => {
   }
 
   try {
-    const { gmailAddress, gmailAppPassword, maxAgeMinutes = 5, senderFilter } = await req.json();
+    const { gmailAddress, gmailAppPassword, maxAgeMinutes = 5, senderFilter, notBefore } = await req.json();
 
     if (!gmailAddress || !gmailAppPassword) {
       return new Response(
@@ -281,7 +281,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`📧 Reading OTP from Gmail: ${gmailAddress}, maxAge: ${maxAgeMinutes} min, senderFilter: ${senderFilter || 'none'}`);
+    console.log(`📧 Reading OTP from Gmail: ${gmailAddress}, maxAge: ${maxAgeMinutes} min, senderFilter: ${senderFilter || 'none'}, notBefore: ${notBefore || 'none'}`);
 
     const imap = new IMAPClient();
     
@@ -330,6 +330,19 @@ serve(async (req) => {
           if (!isMessageRecent(messageBody, maxAgeMinutes)) {
             console.log(`⏭️ Message ${messageIds[i]} is older than ${maxAgeMinutes} minutes, skipping`);
             continue;
+          }
+          
+          // التحقق من notBefore - تجاهل الرسائل القديمة
+          if (notBefore) {
+            const dateMatch = messageBody.match(/Date:\s*(.+?)(?:\r?\n)/i);
+            if (dateMatch) {
+              const msgDate = new Date(dateMatch[1].trim());
+              const notBeforeDate = new Date(notBefore);
+              if (!isNaN(msgDate.getTime()) && !isNaN(notBeforeDate.getTime()) && msgDate < notBeforeDate) {
+                console.log(`⏭️ Message ${messageIds[i]} is before notBefore (${notBefore}), skipping`);
+                continue;
+              }
+            }
           }
 
           // فلترة حسب المرسل إذا تم تحديده
