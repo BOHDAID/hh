@@ -164,6 +164,51 @@ async function handleMessage(message) {
     return;
   }
 
+  // === انتظار كود التلفزيون ===
+  const session = userSessions[chatId];
+  if (session && session.step === 'awaiting_tv_code') {
+    // المستخدم أرسل كود التلفزيون
+    const tvCode = text.replace(/\s/g, '');
+    if (tvCode.length < 4 || tvCode.length > 10) {
+      await sendMessage(chatId, bi(
+        '❌ الكود غير صحيح. أرسل الأرقام المعروضة على شاشة التلفزيون (4-10 أرقام/أحرف).',
+        '❌ Invalid code. Send the numbers shown on your TV screen (4-10 digits/characters).'
+      ));
+      return;
+    }
+
+    await sendMessage(chatId, bi(
+      `⏳ جاري إدخال الكود <code>${tvCode}</code> في موقع OSN...\n\n⌛ انتظر قليلاً...`,
+      `⏳ Entering code <code>${tvCode}</code> on OSN website...\n\n⌛ Please wait...`
+    ));
+
+    const tvResult = await enterTVCodeFromSession(tvCode);
+
+    if (tvResult.success) {
+      // إرسال صورة النتيجة
+      if (tvResult.screenshot) {
+        await sendPhoto(chatId, tvResult.screenshot, bi(
+          tvResult.paired
+            ? '✅ <b>تم ربط التلفزيون بنجاح!</b>\n\n📺 يمكنك الآن مشاهدة المحتوى على تلفزيونك.'
+            : '📺 <b>تم إدخال الكود.</b>\n\n✅ تحقق من شاشة التلفزيون - يجب أن يكون متصلاً الآن.',
+          tvResult.paired
+            ? '✅ <b>TV linked successfully!</b>\n\n📺 You can now watch content on your TV.'
+            : '📺 <b>Code entered.</b>\n\n✅ Check your TV screen - it should be connected now.'
+        ));
+      }
+
+      await markCodeAsUsed(session.activationCodeId);
+      await sendSuccessMessage(chatId, session);
+      delete userSessions[chatId];
+    } else {
+      await sendMessage(chatId, bi(
+        `❌ فشل إدخال الكود\n\n${tvResult.error || 'خطأ غير معروف'}\n\n📝 تأكد أن الكود صحيح وأرسله مرة أخرى:`,
+        `❌ Failed to enter the code\n\n${tvResult.error || 'Unknown error'}\n\n📝 Make sure the code is correct and send it again:`
+      ));
+    }
+    return;
+  }
+
   // التحقق من كود التفعيل (6-10 أحرف/أرقام)
   if (/^[A-Z0-9]{6,10}$/i.test(text)) {
     await handleActivationCode(chatId, text.toUpperCase(), username);
@@ -269,12 +314,12 @@ async function handleActivationCode(chatId, code, username) {
     : '';
 
   await sendMessage(chatId, bi(
-    `✅ <b>كود صالح!</b>\n\n📦 المنتج: <b>${productNameAr}</b>${emailLine}\n\n📱 اختر طريقة التفعيل:`,
-    `✅ <b>Valid code!</b>\n\n📦 Product: <b>${productNameEn}</b>${emailLine}\n\n📱 Choose activation method:`
+    `✅ <b>كود صالح!</b>\n\n📦 المنتج: <b>${productNameAr}</b>${emailLine}\n\n📱 أين تريد تفعيل الخدمة؟`,
+    `✅ <b>Valid code!</b>\n\n📦 Product: <b>${productNameEn}</b>${emailLine}\n\n📱 Where do you want to activate the service?`
   ), [
     [
-      { text: '📺 تلفزيون / TV (QR)', callback_data: 'choose_qr' },
-      { text: '📱 هاتف / Phone (OTP)', callback_data: 'choose_otp' }
+      { text: '📺 تلفزيون / TV', callback_data: 'choose_tv' },
+      { text: '📱 هاتف / Phone', callback_data: 'choose_otp' }
     ]
   ]);
 }
@@ -301,21 +346,24 @@ async function handleCallbackQuery(callbackQuery) {
   }
 
   // === Choose activation type ===
-  if (data === 'choose_qr' || data === 'choose_otp') {
-    const chosenType = data === 'choose_qr' ? 'qr' : 'otp';
+  if (data === 'choose_tv' || data === 'choose_otp') {
+    const chosenType = data === 'choose_tv' ? 'tv' : 'otp';
     session.activationType = chosenType;
-    session.step = 'awaiting_login';
 
     const emailLine = session.accountEmail 
       ? `\n📧 <code>${session.accountEmail}</code>` 
       : '';
 
-    if (chosenType === 'qr') {
+    if (chosenType === 'tv') {
+      session.step = 'awaiting_tv_code';
+
       await editMessage(chatId, messageId, bi(
-        `✅ اخترت: <b>تلفزيون (QR) 📺</b>${emailLine}\n\n📝 <b>التعليمات:</b>\n1️⃣ افتح تطبيق OSN على التلفزيون\n2️⃣ اختر "تسجيل الدخول بـ QR"\n3️⃣ اضغط الزر أدناه وسأرسل لك رمز QR`,
-        `✅ You chose: <b>TV (QR) 📺</b>${emailLine}\n\n📝 <b>Instructions:</b>\n1️⃣ Open OSN app on your TV\n2️⃣ Select "Login with QR"\n3️⃣ Press the button below and I'll send you the QR code`
-      ), [[{ text: '📺 أرسل لي QR / Send me QR', callback_data: 'logged_in' }]]);
+        `✅ اخترت: <b>تلفزيون 📺</b>${emailLine}\n\n📝 <b>التعليمات:</b>\n1️⃣ افتح تطبيق OSN على التلفزيون\n2️⃣ ستظهر لك <b>أرقام/كود</b> على الشاشة\n3️⃣ <b>أرسل لي هذه الأرقام هنا</b>\n\n⌨️ اكتب الأرقام الموجودة على شاشة التلفزيون:`,
+        `✅ You chose: <b>TV 📺</b>${emailLine}\n\n📝 <b>Instructions:</b>\n1️⃣ Open OSN app on your TV\n2️⃣ You'll see <b>numbers/code</b> on the screen\n3️⃣ <b>Send me those numbers here</b>\n\n⌨️ Type the numbers shown on your TV screen:`
+      ));
     } else {
+      session.step = 'awaiting_login';
+
       await editMessage(chatId, messageId, bi(
         `✅ اخترت: <b>هاتف (OTP) 📱</b>${emailLine}\n\n📝 <b>التعليمات:</b>\n1️⃣ افتح تطبيق OSN\n2️⃣ اختر "تسجيل الدخول"\n3️⃣ أدخل البريد أعلاه\n4️⃣ ⚠️ <b>يجب تسجيل الدخول أولاً قبل طلب الرمز</b>\n5️⃣ بعد الدخول، اضغط الزر أدناه`,
         `✅ You chose: <b>Phone (OTP) 📱</b>${emailLine}\n\n📝 <b>Instructions:</b>\n1️⃣ Open OSN app\n2️⃣ Select "Login"\n3️⃣ Enter the email above\n4️⃣ ⚠️ <b>You must login first before requesting the code</b>\n5️⃣ After login, press the button below`
@@ -324,45 +372,19 @@ async function handleCallbackQuery(callbackQuery) {
     return;
   }
 
-  // === Confirm login ===
+  // === Confirm login (OTP flow only) ===
   if (data === 'logged_in') {
-    if (session.activationType === 'qr') {
-      // QR activation
-      await editMessage(chatId, messageId, bi(
-        '⏳ جاري توليد رمز QR...',
-        '⏳ Generating QR code...'
-      ));
+    session.step = 'awaiting_otp_request';
 
-      const qrResult = await getQRFromSession();
+    await supabase
+      .from('activation_codes')
+      .update({ status: 'awaiting_otp', updated_at: new Date().toISOString() })
+      .eq('id', session.activationCodeId);
 
-      if (qrResult.success && qrResult.qrImage) {
-        await sendPhoto(chatId, qrResult.qrImage, bi(
-          '✅ <b>رمز QR جاهز!</b>\n\n📺 امسح هذا الرمز من شاشة التلفزيون.',
-          '✅ <b>QR Code ready!</b>\n\n📺 Scan this code from your TV screen.'
-        ));
-        await markCodeAsUsed(session.activationCodeId);
-        await sendSuccessMessage(chatId, session);
-        delete userSessions[chatId];
-      } else {
-        await editMessage(chatId, messageId, bi(
-          `❌ فشل توليد رمز QR\n\n${qrResult.error || 'خطأ غير معروف'}\n\nجرب مرة أخرى:`,
-          `❌ Failed to generate QR code\n\n${qrResult.error || 'Unknown error'}\n\nTry again:`
-        ), [[{ text: '🔄 إعادة / Retry', callback_data: 'logged_in' }]]);
-      }
-    } else {
-      // OTP activation
-      session.step = 'awaiting_otp_request';
-
-      await supabase
-        .from('activation_codes')
-        .update({ status: 'awaiting_otp', updated_at: new Date().toISOString() })
-        .eq('id', session.activationCodeId);
-
-      await editMessage(chatId, messageId, bi(
-        `✅ ممتاز!\n\n📱 الآن في تطبيق OSN:\n1️⃣ سيطلب منك رمز تحقق\n2️⃣ بعد أن يُرسل الرمز، اضغط الزر أدناه\n\n⏰ <b>ملاحظة:</b> الرمز يصل خلال ثوانٍ`,
-        `✅ Great!\n\n📱 Now in OSN app:\n1️⃣ It will ask for a verification code\n2️⃣ After the code is sent, press the button below\n\n⏰ <b>Note:</b> The code arrives within seconds`
-      ), [[{ text: '🔑 أحضر لي الرمز / Get my code', callback_data: 'get_otp' }]]);
-    }
+    await editMessage(chatId, messageId, bi(
+      `✅ ممتاز!\n\n📱 الآن في تطبيق OSN:\n1️⃣ سيطلب منك رمز تحقق\n2️⃣ بعد أن يُرسل الرمز، اضغط الزر أدناه\n\n⏰ <b>ملاحظة:</b> الرمز يصل خلال ثوانٍ`,
+      `✅ Great!\n\n📱 Now in OSN app:\n1️⃣ It will ask for a verification code\n2️⃣ After the code is sent, press the button below\n\n⏰ <b>Note:</b> The code arrives within seconds`
+    ), [[{ text: '🔑 أحضر لي الرمز / Get my code', callback_data: 'get_otp' }]]);
     return;
   }
 
@@ -445,6 +467,16 @@ async function sendSuccessMessage(chatId, session) {
 // ============================================================
 // Session Manager Integration
 // ============================================================
+async function enterTVCodeFromSession(tvCode) {
+  try {
+    const result = await sessionManager.enterTVCode(tvCode);
+    return result;
+  } catch (error) {
+    console.error('❌ TV code entry error:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 async function getQRFromSession() {
   try {
     const qrData = await sessionManager.getQRCode();
