@@ -39,8 +39,9 @@ class GmailReader {
           const sinceDate = new Date();
           sinceDate.setMinutes(sinceDate.getMinutes() - maxAgeMinutes);
           
+          // IMAP يحتاج Date object وليس string
           const searchCriteria = [
-            ['SINCE', sinceDate.toISOString().split('T')[0]],
+            ['SINCE', sinceDate],
           ];
 
           // إضافة فلتر المرسل إذا وُجد
