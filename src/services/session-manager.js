@@ -220,157 +220,245 @@ class OSNSessionManager {
    * @param {string} tvCode - الكود المعروض على شاشة التلفزيون
    */
   async enterTVCode(tvCode) {
+    console.log(`📺 [enterTVCode] START - code: ${tvCode}, isLoggedIn: ${this.isLoggedIn}, hasCookies: ${!!this.storedCookies}, cookiesCount: ${this.storedCookies?.length || 0}`);
+    
     if (!this.isLoggedIn || !this.storedCookies) {
+      console.error('❌ [enterTVCode] ABORT - no session/cookies');
       return { success: false, error: 'الجلسة غير متصلة - يرجى استيراد الكوكيز أولاً' };
     }
 
     return await this._withBrowser(async (browser) => {
-      console.log(`📺 Entering TV code: ${tvCode}`);
-
-      const page = await browser.newPage();
-      await page.setViewport({ width: 1280, height: 720 });
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-
-      // حقن الكوكيز المحفوظة
-      const puppeteerCookies = this.storedCookies.map(c => ({
-        name: c.name,
-        value: c.value,
-        domain: c.domain || '.osnplus.com',
-        path: c.path || '/',
-        secure: c.secure || false,
-        httpOnly: c.httpOnly || false,
-        ...(c.expirationDate ? { expires: c.expirationDate } : {}),
-      }));
-      await page.setCookie(...puppeteerCookies);
-
-      // الذهاب لصفحة ربط التلفزيون
+      let page = null;
       try {
-        await page.goto('https://osnplus.com/en/login/tv', {
-          waitUntil: 'domcontentloaded',
-          timeout: 25000,
-        });
-      } catch {
-        console.log('⚠️ TV login page slow, continuing...');
-      }
+        console.log('📺 [enterTVCode] Browser opened, creating page...');
+        page = await browser.newPage();
+        await page.setViewport({ width: 1280, height: 720 });
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-      await new Promise(resolve => setTimeout(resolve, 3000));
+        // حقن الكوكيز المحفوظة
+        console.log(`🍪 [enterTVCode] Setting ${this.storedCookies.length} cookies...`);
+        const puppeteerCookies = this.storedCookies.map(c => ({
+          name: c.name,
+          value: c.value,
+          domain: c.domain || '.osnplus.com',
+          path: c.path || '/',
+          secure: c.secure || false,
+          httpOnly: c.httpOnly || false,
+          ...(c.expirationDate ? { expires: c.expirationDate } : {}),
+        }));
+        await page.setCookie(...puppeteerCookies);
+        console.log('✅ [enterTVCode] Cookies set');
 
-      const currentUrl = page.url();
-      console.log('🔗 TV login page URL:', currentUrl);
-
-      // التحقق أن الجلسة لا تزال صالحة
-      if (currentUrl.includes('login') && !currentUrl.includes('login/tv')) {
-        this.isLoggedIn = false;
-        this.storedCookies = null;
-        return { success: false, error: 'الكوكيز منتهية - يرجى استيراد كوكيز جديدة' };
-      }
-
-      // انتظار إضافي للتأكد أن الحقول جاهزة
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // البحث عن حقول الإدخال - OSN عادة 5 حقول منفصلة
-      const allInputs = await page.$$('input[type="text"], input[type="tel"], input[type="number"], input[inputmode="numeric"]');
-      console.log(`🔍 Found ${allInputs.length} input fields on page`);
-
-      const digits = tvCode.replace(/[\s\-]/g, '').split('');
-      console.log(`📝 Code digits to enter: ${digits.join(', ')} (${digits.length} digits)`);
-
-      if (allInputs.length >= digits.length) {
-        // حقول منفصلة لكل رقم (OSN يستخدم 5 حقول)
-        console.log(`📝 Using ${digits.length} separate input fields`);
-        for (let i = 0; i < digits.length; i++) {
-          // مسح أي قيمة قديمة أولاً
-          await allInputs[i].click({ clickCount: 3 });
-          await page.keyboard.press('Backspace');
-          await new Promise(resolve => setTimeout(resolve, 100));
-          await allInputs[i].type(digits[i], { delay: 150 });
-          await new Promise(resolve => setTimeout(resolve, 200));
+        // الذهاب لصفحة ربط التلفزيون
+        console.log('🌐 [enterTVCode] Navigating to https://osnplus.com/en/login/tv ...');
+        try {
+          await page.goto('https://osnplus.com/en/login/tv', {
+            waitUntil: 'domcontentloaded',
+            timeout: 30000,
+          });
+          console.log('✅ [enterTVCode] Navigation complete');
+        } catch (navErr) {
+          console.log('⚠️ [enterTVCode] Navigation timeout but continuing:', navErr.message);
         }
-        console.log('✅ All digits entered successfully');
-      } else if (allInputs.length === 1) {
-        // حقل واحد - ندخل الكود كامل
-        console.log('📝 Single input field - entering full code');
-        await allInputs[0].click({ clickCount: 3 });
-        await page.keyboard.press('Backspace');
-        await allInputs[0].type(tvCode, { delay: 100 });
-      } else {
-        // محاولة بحث متقدمة
-        const advancedSelectors = [
-          'input[placeholder*="code" i]',
-          'input[placeholder*="رمز" i]',
-          'input[name*="code" i]',
-          'input[name*="pin" i]',
-        ];
-        let found = false;
-        for (const selector of advancedSelectors) {
-          const input = await page.$(selector);
-          if (input) {
-            console.log(`✅ Found input via: ${selector}`);
-            await input.click({ clickCount: 3 });
+
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        const currentUrl = page.url();
+        console.log('🔗 [enterTVCode] Current URL:', currentUrl);
+
+        // أخذ screenshot قبل إدخال الكود
+        let beforeScreenshot = null;
+        try {
+          beforeScreenshot = await page.screenshot({ encoding: 'base64' });
+          console.log('📸 [enterTVCode] Before-screenshot taken');
+        } catch (ssErr) {
+          console.log('⚠️ [enterTVCode] Screenshot failed:', ssErr.message);
+        }
+
+        // التحقق أن الجلسة لا تزال صالحة
+        if (currentUrl.includes('login') && !currentUrl.includes('login/tv')) {
+          console.error('❌ [enterTVCode] Redirected to login - cookies expired!');
+          this.isLoggedIn = false;
+          this.storedCookies = null;
+          return { 
+            success: false, 
+            error: 'الكوكيز منتهية - يرجى استيراد كوكيز جديدة',
+            screenshot: beforeScreenshot ? `data:image/png;base64,${beforeScreenshot}` : null,
+            finalUrl: currentUrl,
+          };
+        }
+
+        // انتظار إضافي للتأكد أن الحقول جاهزة
+        console.log('⏳ [enterTVCode] Waiting for input fields...');
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        // محاولة انتظار الحقول بشكل أذكى
+        try {
+          await page.waitForSelector('input', { timeout: 10000 });
+          console.log('✅ [enterTVCode] Input element found on page');
+        } catch {
+          console.log('⚠️ [enterTVCode] No input found after waiting 10s');
+        }
+
+        // البحث عن حقول الإدخال - OSN عادة 5 حقول منفصلة
+        const allInputs = await page.$$('input[type="text"], input[type="tel"], input[type="number"], input[inputmode="numeric"], input:not([type="hidden"])');
+        console.log(`🔍 [enterTVCode] Found ${allInputs.length} input fields`);
+
+        // طباعة تفاصيل كل حقل
+        for (let i = 0; i < allInputs.length; i++) {
+          const info = await page.evaluate(el => ({
+            type: el.type,
+            name: el.name,
+            id: el.id,
+            placeholder: el.placeholder,
+            className: el.className.substring(0, 50),
+            inputMode: el.inputMode,
+            maxLength: el.maxLength,
+          }), allInputs[i]);
+          console.log(`  📝 Input[${i}]:`, JSON.stringify(info));
+        }
+
+        const digits = tvCode.replace(/[\s\-]/g, '').split('');
+        console.log(`📝 [enterTVCode] Digits: ${digits.join(', ')} (${digits.length})`);
+
+        if (allInputs.length >= digits.length) {
+          console.log(`📝 [enterTVCode] Using ${digits.length} separate fields`);
+          for (let i = 0; i < digits.length; i++) {
+            await allInputs[i].click({ clickCount: 3 });
             await page.keyboard.press('Backspace');
-            await input.type(tvCode, { delay: 100 });
-            found = true;
-            break;
+            await new Promise(resolve => setTimeout(resolve, 150));
+            await allInputs[i].type(digits[i], { delay: 200 });
+            console.log(`  ✅ Digit ${i}: '${digits[i]}' entered`);
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+          console.log('✅ [enterTVCode] All digits entered');
+        } else if (allInputs.length === 1) {
+          console.log('📝 [enterTVCode] Single input - entering full code');
+          await allInputs[0].click({ clickCount: 3 });
+          await page.keyboard.press('Backspace');
+          await allInputs[0].type(tvCode, { delay: 100 });
+        } else if (allInputs.length === 0) {
+          console.error('❌ [enterTVCode] NO INPUT FIELDS FOUND! Page might not have loaded correctly.');
+          // طباعة محتوى الصفحة للتحليل
+          const bodyText = await page.evaluate(() => document.body?.innerText?.substring(0, 500) || 'EMPTY');
+          console.log('📄 [enterTVCode] Page content preview:', bodyText);
+          
+          return {
+            success: false,
+            error: 'لم يتم العثور على حقول إدخال في الصفحة. الصفحة قد لم تُحمّل بشكل صحيح.',
+            screenshot: beforeScreenshot ? `data:image/png;base64,${beforeScreenshot}` : null,
+            finalUrl: currentUrl,
+            debug: bodyText.substring(0, 200),
+          };
+        } else {
+          // حقول أقل من المتوقع
+          console.log(`⚠️ [enterTVCode] Found ${allInputs.length} fields, expected ${digits.length}. Trying advanced selectors...`);
+          const advancedSelectors = [
+            'input[placeholder*="code" i]',
+            'input[placeholder*="رمز" i]',
+            'input[name*="code" i]',
+            'input[name*="pin" i]',
+          ];
+          let found = false;
+          for (const selector of advancedSelectors) {
+            const input = await page.$(selector);
+            if (input) {
+              console.log(`✅ [enterTVCode] Found input via: ${selector}`);
+              await input.click({ clickCount: 3 });
+              await page.keyboard.press('Backspace');
+              await input.type(tvCode, { delay: 100 });
+              found = true;
+              break;
+            }
+          }
+          if (!found) {
+            console.log('⚠️ [enterTVCode] Fallback: typing via keyboard directly...');
+            await page.keyboard.type(tvCode, { delay: 150 });
           }
         }
-        if (!found) {
-          console.log('⚠️ No input found, trying keyboard input directly...');
-          await page.keyboard.type(tvCode, { delay: 150 });
+
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        // البحث عن زر التأكيد
+        console.log('🔘 [enterTVCode] Looking for confirm button...');
+        const confirmButton = await this._findButton(page, [
+          'connect', 'link', 'pair', 'submit', 'confirm', 'verify',
+          'ربط', 'تأكيد', 'إرسال', 'اتصال', 'continue', 'next', 'متابعة', 'التالي'
+        ]);
+
+        if (confirmButton) {
+          const btnText = await page.evaluate(el => el.textContent?.trim(), confirmButton);
+          console.log(`🔘 [enterTVCode] Clicking button: "${btnText}"`);
+          await confirmButton.click();
+        } else {
+          console.log('⏎ [enterTVCode] No button found, pressing Enter...');
+          await page.keyboard.press('Enter');
         }
+
+        // انتظار النتيجة
+        console.log('⏳ [enterTVCode] Waiting 6s for result...');
+        await new Promise(resolve => setTimeout(resolve, 6000));
+
+        // أخذ screenshot النتيجة
+        let resultScreenshot = null;
+        try {
+          resultScreenshot = await page.screenshot({ encoding: 'base64' });
+          console.log('📸 [enterTVCode] Result screenshot taken');
+        } catch (ssErr) {
+          console.log('⚠️ [enterTVCode] Result screenshot failed:', ssErr.message);
+        }
+
+        const finalUrl = page.url();
+        console.log('🔗 [enterTVCode] Final URL:', finalUrl);
+
+        const pageContent = await page.evaluate(() => document.body?.innerText?.toLowerCase() || '');
+        console.log('📄 [enterTVCode] Page content (first 300):', pageContent.substring(0, 300));
+
+        const successKeywords = [
+          'success', 'connected', 'paired', 'linked', 'activated', 'done',
+          'نجاح', 'تم الربط', 'مرتبط', 'تم التفعيل', 'تم بنجاح', 'مفعّل',
+          'device linked', 'tv linked', 'enjoy watching'
+        ];
+        const failKeywords = [
+          'invalid', 'expired', 'wrong', 'error', 'try again', 'incorrect',
+          'غير صحيح', 'منتهي', 'خطأ', 'حاول مرة أخرى'
+        ];
+        const isSuccess = successKeywords.some(k => pageContent.includes(k));
+        const isFailed = failKeywords.some(k => pageContent.includes(k));
+
+        console.log(`📊 [enterTVCode] Result: success=${isSuccess}, failed=${isFailed}`);
+        this.lastActivity = new Date();
+
+        return {
+          success: true,
+          paired: isSuccess,
+          failed: isFailed,
+          screenshot: resultScreenshot ? `data:image/png;base64,${resultScreenshot}` : (beforeScreenshot ? `data:image/png;base64,${beforeScreenshot}` : null),
+          finalUrl,
+          message: isSuccess 
+            ? 'تم ربط التلفزيون بنجاح!' 
+            : isFailed
+            ? 'فشل ربط التلفزيون - الكود غير صحيح أو منتهي'
+            : 'تم إدخال الكود - تحقق من الصورة للنتيجة',
+        };
+      } catch (innerError) {
+        console.error('❌ [enterTVCode] INNER ERROR:', innerError.message);
+        console.error('❌ [enterTVCode] Stack:', innerError.stack?.substring(0, 500));
+        
+        // محاولة أخذ screenshot حتى عند الخطأ
+        let errorScreenshot = null;
+        if (page) {
+          try {
+            errorScreenshot = await page.screenshot({ encoding: 'base64' });
+          } catch {}
+        }
+
+        return {
+          success: false,
+          error: `خطأ أثناء إدخال الكود: ${innerError.message}`,
+          screenshot: errorScreenshot ? `data:image/png;base64,${errorScreenshot}` : null,
+        };
       }
-
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      // البحث عن زر التأكيد والضغط عليه
-      const confirmButton = await this._findButton(page, [
-        'connect', 'link', 'pair', 'submit', 'confirm', 'verify',
-        'ربط', 'تأكيد', 'إرسال', 'اتصال', 'continue', 'next', 'متابعة', 'التالي'
-      ]);
-
-      if (confirmButton) {
-        console.log('🔘 Clicking confirm button...');
-        await confirmButton.click();
-      } else {
-        // ضغط Enter كبديل
-        console.log('⏎ No confirm button found, pressing Enter...');
-        await page.keyboard.press('Enter');
-      }
-
-      // انتظار النتيجة
-      await new Promise(resolve => setTimeout(resolve, 5000));
-
-      // أخذ screenshot للنتيجة
-      const resultScreenshot = await page.screenshot({ encoding: 'base64' });
-      const finalUrl = page.url();
-      
-      // محاولة اكتشاف النجاح - كلمات متعددة
-      const pageContent = await page.evaluate(() => document.body.innerText.toLowerCase());
-      const successKeywords = [
-        'success', 'connected', 'paired', 'linked', 'activated', 'done',
-        'نجاح', 'تم الربط', 'مرتبط', 'تم التفعيل', 'تم بنجاح', 'مفعّل',
-        'device linked', 'tv linked', 'enjoy watching'
-      ];
-      const failKeywords = [
-        'invalid', 'expired', 'wrong', 'error', 'try again',
-        'غير صحيح', 'منتهي', 'خطأ', 'حاول مرة أخرى'
-      ];
-      const isSuccess = successKeywords.some(k => pageContent.includes(k));
-      const isFailed = failKeywords.some(k => pageContent.includes(k));
-
-      this.lastActivity = new Date();
-
-      return {
-        success: true,
-        paired: isSuccess,
-        failed: isFailed,
-        screenshot: `data:image/png;base64,${resultScreenshot}`,
-        finalUrl,
-        message: isSuccess 
-          ? 'تم ربط التلفزيون بنجاح!' 
-          : isFailed
-          ? 'فشل ربط التلفزيون - الكود غير صحيح أو منتهي'
-          : 'تم إدخال الكود - تحقق من الصورة للنتيجة',
-      };
     });
   }
 

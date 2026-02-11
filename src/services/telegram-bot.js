@@ -432,11 +432,19 @@ async function handleCallbackQuery(callbackQuery) {
       await sendSuccessMessage(chatId, session);
       delete userSessions[chatId];
     } else {
-      // فشل - عرض النتيجة وطلب المحاولة مرة أخرى
+      // فشل - عرض النتيجة مع تفاصيل الخطأ
+      const errorDetail = tvResult.error || tvResult.message || 'سبب غير معروف';
+      console.log(`❌ TV code failed: ${errorDetail}, hasScreenshot: ${!!tvResult.screenshot}`);
+      
       if (tvResult.screenshot) {
         await sendPhoto(chatId, tvResult.screenshot, bi(
-          '❌ <b>فشل ربط التلفزيون</b>\n\nيبدو أن الكود غير صحيح أو منتهي.',
-          '❌ <b>TV linking failed</b>\n\nThe code seems incorrect or expired.'
+          `❌ <b>فشل ربط التلفزيون</b>\n\n📋 السبب: ${errorDetail}\n🔗 الرابط: ${tvResult.finalUrl || 'غير متوفر'}`,
+          `❌ <b>TV linking failed</b>\n\n📋 Reason: ${errorDetail}\n🔗 URL: ${tvResult.finalUrl || 'N/A'}`
+        ));
+      } else {
+        await sendMessage(chatId, bi(
+          `❌ <b>فشل ربط التلفزيون</b>\n\n📋 السبب: ${errorDetail}\n\n⚠️ لم يتم أخذ صورة من الموقع.`,
+          `❌ <b>TV linking failed</b>\n\n📋 Reason: ${errorDetail}\n\n⚠️ No screenshot was captured.`
         ));
       }
       session.step = 'awaiting_tv_code';
