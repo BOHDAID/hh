@@ -582,9 +582,32 @@ async function enterTVCodeFromSession(tvCode) {
       }
 
       // تحميل الكوكيز في الذاكرة مباشرة (بدون فتح متصفح للتحقق)
-      const cookies = typeof sessions.cookies === 'string' 
-        ? JSON.parse(sessions.cookies) 
-        : sessions.cookies;
+      const rawCookies = sessions.cookies;
+      console.log(`🔍 [DEBUG] Raw cookies type: ${typeof rawCookies}, isArray: ${Array.isArray(rawCookies)}, preview: ${JSON.stringify(rawCookies)?.substring(0, 200)}`);
+      
+      let cookies;
+      if (typeof rawCookies === 'string') {
+        try {
+          cookies = JSON.parse(rawCookies);
+        } catch (e) {
+          console.error('❌ Failed to parse cookies string:', e.message);
+          return { success: false, error: 'الكوكيز مخزنة بصيغة غير صحيحة في قاعدة البيانات' };
+        }
+      } else if (Array.isArray(rawCookies)) {
+        cookies = rawCookies;
+      } else if (rawCookies && typeof rawCookies === 'object') {
+        // ربما مخزنة كـ object وليس array
+        cookies = Object.values(rawCookies);
+        console.log(`⚠️ Cookies stored as object, converted to array: ${cookies.length} items`);
+      } else {
+        console.error('❌ Cookies data is empty or invalid:', rawCookies);
+        return { success: false, error: 'الكوكيز فارغة في قاعدة البيانات. يرجى استيراد كوكيز جديدة.' };
+      }
+
+      if (!Array.isArray(cookies) || cookies.length === 0) {
+        console.error('❌ Cookies array is empty after parsing');
+        return { success: false, error: 'الكوكيز فارغة. يرجى استيراد كوكيز OSN جديدة.' };
+      }
       
       sessionManager.storedCookies = cookies;
       sessionManager.isLoggedIn = true;
