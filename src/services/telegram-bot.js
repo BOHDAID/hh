@@ -560,94 +560,75 @@ async function sendSuccessMessage(chatId, session) {
 // ============================================================
 async function enterTVCodeFromSession(tvCode) {
   try {
-    // تحميل الكوكيز من قاعدة البيانات دائماً (لضمان أحدث كوكيز)
-    const hasValidCookies = sessionManager.isLoggedIn && 
-      sessionManager.storedCookies && 
-      Array.isArray(sessionManager.storedCookies) && 
-      sessionManager.storedCookies.length > 0;
+    // تحميل بيانات الجلسة من قاعدة البيانات (إيميل + كوكيز + بيانات Gmail)
+    console.log('🔄 Loading OSN session from database...');
+    const { data: session, error: dbError } = await supabase
+      .from('osn_sessions')
+      .select('cookies, email, gmail_address, gmail_app_password, account_password')
+      .eq('is_active', true)
+      .eq('is_connected', true)
+      .limit(1)
+      .maybeSingle();
 
-    if (!hasValidCookies) {
-      console.log('🔄 Loading OSN cookies from database...');
-      const { data: sessions, error: dbError } = await supabase
-        .from('osn_sessions')
-        .select('cookies, email')
-        .eq('is_active', true)
-        .eq('is_connected', true)
-        .limit(1)
-        .maybeSingle();
-
-      if (dbError) {
-        console.error('❌ DB Error loading osn_sessions:', dbError.message);
-        return { success: false, error: 'خطأ في قراءة الجلسة من قاعدة البيانات: ' + dbError.message };
-      }
-
-      if (!sessions || !sessions.cookies) {
-        console.error('❌ No active OSN session found in database');
-        return { success: false, error: 'لا توجد جلسة OSN نشطة. يرجى استيراد كوكيز OSN أولاً.' };
-      }
-
-      // تحميل الكوكيز بطريقة آمنة
-      const rawCookies = sessions.cookies;
-      console.log(`🔍 [DEBUG] Raw cookies type: ${typeof rawCookies}, isArray: ${Array.isArray(rawCookies)}`);
-      console.log(`🔍 [DEBUG] Raw cookies preview: ${JSON.stringify(rawCookies)?.substring(0, 300)}`);
-      
-      let cookies;
-      if (typeof rawCookies === 'string') {
-        try {
-          cookies = JSON.parse(rawCookies);
-        } catch (e) {
-          console.error('❌ Failed to parse cookies string:', e.message);
-          return { success: false, error: 'الكوكيز مخزنة بصيغة غير صحيحة' };
-        }
-      } else if (Array.isArray(rawCookies)) {
-        cookies = rawCookies;
-      } else if (rawCookies && typeof rawCookies === 'object') {
-        cookies = Object.values(rawCookies);
-        console.log(`⚠️ Cookies were object, converted to array: ${cookies.length}`);
-      } else {
-        return { success: false, error: 'الكوكيز فارغة. يرجى استيراد كوكيز جديدة.' };
-      }
-
-      // التأكد إنها مصفوفة وفيها عناصر
-      if (!Array.isArray(cookies) || cookies.length === 0) {
-        console.error('❌ Cookies empty after parsing. Raw type was:', typeof rawCookies);
-        // إعادة تعيين حالة الجلسة
-        sessionManager.isLoggedIn = false;
-        sessionManager.storedCookies = null;
-        return { success: false, error: 'الكوكيز فارغة في قاعدة البيانات. يرجى استيراد كوكيز OSN جديدة.' };
-      }
-      
-      sessionManager.storedCookies = cookies;
-      sessionManager.isLoggedIn = true;
-      sessionManager.currentEmail = sessions.email || 'db-session';
-      sessionManager.lastActivity = new Date();
-      console.log(`✅ Loaded ${cookies.length} cookies from DB for: ${sessions.email}`);
-    } else {
-      console.log(`✅ Using cached ${sessionManager.storedCookies.length} cookies for: ${sessionManager.currentEmail}`);
+    if (dbError) {
+      console.error('❌ DB Error:', dbError.message);
+      return { success: false, error: 'خطأ في قراءة الجلسة: ' + dbError.message };
     }
 
-    const result = await sessionManager.enterTVCode(tvCode);
+    if (!session) {
+      return { success: false, error: 'لا توجد جلسة OSN نشطة. يرجى إضافة جلسة في لوحة الإدارة.' };
+    }
+
+    console.log(`✅ Session loaded: email=${session.email}, hasGmail=${!!session.gmail_address}, hasCookies=${!!session.cookies}`);
+
+    // تحميل الكوكيز المحفوظة (إن وُجدت)
+    if (session.cookies) {
+      let cookies;
+      if (typeof session.cookies === 'string') {
+        try { cookies = JSON.parse(session.cookies); } catch (e) { cookies = []; }
+      } else if (Array.isArray(session.cookies)) {
+        cookies = session.cookies;
+      } else {
+        cookies = [];
+      }
+      
+      if (cookies.length > 0) {
+        sessionManager.storedCookies = cookies;
+        sessionManager.isLoggedIn = true;
+        sessionManager.currentEmail = session.email;
+        console.log(`🍪 Loaded ${cookies.length} cached cookies`);
+      }
+    }
+
+    // تمرير بيانات تسجيل الدخول للـ auto-login
+    const credentials = {
+      email: session.email,
+      gmailAddress: session.gmail_address,
+      gmailAppPassword: session.gmail_app_password,
+    };
+
+    const result = await sessionManager.enterTVCode(tvCode, credentials);
     
-    // حفظ الكوكيز المجدّدة تلقائياً في قاعدة البيانات
-    if (result.refreshedCookies && sessionManager.storedCookies?.length > 0) {
-      console.log('🔄 Saving refreshed cookies to database...');
+    // حفظ الكوكيز الجديدة (من auto-login) في قاعدة البيانات
+    if (result.newSessionCookies && sessionManager.storedCookies?.length > 0) {
+      console.log('💾 Saving new session cookies to database...');
       try {
         const { error: updateErr } = await supabase
           .from('osn_sessions')
           .update({ 
             cookies: sessionManager.storedCookies,
+            is_connected: true,
             last_activity: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
-          .eq('is_active', true)
-          .eq('is_connected', true);
+          .eq('is_active', true);
         if (updateErr) {
-          console.error('⚠️ Failed to save refreshed cookies:', updateErr.message);
+          console.error('⚠️ Failed to save cookies:', updateErr.message);
         } else {
-          console.log('✅ Refreshed cookies saved to DB');
+          console.log('✅ New cookies saved to DB!');
         }
       } catch (e) {
-        console.error('⚠️ Error saving refreshed cookies:', e.message);
+        console.error('⚠️ Error saving cookies:', e.message);
       }
     }
     

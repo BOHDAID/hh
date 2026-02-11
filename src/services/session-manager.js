@@ -1,6 +1,7 @@
 /**
- * OSN Session Manager - Ultra Light Version
- * المتصفح يُفتح فقط عند الحاجة ويُغلق فوراً بعد كل عملية
+ * OSN Session Manager - Auto Login Version
+ * يسجل دخول تلقائي بالإيميل + OTP من Gmail
+ * لا يعتمد على كوكيز خارجية
  * مُحسّن لـ 512MB RAM
  */
 
@@ -9,9 +10,7 @@ class OSNSessionManager {
     this.isLoggedIn = false;
     this.currentEmail = null;
     this.lastActivity = null;
-    this.loginAttempts = 0;
-    this.maxLoginAttempts = 3;
-    this.storedCookies = null; // نحتفظ بالكوكيز في الذاكرة فقط
+    this.storedCookies = null;
   }
 
   /**
@@ -35,7 +34,6 @@ class OSNSessionManager {
       '--no-first-run',
       '--mute-audio',
       '--hide-scrollbars',
-      // تقليل استهلاك الذاكرة
       '--js-flags=--max-old-space-size=128',
       '--disable-canvas-aa',
       '--disable-2d-canvas-clip-aa',
@@ -69,8 +67,7 @@ class OSNSessionManager {
   }
 
   /**
-   * فتح متصفح مؤقت - يُستخدم داخلياً فقط
-   * يُغلق بعد كل عملية!
+   * فتح متصفح مؤقت - يُغلق بعد كل عملية
    */
   async _withBrowser(fn) {
     let browser = null;
@@ -79,7 +76,7 @@ class OSNSessionManager {
       const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable';
       
       console.log(`🌐 [_withBrowser] Opening browser... (executablePath: ${executablePath})`);
-      console.log(`🌐 [_withBrowser] Memory usage: ${JSON.stringify(process.memoryUsage().rss / 1024 / 1024)} MB`);
+      console.log(`🌐 [_withBrowser] Memory: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(1)} MB`);
       
       browser = await puppeteer.launch({
         headless: 'new',
@@ -88,155 +85,307 @@ class OSNSessionManager {
         timeout: 30000,
       });
 
-      console.log('✅ [_withBrowser] Browser launched successfully');
-      const result = await fn(browser);
-      return result;
+      console.log('✅ [_withBrowser] Browser launched');
+      return await fn(browser);
     } catch (browserError) {
-      console.error('❌ [_withBrowser] Browser error:', browserError.message);
-      console.error('❌ [_withBrowser] Stack:', browserError.stack?.substring(0, 300));
+      console.error('❌ [_withBrowser] Error:', browserError.message);
       return { 
         success: false, 
-        error: `فشل تشغيل المتصفح: ${browserError.message}. تأكد أن Chrome مثبت على السيرفر (Docker image).`,
+        error: `فشل تشغيل المتصفح: ${browserError.message}`,
       };
     } finally {
       if (browser) {
-        try {
-          await browser.close();
-          console.log('✅ [_withBrowser] Browser closed - RAM freed');
-        } catch {}
+        try { await browser.close(); console.log('✅ Browser closed'); } catch {}
       }
     }
   }
 
   /**
-   * إنشاء صفحة خفيفة - بدون صور وخطوط وCSS
+   * تسجيل دخول تلقائي عبر إيميل + OTP
+   * @param {object} page - صفحة Puppeteer
+   * @param {string} email - إيميل حساب OSN
+   * @param {string} gmailAddress - إيميل Gmail لقراءة OTP
+   * @param {string} gmailAppPassword - كلمة مرور تطبيق Gmail
+   * @returns {Promise<{success: boolean, error?: string}>}
    */
-  async _createLightPage(browser) {
-    const page = await browser.newPage();
-    
-    // Viewport صغير لتوفير الذاكرة
-    await page.setViewport({ width: 800, height: 600 });
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-    
-    // حظر الموارد الثقيلة (صور، خطوط، CSS، فيديو)
-    await page.setRequestInterception(true);
-    page.on('request', (req) => {
-      const type = req.resourceType();
-      if (['image', 'font', 'stylesheet', 'media', 'texttrack', 'manifest'].includes(type)) {
-        req.abort();
-      } else {
-        req.continue();
-      }
-    });
+  async _loginWithEmail(page, email, gmailAddress, gmailAppPassword) {
+    console.log(`🔐 [Login] Starting auto-login for: ${email}`);
+    console.log(`📧 [Login] Gmail for OTP: ${gmailAddress}`);
 
-    return page;
-  }
-
-  /**
-   * تهيئة الجلسة - بدون فتح متصفح
-   */
-  async initialize(email, gmailAppPassword) {
-    console.log('🚀 Initializing OSN Session Manager (ultra-light mode)...');
-    this.loginAttempts = 0;
-    this.currentEmail = email;
-    
-    // لا نفتح متصفح هنا - فقط نحفظ البيانات
-    console.log('✅ Session manager ready. Browser will open only when needed.');
-    return { 
-      success: true, 
-      message: 'تم تجهيز المدير. المتصفح يُفتح فقط عند الحاجة لتوفير الذاكرة.' 
-    };
-  }
-
-  /**
-   * إغلاق المتصفح (للتوافق)
-   */
-  async closeBrowser() {
-    // لا يوجد متصفح مفتوح دائماً
-    this.isLoggedIn = false;
-    this.storedCookies = null;
-    this.currentEmail = null;
-    console.log('✅ Session cleared');
-  }
-
-  /**
-   * استيراد كوكيز - يفتح متصفح مؤقت للتحقق ثم يُغلقه
-   */
-  async importCookies(cookies, email) {
-    return await this._withBrowser(async (browser) => {
-      console.log(`🍪 Importing ${cookies.length} cookies...`);
-
-      const page = await this._createLightPage(browser);
-
-      // تحويل الكوكيز لصيغة Puppeteer
-      const puppeteerCookies = cookies.map(c => ({
-        name: c.name,
-        value: c.value,
-        domain: c.domain || '.osnplus.com',
-        path: c.path || '/',
-        secure: c.secure || false,
-        httpOnly: c.httpOnly || false,
-        ...(c.expirationDate ? { expires: c.expirationDate } : {}),
-      }));
-
-      await page.setCookie(...puppeteerCookies);
-      console.log('✅ Cookies set in browser');
-
-      // التحقق من الجلسة
+    try {
+      // ====== الخطوة 1: الذهاب لصفحة تسجيل الدخول ======
+      console.log('🌐 [Login] Step 1: Navigating to login page...');
       try {
-        await page.goto('https://osnplus.com/', {
-          waitUntil: 'domcontentloaded',
-          timeout: 20000,
+        await page.goto('https://osnplus.com/en/login', {
+          waitUntil: 'networkidle2',
+          timeout: 30000,
         });
-      } catch (navError) {
-        console.log('⚠️ Navigation slow but continuing:', navError.message);
+      } catch (navErr) {
+        console.log('⚠️ [Login] Nav timeout, continuing:', navErr.message);
+      }
+      await this._sleep(3000);
+
+      const loginUrl = page.url();
+      console.log('🔗 [Login] Current URL:', loginUrl);
+
+      // ====== الخطوة 2: البحث عن "More ways to sign up or login" أو حقل الإيميل ======
+      console.log('🔍 [Login] Step 2: Looking for email login option...');
+      
+      // أولاً: نبحث عن زر "more ways" أو "email" أو "sign up"
+      const moreWaysBtn = await this._findButton(page, [
+        'more ways', 'sign up or login', 'email', 'البريد', 'تسجيل',
+        'log in with email', 'sign in with email', 'use email'
+      ]);
+      
+      if (moreWaysBtn) {
+        const btnText = await page.evaluate(el => el.textContent?.trim(), moreWaysBtn);
+        console.log(`🔘 [Login] Clicking: "${btnText}"`);
+        await moreWaysBtn.click();
+        await this._sleep(3000);
       }
 
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // ====== الخطوة 3: البحث عن حقل الإيميل وإدخاله ======
+      console.log('🔍 [Login] Step 3: Looking for email input...');
+      
+      let emailInput = await page.$('input[type="email"]');
+      if (!emailInput) {
+        emailInput = await page.$('input[name="email"]');
+      }
+      if (!emailInput) {
+        emailInput = await page.$('input[placeholder*="email" i]');
+      }
+      if (!emailInput) {
+        emailInput = await page.$('input[placeholder*="بريد" i]');
+      }
+      if (!emailInput) {
+        // أي input نصي مرئي
+        const inputs = await page.$$('input[type="text"], input:not([type])');
+        if (inputs.length > 0) emailInput = inputs[0];
+      }
 
-      const currentUrl = page.url();
-      console.log('🔗 URL after cookie import:', currentUrl);
-
-      const loggedIn = !currentUrl.includes('login');
-
-      if (loggedIn) {
-        // حفظ الكوكيز في الذاكرة للاستخدام لاحقاً
-        this.storedCookies = cookies;
-        this.isLoggedIn = true;
-        this.currentEmail = email || 'imported-session';
-        this.lastActivity = new Date();
-        this.loginAttempts = 0;
-
-        console.log('🎉 Cookie import successful! Logged in as:', this.currentEmail);
-        return {
-          success: true,
-          message: 'تم استيراد الكوكيز بنجاح',
-          email: this.currentEmail,
+      if (!emailInput) {
+        const pageText = await page.evaluate(() => document.body?.innerText?.substring(0, 500)?.toLowerCase() || '');
+        console.log('📄 [Login] Page text:', pageText.substring(0, 300));
+        
+        let screenshot = null;
+        try { screenshot = await page.screenshot({ encoding: 'base64' }); } catch {}
+        
+        return { 
+          success: false, 
+          error: 'لم يتم العثور على حقل الإيميل في صفحة تسجيل الدخول',
+          screenshot: screenshot ? `data:image/png;base64,${screenshot}` : null,
         };
+      }
+
+      // إدخال الإيميل
+      await emailInput.click({ clickCount: 3 });
+      await page.keyboard.press('Backspace');
+      await emailInput.type(email, { delay: 80 });
+      console.log(`📧 [Login] Email entered: ${email}`);
+      await this._sleep(1000);
+
+      // ====== الخطوة 4: الضغط على زر المتابعة ======
+      console.log('🔍 [Login] Step 4: Looking for continue/submit button...');
+      
+      const continueBtn = await this._findButton(page, [
+        'continue', 'next', 'submit', 'sign in', 'log in', 'send code',
+        'متابعة', 'التالي', 'إرسال', 'تسجيل الدخول', 'أرسل الرمز',
+        'send', 'verify', 'get code'
+      ]);
+      
+      if (continueBtn) {
+        const btnText = await page.evaluate(el => el.textContent?.trim(), continueBtn);
+        console.log(`🔘 [Login] Clicking: "${btnText}"`);
+        await continueBtn.click();
       } else {
-        console.error('❌ Cookie import failed - redirected to login');
+        console.log('⏎ [Login] No button found, pressing Enter');
+        await page.keyboard.press('Enter');
+      }
+
+      // ====== الخطوة 5: انتظار إرسال OTP ======
+      console.log('⏳ [Login] Step 5: Waiting for OTP to be sent...');
+      await this._sleep(5000);
+
+      // التحقق من وجود حقل OTP
+      let otpInputs = await page.$$('input[type="tel"], input[type="number"], input[inputmode="numeric"], input[maxlength="1"]');
+      
+      // إذا لم نجد، ننتظر أكثر
+      if (otpInputs.length === 0) {
+        console.log('⏳ [Login] No OTP inputs yet, waiting more...');
+        await this._sleep(5000);
+        otpInputs = await page.$$('input[type="tel"], input[type="number"], input[inputmode="numeric"], input[maxlength="1"]');
+      }
+
+      // إذا ما زلنا لم نجد حقول OTP، نبحث عن أي input
+      if (otpInputs.length === 0) {
+        const allInputs = await page.$$('input:not([type="hidden"]):not([type="email"])');
+        if (allInputs.length > 0) {
+          console.log(`🔍 [Login] Found ${allInputs.length} general inputs for OTP`);
+          otpInputs = allInputs;
+        }
+      }
+
+      const currentPageText = await page.evaluate(() => document.body?.innerText?.substring(0, 500)?.toLowerCase() || '');
+      console.log('📄 [Login] After submit page text:', currentPageText.substring(0, 300));
+
+      // التحقق: هل الصفحة تطلب OTP أم لا؟
+      const needsOTP = otpInputs.length > 0 || 
+        currentPageText.includes('verification') || 
+        currentPageText.includes('code') || 
+        currentPageText.includes('otp') ||
+        currentPageText.includes('رمز') ||
+        currentPageText.includes('تحقق');
+
+      if (!needsOTP) {
+        // ربما تم تسجيل الدخول مباشرة بدون OTP
+        const nowUrl = page.url();
+        if (!nowUrl.includes('login')) {
+          console.log('✅ [Login] Logged in without OTP!');
+          return { success: true };
+        }
+        
+        let screenshot = null;
+        try { screenshot = await page.screenshot({ encoding: 'base64' }); } catch {}
+        
         return {
           success: false,
-          error: 'الكوكيز منتهية الصلاحية أو غير صالحة',
+          error: 'الصفحة لم تطلب رمز تحقق ولم يتم تسجيل الدخول',
+          screenshot: screenshot ? `data:image/png;base64,${screenshot}` : null,
         };
       }
-    });
+
+      // ====== الخطوة 6: جلب OTP من Gmail ======
+      console.log('📧 [Login] Step 6: Fetching OTP from Gmail...');
+      
+      let otpCode = null;
+      const maxOtpAttempts = 6;
+      const otpDelay = 5000; // 5 ثواني بين كل محاولة
+
+      for (let attempt = 1; attempt <= maxOtpAttempts; attempt++) {
+        console.log(`📧 [Login] OTP attempt ${attempt}/${maxOtpAttempts}...`);
+        
+        try {
+          const GmailReader = (await import('./gmail-reader.js')).default;
+          const reader = new GmailReader(gmailAddress, gmailAppPassword);
+          const otpResult = await reader.getLatestOTP(3, 'osn'); // آخر 3 دقائق، فلتر OSN
+          
+          if (otpResult.success && otpResult.otp) {
+            otpCode = otpResult.otp;
+            console.log(`✅ [Login] OTP found: ${otpCode}`);
+            break;
+          }
+          console.log(`⏳ [Login] No OTP yet: ${otpResult.error}`);
+        } catch (gmailErr) {
+          console.error(`❌ [Login] Gmail error: ${gmailErr.message}`);
+        }
+
+        if (attempt < maxOtpAttempts) {
+          await this._sleep(otpDelay);
+        }
+      }
+
+      if (!otpCode) {
+        let screenshot = null;
+        try { screenshot = await page.screenshot({ encoding: 'base64' }); } catch {}
+        
+        return {
+          success: false,
+          error: 'لم يتم العثور على رمز OTP في Gmail بعد 30 ثانية. تأكد من صحة بيانات Gmail.',
+          screenshot: screenshot ? `data:image/png;base64,${screenshot}` : null,
+        };
+      }
+
+      // ====== الخطوة 7: إدخال OTP ======
+      console.log(`📝 [Login] Step 7: Entering OTP: ${otpCode}`);
+      
+      // إعادة البحث عن حقول OTP (قد تكون تغيرت)
+      otpInputs = await page.$$('input[type="tel"], input[type="number"], input[inputmode="numeric"], input[maxlength="1"]');
+      if (otpInputs.length === 0) {
+        otpInputs = await page.$$('input:not([type="hidden"]):not([type="email"])');
+      }
+      
+      const digits = otpCode.split('');
+      
+      if (otpInputs.length >= digits.length) {
+        // حقول منفصلة لكل رقم
+        for (let i = 0; i < digits.length; i++) {
+          await otpInputs[i].click({ clickCount: 3 });
+          await page.keyboard.press('Backspace');
+          await this._sleep(100);
+          await otpInputs[i].type(digits[i], { delay: 100 });
+          await this._sleep(150);
+        }
+      } else if (otpInputs.length === 1) {
+        // حقل واحد
+        await otpInputs[0].click({ clickCount: 3 });
+        await page.keyboard.press('Backspace');
+        await otpInputs[0].type(otpCode, { delay: 100 });
+      } else {
+        // fallback: كتابة عبر الكيبورد
+        await page.keyboard.type(otpCode, { delay: 100 });
+      }
+      
+      console.log('✅ [Login] OTP entered');
+      await this._sleep(2000);
+
+      // ====== الخطوة 8: الضغط على زر التأكيد (إن وُجد) ======
+      const verifyBtn = await this._findButton(page, [
+        'verify', 'confirm', 'submit', 'continue', 'تأكيد', 'تحقق', 'متابعة', 'إرسال'
+      ]);
+      if (verifyBtn) {
+        const btnText = await page.evaluate(el => el.textContent?.trim(), verifyBtn);
+        console.log(`🔘 [Login] Clicking verify: "${btnText}"`);
+        await verifyBtn.click();
+      } else {
+        await page.keyboard.press('Enter');
+      }
+
+      // ====== الخطوة 9: انتظار تسجيل الدخول ======
+      console.log('⏳ [Login] Step 9: Waiting for login to complete...');
+      await this._sleep(8000);
+
+      const finalUrl = page.url();
+      console.log('🔗 [Login] Final URL:', finalUrl);
+
+      const loggedIn = !finalUrl.includes('login');
+      
+      if (loggedIn) {
+        console.log('🎉 [Login] SUCCESS! Logged in!');
+        return { success: true };
+      } else {
+        const pageContent = await page.evaluate(() => document.body?.innerText?.substring(0, 300)?.toLowerCase() || '');
+        console.log('📄 [Login] Still on login. Page:', pageContent.substring(0, 200));
+        
+        let screenshot = null;
+        try { screenshot = await page.screenshot({ encoding: 'base64' }); } catch {}
+        
+        return {
+          success: false,
+          error: 'فشل تسجيل الدخول بعد إدخال OTP. قد يكون الرمز خاطئ أو منتهي.',
+          screenshot: screenshot ? `data:image/png;base64,${screenshot}` : null,
+        };
+      }
+
+    } catch (loginErr) {
+      console.error('❌ [Login] Error:', loginErr.message);
+      let screenshot = null;
+      try { screenshot = await page.screenshot({ encoding: 'base64' }); } catch {}
+      return {
+        success: false,
+        error: `خطأ أثناء تسجيل الدخول: ${loginErr.message}`,
+        screenshot: screenshot ? `data:image/png;base64,${screenshot}` : null,
+      };
+    }
   }
 
-
-
-
   /**
-   * إدخال كود التلفزيون في صفحة ربط الأجهزة
+   * إدخال كود التلفزيون مع تسجيل دخول تلقائي
    * @param {string} tvCode - الكود المعروض على شاشة التلفزيون
+   * @param {object} credentials - بيانات الجلسة {email, gmailAddress, gmailAppPassword}
    */
-  async enterTVCode(tvCode) {
-    console.log(`📺 [enterTVCode] START - code: ${tvCode}, isLoggedIn: ${this.isLoggedIn}, hasCookies: ${!!this.storedCookies}, cookiesCount: ${this.storedCookies?.length || 0}`);
-    
-    if (!this.storedCookies || !Array.isArray(this.storedCookies) || this.storedCookies.length === 0) {
-      console.error('❌ [enterTVCode] ABORT - no cookies');
-      return { success: false, error: 'لا توجد كوكيز. يرجى استيراد كوكيز OSN أولاً.' };
-    }
+  async enterTVCode(tvCode, credentials = {}) {
+    const { email, gmailAddress, gmailAppPassword } = credentials;
+    console.log(`📺 [enterTVCode] START - code: ${tvCode}, email: ${email}, hasGmail: ${!!gmailAddress}`);
 
     return await this._withBrowser(async (browser) => {
       let page = null;
@@ -245,153 +394,160 @@ class OSNSessionManager {
         await page.setViewport({ width: 1280, height: 720 });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-        // ====== الخطوة 1: تحويل وحقن الكوكيز ======
-        const puppeteerCookies = this._convertCookies(this.storedCookies);
-        console.log(`🍪 [enterTVCode] Setting ${puppeteerCookies.length} cookies...`);
-        
-        const authCookie = puppeteerCookies.find(c => c.name === 'auth');
-        if (authCookie) {
-          console.log(`🔑 Auth cookie: domain=${authCookie.domain}, secure=${authCookie.secure}`);
-        } else {
-          console.warn('⚠️ NO auth cookie in cookies!');
-        }
-        
-        await page.setCookie(...puppeteerCookies);
+        // ====== المحاولة 1: استخدام كوكيز محفوظة (إن وُجدت) ======
+        let needsLogin = true;
 
-        // ====== الخطوة 2: زيارة الصفحة الرئيسية وانتظار JS لتجديد التوكن ======
-        console.log('🌐 Step 1: Visiting homepage (networkidle2 for token refresh)...');
-        try {
-          await page.goto('https://osnplus.com/', {
-            waitUntil: 'networkidle2',
-            timeout: 25000,
-          });
-        } catch (navErr) {
-          console.log('⚠️ Homepage nav timeout, continuing:', navErr.message);
-        }
-        // انتظار إضافي للسماح لـ JS بتجديد التوكن
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        if (this.storedCookies && Array.isArray(this.storedCookies) && this.storedCookies.length > 0) {
+          console.log(`🍪 [enterTVCode] Trying ${this.storedCookies.length} cached cookies...`);
+          const puppeteerCookies = this._convertCookies(this.storedCookies);
+          await page.setCookie(...puppeteerCookies);
+          
+          try {
+            await page.goto('https://osnplus.com/en/login/tv', {
+              waitUntil: 'networkidle2',
+              timeout: 25000,
+            });
+          } catch (navErr) {
+            console.log('⚠️ Nav timeout, continuing');
+          }
+          await this._sleep(3000);
 
-        // ====== الخطوة 2.5: حفظ الكوكيز المحدّثة (بعد تجديد التوكن بواسطة JS) ======
-        const refreshedCookies = await page.cookies('https://osnplus.com');
-        if (refreshedCookies.length > 0) {
-          const newAuth = refreshedCookies.find(c => c.name === 'auth');
-          if (newAuth) {
-            console.log(`🔄 Auth cookie refreshed by JS! New value length: ${newAuth.value.length}`);
-            // حفظ الكوكيز المحدّثة في الذاكرة
-            this.storedCookies = refreshedCookies.map(c => ({
-              name: c.name,
-              value: c.value,
-              domain: c.domain,
-              path: c.path,
-              secure: c.secure,
-              httpOnly: c.httpOnly,
-              sameSite: c.sameSite,
-              ...(c.expires && c.expires > 0 ? { expirationDate: c.expires } : {}),
-            }));
-            this._refreshedCookies = this.storedCookies; // للحفظ في DB لاحقاً
+          const url = page.url();
+          console.log('🔗 URL with cookies:', url);
+          
+          // إذا لم يُعاد توجيهنا لصفحة login = الكوكيز شغالة
+          if (!url.includes('/login') || url.includes('/login/tv')) {
+            const codeInputs = await page.$$('input[type="tel"], input[type="number"], input[inputmode="numeric"], input[maxlength="1"]');
+            if (codeInputs.length > 0) {
+              console.log('✅ [enterTVCode] Cookies still valid! Found TV code inputs.');
+              needsLogin = false;
+            }
           }
         }
-        
-        const homeUrl = page.url();
-        console.log('🔗 Homepage URL:', homeUrl);
 
-        // ====== الخطوة 3: التوجه مباشرة لصفحة TV code ======
-        // استخدام /en/ بدل اللغة المحلية لتفادي إعادة التوجيه
-        const tvUrl = 'https://osnplus.com/en/login/tv';
-        console.log(`🌐 Step 2: Navigating to ${tvUrl}...`);
-        try {
-          await page.goto(tvUrl, {
-            waitUntil: 'networkidle2',
-            timeout: 30000,
-          });
-        } catch (navErr) {
-          console.log('⚠️ TV page timeout, continuing:', navErr.message);
+        // ====== المحاولة 2: تسجيل دخول تلقائي بالإيميل + OTP ======
+        if (needsLogin) {
+          console.log('🔐 [enterTVCode] Cookies invalid/missing. Starting auto-login...');
+          
+          if (!email || !gmailAddress || !gmailAppPassword) {
+            return {
+              success: false,
+              error: 'بيانات تسجيل الدخول غير متوفرة (إيميل OSN + بيانات Gmail). يرجى تحديث الإعدادات في لوحة الإدارة.',
+            };
+          }
+
+          const loginResult = await this._loginWithEmail(page, email, gmailAddress, gmailAppPassword);
+          
+          if (!loginResult.success) {
+            return {
+              success: false,
+              error: `فشل تسجيل الدخول التلقائي: ${loginResult.error}`,
+              screenshot: loginResult.screenshot || null,
+            };
+          }
+
+          // حفظ الكوكيز الجديدة بعد تسجيل الدخول الناجح
+          console.log('💾 [enterTVCode] Saving new session cookies...');
+          const newCookies = await page.cookies('https://osnplus.com');
+          this.storedCookies = newCookies.map(c => ({
+            name: c.name,
+            value: c.value,
+            domain: c.domain,
+            path: c.path,
+            secure: c.secure,
+            httpOnly: c.httpOnly,
+            sameSite: c.sameSite,
+            ...(c.expires && c.expires > 0 ? { expirationDate: c.expires } : {}),
+          }));
+          this.isLoggedIn = true;
+          this.currentEmail = email;
+          this.lastActivity = new Date();
+          this._newSessionCookies = this.storedCookies; // للحفظ في DB
+          console.log(`✅ [enterTVCode] Saved ${this.storedCookies.length} new cookies`);
+
+          // ====== الانتقال لصفحة TV code بعد تسجيل الدخول ======
+          console.log('🌐 [enterTVCode] Navigating to TV code page...');
+          try {
+            await page.goto('https://osnplus.com/en/login/tv', {
+              waitUntil: 'networkidle2',
+              timeout: 30000,
+            });
+          } catch (navErr) {
+            console.log('⚠️ TV page timeout, continuing');
+          }
+          await this._sleep(3000);
         }
-        await new Promise(resolve => setTimeout(resolve, 3000));
 
+        // ====== الآن نحن في صفحة TV code (مسجلين دخول) ======
         const currentUrl = page.url();
-        console.log('🔗 Current URL:', currentUrl);
+        console.log('🔗 [enterTVCode] TV page URL:', currentUrl);
 
-        // ====== الخطوة 4: التحقق من حالة الصفحة ======
         let beforeScreenshot = null;
-        try {
-          beforeScreenshot = await page.screenshot({ encoding: 'base64' });
-        } catch {}
+        try { beforeScreenshot = await page.screenshot({ encoding: 'base64' }); } catch {}
 
-        // البحث عن حقول الإدخال أولاً
+        // البحث عن حقول إدخال الكود
         let codeInputs = await page.$$('input[type="tel"], input[type="number"], input[inputmode="numeric"], input[maxlength="1"]');
         console.log(`🔍 Code inputs found: ${codeInputs.length}`);
 
-        // إذا لم نجد حقول، ننتظر أكثر (الصفحة قد تكون SPA)
         if (codeInputs.length === 0) {
-          console.log('⏳ No inputs yet, waiting 5s for SPA render...');
-          await new Promise(resolve => setTimeout(resolve, 5000));
+          console.log('⏳ No inputs yet, waiting 5s for SPA...');
+          await this._sleep(5000);
           codeInputs = await page.$$('input[type="tel"], input[type="number"], input[inputmode="numeric"], input[maxlength="1"]');
           console.log(`🔍 Code inputs after wait: ${codeInputs.length}`);
         }
 
-        // إذا ما زالت لا توجد حقول، نتحقق من محتوى الصفحة
         if (codeInputs.length === 0) {
-          const pageText = await page.evaluate(() => document.body?.innerText?.substring(0, 1000)?.toLowerCase() || '');
-          console.log('📄 Page text:', pageText.substring(0, 400));
+          const pageText = await page.evaluate(() => document.body?.innerText?.substring(0, 500)?.toLowerCase() || '');
+          console.log('📄 Page text:', pageText.substring(0, 300));
 
-          const isLoginPage = ['continue with google', 'continue with apple', 'sign up or login', 'create your account']
-            .some(k => pageText.includes(k));
-
-          if (isLoginPage) {
-            console.error('❌ Login page detected. Session invalid.');
-            this.isLoggedIn = false;
-            this.storedCookies = null;
+          // هل ما زلنا في صفحة login؟
+          if (['continue with google', 'continue with apple', 'sign up or login'].some(k => pageText.includes(k))) {
             return {
               success: false,
-              error: 'الكوكيز منتهية الصلاحية - الموقع يعرض صفحة تسجيل الدخول. يرجى تصدير كوكيز جديدة من المتصفح.',
+              error: 'فشل تسجيل الدخول - الموقع لا زال يعرض صفحة تسجيل الدخول',
               screenshot: beforeScreenshot ? `data:image/png;base64,${beforeScreenshot}` : null,
               finalUrl: currentUrl,
             };
           }
 
-          // محاولة أخيرة: البحث عن أي input
+          // بحث عام عن أي input
           const anyInputs = await page.$$('input:not([type="hidden"])');
           if (anyInputs.length > 0) {
-            console.log(`🔍 Found ${anyInputs.length} general inputs, using those`);
             codeInputs = anyInputs;
           } else {
             return {
               success: false,
-              error: 'لم يتم العثور على حقول إدخال. الصفحة قد لم تُحمّل بشكل صحيح.',
+              error: 'لم يتم العثور على حقول إدخال كود التلفزيون',
               screenshot: beforeScreenshot ? `data:image/png;base64,${beforeScreenshot}` : null,
               finalUrl: currentUrl,
             };
           }
         }
 
-        // ====== الخطوة 5: إدخال الكود ======
+        // ====== إدخال الكود ======
         const digits = tvCode.replace(/[\s\-]/g, '').split('');
         console.log(`📝 Entering ${digits.length} digits into ${codeInputs.length} fields`);
 
         if (codeInputs.length >= digits.length) {
-          // حقول منفصلة لكل رقم
           for (let i = 0; i < digits.length; i++) {
             await codeInputs[i].click({ clickCount: 3 });
             await page.keyboard.press('Backspace');
-            await new Promise(r => setTimeout(r, 100));
+            await this._sleep(100);
             await codeInputs[i].type(digits[i], { delay: 150 });
-            await new Promise(r => setTimeout(r, 200));
+            await this._sleep(200);
           }
         } else if (codeInputs.length === 1) {
           await codeInputs[0].click({ clickCount: 3 });
           await page.keyboard.press('Backspace');
           await codeInputs[0].type(tvCode, { delay: 100 });
         } else {
-          // fallback: كتابة عبر الكيبورد
           await codeInputs[0].click();
           await page.keyboard.type(tvCode, { delay: 150 });
         }
         console.log('✅ Code entered');
+        await this._sleep(1500);
 
-        await new Promise(r => setTimeout(r, 1500));
-
-        // ====== الخطوة 6: الضغط على زر التأكيد ======
+        // ====== الضغط على زر التأكيد ======
         const confirmButton = await this._findButton(page, [
           'connect', 'link', 'pair', 'submit', 'confirm', 'verify',
           'ربط', 'تأكيد', 'إرسال', 'continue', 'next', 'متابعة', 'التالي'
@@ -405,13 +561,11 @@ class OSNSessionManager {
           await page.keyboard.press('Enter');
         }
 
-        // ====== الخطوة 7: انتظار النتيجة ======
-        await new Promise(r => setTimeout(r, 6000));
+        // ====== انتظار النتيجة ======
+        await this._sleep(6000);
 
         let resultScreenshot = null;
-        try {
-          resultScreenshot = await page.screenshot({ encoding: 'base64' });
-        } catch {}
+        try { resultScreenshot = await page.screenshot({ encoding: 'base64' }); } catch {}
 
         const finalUrl = page.url();
         const pageContent = await page.evaluate(() => document.body?.innerText?.toLowerCase() || '');
@@ -431,7 +585,7 @@ class OSNSessionManager {
           success: true,
           paired: isSuccess,
           failed: isFailed,
-          refreshedCookies: !!this._refreshedCookies,
+          newSessionCookies: !!this._newSessionCookies,
           screenshot: resultScreenshot ? `data:image/png;base64,${resultScreenshot}` : 
                      (beforeScreenshot ? `data:image/png;base64,${beforeScreenshot}` : null),
           finalUrl,
@@ -453,7 +607,7 @@ class OSNSessionManager {
   }
 
   /**
-   * تحويل الكوكيز من صيغة Chrome Extension لصيغة Puppeteer
+   * تحويل الكوكيز لصيغة Puppeteer
    */
   _convertCookies(cookies) {
     const mapSameSite = (ss) => {
@@ -497,6 +651,10 @@ class OSNSessionManager {
     return null;
   }
 
+  _sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
   /**
    * حالة الجلسة
    */
@@ -505,25 +663,34 @@ class OSNSessionManager {
       isLoggedIn: this.isLoggedIn,
       email: this.currentEmail,
       lastActivity: this.lastActivity?.toISOString() || null,
-      browserConnected: false, // المتصفح لا يبقى مفتوحاً
+      hasCookies: !!(this.storedCookies && this.storedCookies.length > 0),
     };
   }
 
   /**
-   * التحقق من صلاحية الجلسة
+   * إغلاق الجلسة
    */
-  async ensureLoggedIn() {
-    if (this.isLoggedIn && this.storedCookies) {
-      return { success: true };
-    }
+  async closeBrowser() {
     this.isLoggedIn = false;
-    return { success: false, error: 'الجلسة منتهية. يرجى استيراد كوكيز جديدة.' };
+    this.storedCookies = null;
+    this.currentEmail = null;
+    console.log('✅ Session cleared');
   }
 
   /**
-   * جلب OTP من Gmail عبر GmailReader
-   * @param {string} gmailAddress - عنوان Gmail
-   * @param {string} gmailAppPassword - كلمة مرور التطبيق
+   * استيراد كوكيز (للتوافق مع النظام القديم)
+   */
+  async importCookies(cookies, email) {
+    this.storedCookies = cookies;
+    this.isLoggedIn = true;
+    this.currentEmail = email || 'imported-session';
+    this.lastActivity = new Date();
+    console.log(`🍪 Imported ${cookies.length} cookies for ${this.currentEmail}`);
+    return { success: true, message: 'تم استيراد الكوكيز', email: this.currentEmail };
+  }
+
+  /**
+   * جلب OTP من Gmail
    */
   async getClientOTP(gmailAddress, gmailAppPassword) {
     if (!gmailAddress || !gmailAppPassword) {
@@ -533,25 +700,17 @@ class OSNSessionManager {
     try {
       const GmailReader = (await import('./gmail-reader.js')).default;
       const reader = new GmailReader(gmailAddress, gmailAppPassword);
-      
-      console.log(`📧 Reading OTP from Gmail: ${gmailAddress}`);
-      const result = await reader.getLatestOTP(5); // آخر 5 دقائق
+      const result = await reader.getLatestOTP(5);
       
       if (result.success && result.otp) {
-        console.log(`✅ OTP found from Gmail: ${result.otp}`);
         return { success: true, otp: result.otp };
-      } else {
-        console.log(`❌ No OTP found: ${result.error}`);
-        return { success: false, error: result.error || 'لم يتم العثور على رمز OTP' };
       }
+      return { success: false, error: result.error || 'لم يتم العثور على رمز OTP' };
     } catch (error) {
-      console.error('❌ Gmail OTP Error:', error.message);
       return { success: false, error: `خطأ في قراءة Gmail: ${error.message}` };
     }
   }
 }
 
-// Singleton instance
 const sessionManager = new OSNSessionManager();
-
 export default sessionManager;
