@@ -171,6 +171,14 @@ serve(async (req: Request) => {
             image_url,
             product_type,
             warranty_days
+          ),
+          product_accounts:product_account_id (
+            variant_id,
+            product_variants:variant_id (
+              name,
+              name_en,
+              warranty_days
+            )
           )
         `)
         .eq("order_id", order_id);

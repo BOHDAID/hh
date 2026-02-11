@@ -41,6 +41,14 @@ interface OrderItem {
     product_type?: string;
     warranty_days?: number;
   };
+  product_accounts?: {
+    variant_id: string | null;
+    product_variants?: {
+      name: string;
+      name_en: string | null;
+      warranty_days: number | null;
+    } | null;
+  } | null;
 }
 
 interface Order {
@@ -581,9 +589,25 @@ const OrderInvoice = () => {
                 </div>
                 <div className="flex-1">
                   <h3 className="font-semibold">الضمان نشط</h3>
-                  <p className="text-sm text-muted-foreground">
-                    ينتهي في: {formatDateShortArabic(order.warranty_expires_at)}
-                  </p>
+                  {(() => {
+                    // Get variant warranty_days (priority) or product warranty_days
+                    const firstItem = order.order_items?.[0];
+                    const variantWarranty = firstItem?.product_accounts?.product_variants?.warranty_days;
+                    const productWarranty = firstItem?.products?.warranty_days;
+                    const warrantyDays = variantWarranty || productWarranty;
+                    return (
+                      <>
+                        {warrantyDays && warrantyDays > 0 && (
+                          <p className="text-sm font-medium text-primary">
+                            مدة الضمان: {warrantyDays} يوم
+                          </p>
+                        )}
+                        <p className="text-sm text-muted-foreground">
+                          ينتهي في: {formatDateShortArabic(order.warranty_expires_at!)}
+                        </p>
+                      </>
+                    );
+                  })()}
                 </div>
                 <div className="text-left">
                   <div className="flex items-center gap-2 text-primary">
@@ -668,9 +692,25 @@ const OrderInvoice = () => {
                       )}
                       <div className="flex-1">
                         <h4 className="font-semibold">{item.products?.name || "منتج"}</h4>
+                        {item.product_accounts?.product_variants?.name && (
+                          <p className="text-xs text-primary font-medium">
+                            {item.product_accounts.product_variants.name}
+                          </p>
+                        )}
                         <p className="text-sm text-muted-foreground">
                           الكمية: {item.quantity} × ${item.price.toFixed(2)}
                         </p>
+                        {(() => {
+                          const variantWarranty = item.product_accounts?.product_variants?.warranty_days;
+                          const productWarranty = item.products?.warranty_days;
+                          const warranty = variantWarranty || productWarranty;
+                          return warranty && warranty > 0 ? (
+                            <p className="text-xs text-primary flex items-center gap-1 mt-1">
+                              <Shield className="h-3 w-3" />
+                              ضمان {warranty} يوم
+                            </p>
+                          ) : null;
+                        })()}
                       </div>
                     </div>
 
@@ -872,7 +912,17 @@ const OrderInvoice = () => {
 
             {order.warranty_expires_at && (
               <div className="bg-muted/30 p-4 rounded-lg mb-6 text-sm">
-                <strong>الضمان:</strong> ينتهي في {formatDateShortArabic(order.warranty_expires_at)}
+                {(() => {
+                  const firstItem = order.order_items?.[0];
+                  const variantWarranty = firstItem?.product_accounts?.product_variants?.warranty_days;
+                  const productWarranty = firstItem?.products?.warranty_days;
+                  const warrantyDays = variantWarranty || productWarranty;
+                  return (
+                    <>
+                      <strong>الضمان:</strong> {warrantyDays && warrantyDays > 0 ? `${warrantyDays} يوم - ` : ''}ينتهي في {formatDateShortArabic(order.warranty_expires_at)}
+                    </>
+                  );
+                })()}
               </div>
             )}
 
