@@ -206,12 +206,63 @@ serve(async (req: Request) => {
           .eq("order_id", order_id);
 
         if (!itemsError2 && itemsBasic) {
-          // Add delivered_data as null for each item
           orderItems = itemsBasic.map(item => ({ ...item, delivered_data: null }));
         }
       }
     } catch (e) {
       console.error("Error fetching order items:", e);
+    }
+
+    // For items without product_accounts (unlimited/activation products),
+    // try to find the matching variant by product_id + price
+    for (let i = 0; i < orderItems.length; i++) {
+      const item = orderItems[i];
+      const hasVariantInfo = item.product_accounts?.product_variants?.warranty_days != null;
+      
+      if (!hasVariantInfo) {
+        try {
+          const { data: matchingVariant } = await adminClient
+            .from("product_variants")
+            .select("name, name_en, warranty_days")
+            .eq("product_id", item.product_id)
+            .eq("price", item.price)
+            .eq("is_active", true)
+            .limit(1)
+            .maybeSingle();
+
+          if (matchingVariant) {
+            orderItems[i] = {
+              ...item,
+              product_accounts: {
+                variant_id: null,
+                product_variants: matchingVariant,
+              },
+            };
+          } else {
+            // If no price match, get the first active variant for this product
+            const { data: firstVariant } = await adminClient
+              .from("product_variants")
+              .select("name, name_en, warranty_days")
+              .eq("product_id", item.product_id)
+              .eq("is_active", true)
+              .order("display_order", { ascending: true })
+              .limit(1)
+              .maybeSingle();
+
+            if (firstVariant) {
+              orderItems[i] = {
+                ...item,
+                product_accounts: {
+                  variant_id: null,
+                  product_variants: firstVariant,
+                },
+              };
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to find variant for item:", item.id, e);
+        }
+      }
     }
 
     // Attach order_items to order object
