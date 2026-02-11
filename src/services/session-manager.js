@@ -249,9 +249,26 @@ class OSNSessionManager {
         console.log(`📧 [Login] OTP attempt ${attempt}/${maxOtpAttempts}...`);
         
         try {
-          const GmailReader = (await import('./gmail-reader.js')).default;
-          const reader = new GmailReader(gmailAddress, gmailAppPassword);
-          const otpResult = await reader.getLatestOTP(3, 'osn'); // آخر 3 دقائق، فلتر OSN
+          // استخدام Edge Function بدل IMAP المحلي (أكثر موثوقية)
+          const CLOUD_URL = process.env.SUPABASE_URL || 'https://wueacwqzafxsvowlqbwh.supabase.co';
+          const CLOUD_ANON = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
+          
+          const otpResponse = await fetch(`${CLOUD_URL}/functions/v1/gmail-read-otp`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${CLOUD_ANON}`,
+            },
+            body: JSON.stringify({
+              gmailAddress,
+              gmailAppPassword,
+              maxAgeMinutes: 5,
+              senderFilter: 'osn',
+            }),
+          });
+          
+          const otpResult = await otpResponse.json();
+          console.log(`📧 [Login] OTP response:`, JSON.stringify(otpResult));
           
           if (otpResult.success && otpResult.otp) {
             otpCode = otpResult.otp;
