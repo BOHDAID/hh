@@ -168,11 +168,11 @@ async function handleMessage(message) {
   const session = userSessions[chatId];
   if (session && session.step === 'awaiting_tv_code') {
     // المستخدم أرسل كود التلفزيون
-    const tvCode = text.replace(/\s/g, '');
-    if (tvCode.length < 4 || tvCode.length > 10) {
+    const tvCode = text.replace(/[\s\-]/g, '').toUpperCase();
+    if (tvCode.length < 4 || tvCode.length > 8) {
       await sendMessage(chatId, bi(
-        '❌ الكود غير صحيح. أرسل الأرقام المعروضة على شاشة التلفزيون (4-10 أرقام/أحرف).',
-        '❌ Invalid code. Send the numbers shown on your TV screen (4-10 digits/characters).'
+        '❌ الكود غير صحيح. أرسل الأرقام/الأحرف المعروضة على شاشة التلفزيون (عادة 5 خانات).',
+        '❌ Invalid code. Send the numbers/letters shown on your TV screen (usually 5 characters).'
       ));
       return;
     }
