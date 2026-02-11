@@ -246,20 +246,50 @@ class OSNSessionManager {
         await page.setViewport({ width: 1280, height: 720 });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-        // حقن الكوكيز المحفوظة
+        // حقن الكوكيز المحفوظة - مع تحويل صحيح لصيغة Puppeteer
         console.log(`🍪 [enterTVCode] Setting ${this.storedCookies.length} cookies...`);
-        const puppeteerCookies = this.storedCookies.map(c => ({
-          name: c.name,
-          value: c.value,
-          domain: c.domain || '.osnplus.com',
-          path: c.path || '/',
-          secure: c.secure !== undefined ? c.secure : true,
-          httpOnly: c.httpOnly || false,
-          sameSite: c.sameSite || 'Lax',
-          ...(c.expirationDate ? { expires: c.expirationDate } : {}),
-        }));
+        
+        // تحويل sameSite من صيغة Chrome Extension لصيغة Puppeteer
+        const mapSameSite = (ss) => {
+          if (!ss || ss === 'unspecified' || ss === '') return undefined; // حذفها تماماً
+          if (ss === 'no_restriction') return 'None';
+          if (ss === 'lax') return 'Lax';
+          if (ss === 'strict') return 'Strict';
+          // إذا كانت بالفعل بصيغة Puppeteer
+          if (['Lax', 'Strict', 'None'].includes(ss)) return ss;
+          return undefined;
+        };
+
+        const puppeteerCookies = this.storedCookies
+          .filter(c => c.name && c.value !== undefined) // تجاهل الكوكيز الفارغة
+          .map(c => {
+            const sameSite = mapSameSite(c.sameSite);
+            const cookie = {
+              name: c.name,
+              value: c.value,
+              domain: c.domain || '.osnplus.com', // نحتفظ بالدومين كما هو
+              path: c.path || '/',
+              secure: sameSite === 'None' ? true : (c.secure || false), // SameSite=None يتطلب Secure
+              httpOnly: c.httpOnly || false,
+              ...(c.expirationDate ? { expires: c.expirationDate } : {}),
+            };
+            // فقط أضف sameSite إذا كانت قيمة صالحة
+            if (sameSite) {
+              cookie.sameSite = sameSite;
+            }
+            return cookie;
+          });
+        
+        // طباعة كوكيز المصادقة المهمة للتشخيص
+        const authCookie = puppeteerCookies.find(c => c.name === 'auth');
+        if (authCookie) {
+          console.log(`🔑 [enterTVCode] Auth cookie found - domain: ${authCookie.domain}, secure: ${authCookie.secure}, sameSite: ${authCookie.sameSite || 'not set'}`);
+        } else {
+          console.warn('⚠️ [enterTVCode] NO auth cookie found in cookies!');
+        }
+
         await page.setCookie(...puppeteerCookies);
-        console.log('✅ [enterTVCode] Cookies set');
+        console.log(`✅ [enterTVCode] ${puppeteerCookies.length} cookies set successfully`);
 
         // الخطوة 1: زيارة الصفحة الرئيسية أولاً لتفعيل الكوكيز في المتصفح
         console.log('🌐 [enterTVCode] Step 1: Visiting homepage to activate cookies...');
