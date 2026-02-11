@@ -18,6 +18,7 @@ interface Product {
   product_type: string | null;
   platform: string | null;
   warranty_days: number | null;
+  sales_count: number | null;
   categories?: { name: string; name_en: string | null } | null;
   available_stock?: number;
 }
@@ -216,6 +217,7 @@ const ProductsSection = () => {
                     stock={product.available_stock}
                     platform={product.platform || undefined}
                     warranty_days={product.warranty_days || undefined}
+                    sales_count={product.sales_count || 0}
                   />
                 </motion.div>
               ))}
