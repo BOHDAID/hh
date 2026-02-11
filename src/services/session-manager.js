@@ -525,19 +525,253 @@ class OSNSessionManager {
    */
   async enterTVCode(tvCode, credentials = {}) {
     const { email, gmailAddress, gmailAppPassword } = credentials;
-    console.log(`📺 [enterTVCode] START - code: ${tvCode}, email: ${email}, hasGmail: ${!!gmailAddress}`);
+    console.log(`📺 [enterTVCode] START - code: ${tvCode}, email: ${email}, hasCookies: ${!!(this.storedCookies?.length)}`);
 
+    // ====== الطريقة الجديدة: API مباشر بدون متصفح ======
+    if (this.storedCookies && Array.isArray(this.storedCookies) && this.storedCookies.length > 0) {
+      console.log(`🚀 [enterTVCode] Using direct API method (no browser needed!)`);
+      
+      // استخراج auth token من الكوكيز
+      const authToken = this._extractAuthToken(this.storedCookies);
+      const deviceId = this._extractDeviceId(this.storedCookies);
+      
+      if (authToken) {
+        console.log(`🔑 [enterTVCode] Auth token found (${authToken.substring(0, 20)}...)`);
+        console.log(`📱 [enterTVCode] Device ID: ${deviceId || 'generated'}`);
+        
+        const apiResult = await this._linkTVViaAPI(tvCode, authToken, deviceId);
+        
+        if (apiResult.success) {
+          this.lastActivity = new Date();
+          return apiResult;
+        }
+        
+        // إذا فشل API بسبب توكن منتهي، نحاول تحديث التوكن
+        if (apiResult.tokenExpired) {
+          console.log('🔄 [enterTVCode] Token expired, trying to refresh...');
+          const refreshResult = await this._refreshToken(this.storedCookies);
+          if (refreshResult.newToken) {
+            console.log('✅ [enterTVCode] Token refreshed, retrying API...');
+            const retryResult = await this._linkTVViaAPI(tvCode, refreshResult.newToken, deviceId);
+            if (retryResult.success) {
+              this.lastActivity = new Date();
+              return retryResult;
+            }
+          }
+        }
+        
+        console.log('⚠️ [enterTVCode] API method failed, falling back to browser...');
+      } else {
+        console.log('⚠️ [enterTVCode] No auth token in cookies, trying browser method...');
+      }
+    }
+
+    // ====== Fallback: طريقة المتصفح القديمة ======
+    console.log('🌐 [enterTVCode] Using browser fallback method...');
+    return await this._enterTVCodeViaBrowser(tvCode, credentials);
+  }
+
+  /**
+   * استخراج Auth Token من الكوكيز
+   */
+  _extractAuthToken(cookies) {
+    // البحث عن توكن المصادقة في الكوكيز
+    const tokenCookieNames = [
+      'access_token', 'token', 'auth_token', 'jwt', 'session',
+      'osnplus_token', 'Authorization', 'bearer',
+      // كوكيز OSN المحتملة
+      'osn_token', 'user_token', 'sid', 'connect.sid',
+    ];
+    
+    for (const name of tokenCookieNames) {
+      const cookie = cookies.find(c => c.name?.toLowerCase() === name.toLowerCase());
+      if (cookie?.value) {
+        console.log(`🔑 Found token in cookie: ${name}`);
+        return cookie.value;
+      }
+    }
+
+    // البحث عن أي كوكيز تبدو كـ JWT token
+    for (const cookie of cookies) {
+      if (cookie.value && cookie.value.startsWith('eyJ') && cookie.value.includes('.')) {
+        console.log(`🔑 Found JWT-like token in cookie: ${cookie.name}`);
+        return cookie.value;
+      }
+    }
+
+    // البحث عن كوكيز طويلة قد تكون tokens
+    for (const cookie of cookies) {
+      if (cookie.value && cookie.value.length > 100 && !cookie.name?.startsWith('_')) {
+        console.log(`🔑 Found long token in cookie: ${cookie.name} (${cookie.value.length} chars)`);
+        return cookie.value;
+      }
+    }
+
+    console.log('❌ No auth token found in cookies. Available cookies:', cookies.map(c => c.name).join(', '));
+    return null;
+  }
+
+  /**
+   * استخراج Device ID من الكوكيز أو توليد واحد
+   */
+  _extractDeviceId(cookies) {
+    const deviceCookieNames = ['device_id', 'deviceId', 'X-Device-Id', 'udid', 'did'];
+    
+    for (const name of deviceCookieNames) {
+      const cookie = cookies.find(c => c.name?.toLowerCase() === name.toLowerCase());
+      if (cookie?.value) return cookie.value;
+    }
+
+    // توليد Device ID ثابت (يبقى نفسه لكل جلسة)
+    if (!this._generatedDeviceId) {
+      this._generatedDeviceId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    }
+    return this._generatedDeviceId;
+  }
+
+  /**
+   * ربط التلفزيون عبر API مباشر (بدون متصفح!)
+   */
+  async _linkTVViaAPI(tvCode, authToken, deviceId) {
+    try {
+      const url = 'https://www.osnplus.com/api/v1/devices/link';
+      
+      console.log(`📡 [API] POST ${url} - code: ${tvCode}`);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+          'X-Device-Id': deviceId || this._extractDeviceId([]),
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+          'Accept': 'application/json, text/plain, */*',
+          'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
+          'Origin': 'https://www.osnplus.com',
+          'Referer': 'https://www.osnplus.com/en/login/tv',
+          'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131"',
+          'sec-ch-ua-mobile': '?0',
+          'sec-ch-ua-platform': '"Windows"',
+        },
+        body: JSON.stringify({
+          linkCode: tvCode,
+        }),
+      });
+
+      const statusCode = response.status;
+      let responseText = '';
+      try { responseText = await response.text(); } catch {}
+      
+      console.log(`📬 [API] Response: ${statusCode} - ${responseText.substring(0, 300)}`);
+
+      if (statusCode === 200 || statusCode === 201) {
+        console.log('🎉 [API] TV linked successfully!');
+        return {
+          success: true,
+          paired: true,
+          failed: false,
+          message: '✅ تم ربط التلفزيون بنجاح عبر API!',
+          method: 'api',
+        };
+      }
+
+      if (statusCode === 401 || statusCode === 403) {
+        console.log('🔒 [API] Token expired or unauthorized');
+        return {
+          success: false,
+          tokenExpired: true,
+          error: `توكن منتهي أو غير مصرح (${statusCode})`,
+          method: 'api',
+        };
+      }
+
+      // أي خطأ آخر
+      let errorMsg = responseText;
+      try {
+        const errorJson = JSON.parse(responseText);
+        errorMsg = errorJson.message || errorJson.error || responseText;
+      } catch {}
+
+      return {
+        success: false,
+        paired: false,
+        failed: true,
+        error: `فشل ربط التلفزيون: ${statusCode} - ${errorMsg}`,
+        method: 'api',
+      };
+
+    } catch (fetchError) {
+      console.error('❌ [API] Fetch error:', fetchError.message);
+      return {
+        success: false,
+        error: `خطأ في الاتصال بـ API: ${fetchError.message}`,
+        method: 'api',
+      };
+    }
+  }
+
+  /**
+   * محاولة تحديث التوكن
+   */
+  async _refreshToken(cookies) {
+    try {
+      const refreshToken = cookies.find(c => 
+        c.name?.toLowerCase().includes('refresh') && c.value
+      );
+      
+      if (!refreshToken) {
+        return { newToken: null };
+      }
+
+      console.log(`🔄 [Refresh] Trying refresh token: ${refreshToken.name}`);
+      
+      const response = await fetch('https://www.osnplus.com/api/v1/auth/refresh', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        },
+        body: JSON.stringify({
+          refreshToken: refreshToken.value,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const newToken = data.access_token || data.token;
+        if (newToken) {
+          console.log('✅ [Refresh] Got new token!');
+          return { newToken };
+        }
+      }
+
+      return { newToken: null };
+    } catch (err) {
+      console.error('❌ [Refresh] Error:', err.message);
+      return { newToken: null };
+    }
+  }
+
+  /**
+   * طريقة المتصفح القديمة (Fallback)
+   */
+  async _enterTVCodeViaBrowser(tvCode, credentials = {}) {
+    const { email, gmailAddress, gmailAppPassword } = credentials;
+    
     return await this._withBrowser(async (browser) => {
       let page = null;
       try {
         page = await browser.newPage();
         await this._applyStealthToPage(page);
 
-        // ====== المحاولة 1: استخدام كوكيز محفوظة (إن وُجدت) ======
         let needsLogin = true;
 
         if (this.storedCookies && Array.isArray(this.storedCookies) && this.storedCookies.length > 0) {
-          console.log(`🍪 [enterTVCode] Trying ${this.storedCookies.length} cached cookies...`);
+          console.log(`🍪 [Browser] Trying ${this.storedCookies.length} cached cookies...`);
           const puppeteerCookies = this._convertCookies(this.storedCookies);
           await page.setCookie(...puppeteerCookies);
           
@@ -554,24 +788,22 @@ class OSNSessionManager {
           const url = page.url();
           console.log('🔗 URL with cookies:', url);
           
-          // إذا لم يُعاد توجيهنا لصفحة login = الكوكيز شغالة
           if (!url.includes('/login') || url.includes('/login/tv')) {
             const codeInputs = await page.$$('input[type="tel"], input[type="number"], input[inputmode="numeric"], input[maxlength="1"]');
             if (codeInputs.length > 0) {
-              console.log('✅ [enterTVCode] Cookies still valid! Found TV code inputs.');
+              console.log('✅ [Browser] Cookies still valid!');
               needsLogin = false;
             }
           }
         }
 
-        // ====== المحاولة 2: تسجيل دخول تلقائي بالإيميل + OTP ======
         if (needsLogin) {
-          console.log('🔐 [enterTVCode] Cookies invalid/missing. Starting auto-login...');
+          console.log('🔐 [Browser] Cookies invalid. Starting auto-login...');
           
           if (!email || !gmailAddress || !gmailAppPassword) {
             return {
               success: false,
-              error: 'بيانات تسجيل الدخول غير متوفرة (إيميل OSN + بيانات Gmail). يرجى تحديث الإعدادات في لوحة الإدارة.',
+              error: 'بيانات تسجيل الدخول غير متوفرة. يرجى تحديث الإعدادات.',
             };
           }
 
@@ -580,93 +812,51 @@ class OSNSessionManager {
           if (!loginResult.success) {
             return {
               success: false,
-              error: `فشل تسجيل الدخول التلقائي: ${loginResult.error}`,
+              error: `فشل تسجيل الدخول: ${loginResult.error}`,
               screenshot: loginResult.screenshot || null,
             };
           }
 
-          // حفظ الكوكيز الجديدة بعد تسجيل الدخول الناجح
-          console.log('💾 [enterTVCode] Saving new session cookies...');
           const newCookies = await page.cookies('https://osnplus.com');
           this.storedCookies = newCookies.map(c => ({
-            name: c.name,
-            value: c.value,
-            domain: c.domain,
-            path: c.path,
-            secure: c.secure,
-            httpOnly: c.httpOnly,
-            sameSite: c.sameSite,
+            name: c.name, value: c.value, domain: c.domain, path: c.path,
+            secure: c.secure, httpOnly: c.httpOnly, sameSite: c.sameSite,
             ...(c.expires && c.expires > 0 ? { expirationDate: c.expires } : {}),
           }));
           this.isLoggedIn = true;
           this.currentEmail = email;
           this.lastActivity = new Date();
-          this._newSessionCookies = this.storedCookies; // للحفظ في DB
-          console.log(`✅ [enterTVCode] Saved ${this.storedCookies.length} new cookies`);
+          this._newSessionCookies = this.storedCookies;
 
-          // ====== الانتقال لصفحة TV code بعد تسجيل الدخول ======
-          console.log('🌐 [enterTVCode] Navigating to TV code page...');
           try {
-            await page.goto('https://osnplus.com/en/login/tv', {
-              waitUntil: 'networkidle2',
-              timeout: 30000,
-            });
+            await page.goto('https://osnplus.com/en/login/tv', { waitUntil: 'networkidle2', timeout: 30000 });
           } catch (navErr) {
             console.log('⚠️ TV page timeout, continuing');
           }
           await this._sleep(3000);
         }
 
-        // ====== الآن نحن في صفحة TV code (مسجلين دخول) ======
+        // إدخال الكود في الصفحة
         const currentUrl = page.url();
-        console.log('🔗 [enterTVCode] TV page URL:', currentUrl);
+        console.log('🔗 [Browser] TV page URL:', currentUrl);
 
-        let beforeScreenshot = null;
-        try { beforeScreenshot = await page.screenshot({ encoding: 'base64' }); } catch {}
-
-        // البحث عن حقول إدخال الكود
         let codeInputs = await page.$$('input[type="tel"], input[type="number"], input[inputmode="numeric"], input[maxlength="1"]');
-        console.log(`🔍 Code inputs found: ${codeInputs.length}`);
-
         if (codeInputs.length === 0) {
-          console.log('⏳ No inputs yet, waiting 5s for SPA...');
           await this._sleep(5000);
           codeInputs = await page.$$('input[type="tel"], input[type="number"], input[inputmode="numeric"], input[maxlength="1"]');
-          console.log(`🔍 Code inputs after wait: ${codeInputs.length}`);
         }
 
         if (codeInputs.length === 0) {
-          const pageText = await page.evaluate(() => document.body?.innerText?.substring(0, 500)?.toLowerCase() || '');
-          console.log('📄 Page text:', pageText.substring(0, 300));
-
-          // هل ما زلنا في صفحة login؟
-          if (['continue with google', 'continue with apple', 'sign up or login'].some(k => pageText.includes(k))) {
-            return {
-              success: false,
-              error: 'فشل تسجيل الدخول - الموقع لا زال يعرض صفحة تسجيل الدخول',
-              screenshot: beforeScreenshot ? `data:image/png;base64,${beforeScreenshot}` : null,
-              finalUrl: currentUrl,
-            };
-          }
-
-          // بحث عام عن أي input
-          const anyInputs = await page.$$('input:not([type="hidden"])');
-          if (anyInputs.length > 0) {
-            codeInputs = anyInputs;
-          } else {
-            return {
-              success: false,
-              error: 'لم يتم العثور على حقول إدخال كود التلفزيون',
-              screenshot: beforeScreenshot ? `data:image/png;base64,${beforeScreenshot}` : null,
-              finalUrl: currentUrl,
-            };
-          }
+          let screenshot = null;
+          try { screenshot = await page.screenshot({ encoding: 'base64' }); } catch {}
+          return {
+            success: false,
+            error: 'لم يتم العثور على حقول إدخال كود التلفزيون',
+            screenshot: screenshot ? `data:image/png;base64,${screenshot}` : null,
+          };
         }
 
-        // ====== إدخال الكود ======
         const digits = tvCode.replace(/[\s\-]/g, '').split('');
-        console.log(`📝 Entering ${digits.length} digits into ${codeInputs.length} fields`);
-
         if (codeInputs.length >= digits.length) {
           for (let i = 0; i < digits.length; i++) {
             await codeInputs[i].click({ clickCount: 3 });
@@ -679,45 +869,28 @@ class OSNSessionManager {
           await codeInputs[0].click({ clickCount: 3 });
           await page.keyboard.press('Backspace');
           await codeInputs[0].type(tvCode, { delay: 100 });
-        } else {
-          await codeInputs[0].click();
-          await page.keyboard.type(tvCode, { delay: 150 });
         }
-        console.log('✅ Code entered');
-        await this._sleep(1500);
 
-        // ====== الضغط على زر التأكيد ======
         const confirmButton = await this._findButton(page, [
           'connect', 'link', 'pair', 'submit', 'confirm', 'verify',
-          'ربط', 'تأكيد', 'إرسال', 'continue', 'next', 'متابعة', 'التالي'
+          'ربط', 'تأكيد', 'إرسال', 'continue', 'next', 'متابعة'
         ]);
         if (confirmButton) {
-          const btnText = await page.evaluate(el => el.textContent?.trim(), confirmButton);
-          console.log(`🔘 Clicking: "${btnText}"`);
           await confirmButton.click();
         } else {
-          console.log('⏎ No button, pressing Enter');
           await page.keyboard.press('Enter');
         }
 
-        // ====== انتظار النتيجة ======
         await this._sleep(6000);
-
         let resultScreenshot = null;
         try { resultScreenshot = await page.screenshot({ encoding: 'base64' }); } catch {}
 
-        const finalUrl = page.url();
         const pageContent = await page.evaluate(() => document.body?.innerText?.toLowerCase() || '');
-        console.log('📄 Result:', pageContent.substring(0, 300));
-
-        const isSuccess = ['success', 'connected', 'paired', 'linked', 'activated', 'done',
-          'نجاح', 'تم الربط', 'مرتبط', 'تم التفعيل', 'تم بنجاح', 'device linked', 'enjoy watching']
+        const isSuccess = ['success', 'connected', 'paired', 'linked', 'activated', 'enjoy watching']
           .some(k => pageContent.includes(k));
-        const isFailed = ['invalid', 'expired', 'wrong', 'error', 'try again', 'incorrect',
-          'غير صحيح', 'منتهي', 'خطأ', 'حاول مرة أخرى']
+        const isFailed = ['invalid', 'expired', 'wrong', 'error', 'try again']
           .some(k => pageContent.includes(k));
 
-        console.log(`📊 Result: success=${isSuccess}, failed=${isFailed}`);
         this.lastActivity = new Date();
 
         return {
@@ -725,20 +898,19 @@ class OSNSessionManager {
           paired: isSuccess,
           failed: isFailed,
           newSessionCookies: !!this._newSessionCookies,
-          screenshot: resultScreenshot ? `data:image/png;base64,${resultScreenshot}` : 
-                     (beforeScreenshot ? `data:image/png;base64,${beforeScreenshot}` : null),
-          finalUrl,
+          screenshot: resultScreenshot ? `data:image/png;base64,${resultScreenshot}` : null,
           message: isSuccess ? 'تم ربط التلفزيون بنجاح!' 
-            : isFailed ? 'فشل ربط التلفزيون - الكود غير صحيح أو منتهي'
-            : 'تم إدخال الكود - تحقق من الصورة للنتيجة',
+            : isFailed ? 'فشل - الكود غير صحيح أو منتهي'
+            : 'تم إدخال الكود - تحقق من الصورة',
+          method: 'browser',
         };
       } catch (innerError) {
-        console.error('❌ [enterTVCode] ERROR:', innerError.message);
+        console.error('❌ [Browser] ERROR:', innerError.message);
         let errorScreenshot = null;
         if (page) { try { errorScreenshot = await page.screenshot({ encoding: 'base64' }); } catch {} }
         return {
           success: false,
-          error: `خطأ أثناء إدخال الكود: ${innerError.message}`,
+          error: `خطأ: ${innerError.message}`,
           screenshot: errorScreenshot ? `data:image/png;base64,${errorScreenshot}` : null,
         };
       }
