@@ -42,6 +42,7 @@ interface ProductDetailsModalProps {
     category?: string;
     warranty_days?: number;
     platform?: string;
+    sales_count?: number;
   } | null;
 }
 
@@ -118,6 +119,7 @@ const ProductDetailsModal = ({
   if (!product) return null;
 
   const hasVariants = variants.length > 0;
+  const salesCount = (product as any).sales_count || 0;
   // For unlimited products (stock = -1), show as unlimited, otherwise sum the stock
   const totalVariantStock = variants.reduce((sum, v) => {
     if (v.stock === -1) return sum + 999; // Treat unlimited as high number for display
@@ -181,6 +183,12 @@ const ProductDetailsModal = ({
                     : (isRTL ? "متاح للطلب" : "Available to order")}
                 </span>
               </div>
+              {salesCount > 0 && (
+                <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                  <span>🔥</span>
+                  <span>{isRTL ? `تم البيع ${salesCount} مرة` : `${salesCount} sold`}</span>
+                </div>
+              )}
             </div>
           </div>
 
