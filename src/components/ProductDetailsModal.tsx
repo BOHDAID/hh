@@ -14,6 +14,7 @@ import {
   ShoppingCart,
   Loader2,
   Check,
+  Star,
 } from "lucide-react";
 import { db } from "@/lib/supabaseClient";
 import { Link } from "react-router-dom";
@@ -189,6 +190,15 @@ const ProductDetailsModal = ({
                   <span>{isRTL ? `تم البيع ${salesCount} مرة` : `${salesCount} sold`}</span>
                 </div>
               )}
+              {/* Star Rating */}
+              <div className="flex items-center gap-0.5 mt-1">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <Star
+                    key={star}
+                    className="h-4 w-4 text-yellow-500 fill-yellow-500"
+                  />
+                ))}
+              </div>
             </div>
           </div>
 
