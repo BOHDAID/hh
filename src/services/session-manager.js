@@ -19,6 +19,7 @@ class OSNSessionManager {
   _getChromeArgs() {
     return [
       '--no-sandbox',
+      '--disable-blink-features=AutomationControlled',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--disable-gpu',
@@ -98,6 +99,139 @@ class OSNSessionManager {
         try { await browser.close(); console.log('✅ Browser closed'); } catch {}
       }
     }
+  }
+
+  /**
+   * تطبيق التمويه على الصفحة لتبدو كجهاز حقيقي
+   */
+  async _applyStealthToPage(page) {
+    // User-Agent حقيقي من Chrome على Windows
+    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+    await page.setUserAgent(userAgent);
+
+    // إعداد viewport واقعي
+    await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
+
+    // إضافة headers واقعية
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+      'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"Windows"',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'none',
+      'Sec-Fetch-User': '?1',
+      'Upgrade-Insecure-Requests': '1',
+    });
+
+    // إزالة علامات البوت
+    await page.evaluateOnNewDocument(() => {
+      // إزالة navigator.webdriver
+      Object.defineProperty(navigator, 'webdriver', { get: () => false });
+
+      // إضافة plugins وهمية (المتصفح الحقيقي يملك plugins)
+      Object.defineProperty(navigator, 'plugins', {
+        get: () => {
+          const plugins = [
+            { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+            { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
+            { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' },
+          ];
+          plugins.length = 3;
+          return plugins;
+        },
+      });
+
+      // إضافة languages
+      Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en', 'ar'] });
+      Object.defineProperty(navigator, 'language', { get: () => 'en-US' });
+
+      // إضافة platform
+      Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
+
+      // إضافة hardware concurrency واقعي
+      Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+
+      // إضافة deviceMemory
+      Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+
+      // إضافة maxTouchPoints = 0 (ليس جهاز لمس)
+      Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 0 });
+
+      // إخفاء أن Chrome يعمل headless
+      Object.defineProperty(navigator, 'userAgentData', {
+        get: () => ({
+          brands: [
+            { brand: 'Google Chrome', version: '131' },
+            { brand: 'Chromium', version: '131' },
+            { brand: 'Not_A Brand', version: '24' },
+          ],
+          mobile: false,
+          platform: 'Windows',
+          getHighEntropyValues: async () => ({
+            architecture: 'x86',
+            bitness: '64',
+            fullVersionList: [
+              { brand: 'Google Chrome', version: '131.0.6778.139' },
+              { brand: 'Chromium', version: '131.0.6778.139' },
+            ],
+            model: '',
+            platformVersion: '15.0.0',
+            uaFullVersion: '131.0.6778.139',
+          }),
+        }),
+      });
+
+      // WebGL vendor/renderer واقعي
+      const getParameter = WebGLRenderingContext.prototype.getParameter;
+      WebGLRenderingContext.prototype.getParameter = function (parameter) {
+        if (parameter === 37445) return 'Google Inc. (NVIDIA)';
+        if (parameter === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1660 SUPER Direct3D11 vs_5_0 ps_5_0, D3D11)';
+        return getParameter.call(this, parameter);
+      };
+
+      // إخفاء automation flags
+      window.chrome = { runtime: {}, loadTimes: () => ({}), csi: () => ({}) };
+
+      // إخفاء StackTrace of Error التي تكشف Puppeteer
+      const originalError = Error;
+      Error = class extends originalError {
+        constructor(...args) {
+          super(...args);
+          if (this.stack) {
+            this.stack = this.stack.replace(/puppeteer/gi, '').replace(/HeadlessChrome/gi, 'Chrome');
+          }
+        }
+      };
+
+      // إضافة screen dimensions واقعية
+      Object.defineProperty(screen, 'width', { get: () => 1920 });
+      Object.defineProperty(screen, 'height', { get: () => 1080 });
+      Object.defineProperty(screen, 'availWidth', { get: () => 1920 });
+      Object.defineProperty(screen, 'availHeight', { get: () => 1040 });
+      Object.defineProperty(screen, 'colorDepth', { get: () => 24 });
+      Object.defineProperty(screen, 'pixelDepth', { get: () => 24 });
+
+      // إخفاء Notification permission (البوتات عادة لا تملكها)
+      const originalQuery = window.Notification?.permission;
+      if (window.Notification) {
+        Object.defineProperty(Notification, 'permission', { get: () => 'default' });
+      }
+
+      // إضافة connection info واقعية
+      Object.defineProperty(navigator, 'connection', {
+        get: () => ({
+          effectiveType: '4g',
+          rtt: 50,
+          downlink: 10,
+          saveData: false,
+        }),
+      });
+    });
+
+    console.log('🕵️ [Stealth] Anti-detection measures applied');
   }
 
   /**
@@ -397,8 +531,7 @@ class OSNSessionManager {
       let page = null;
       try {
         page = await browser.newPage();
-        await page.setViewport({ width: 1280, height: 720 });
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        await this._applyStealthToPage(page);
 
         // ====== المحاولة 1: استخدام كوكيز محفوظة (إن وُجدت) ======
         let needsLogin = true;
