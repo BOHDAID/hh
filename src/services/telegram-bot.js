@@ -283,6 +283,12 @@ async function handleActivationCode(chatId, code, username) {
   const productNameAr = activationCode.products?.name || 'المنتج';
   const productNameEn = activationCode.products?.name_en || productNameAr;
   const accountEmail = activationCode.account_email;
+  const accountPassword = activationCode.account_password;
+  const activationType = activationCode.products?.activation_type || 'otp';
+
+  // تحديد نوع المنتج: OSN أو ChatGPT أو غيره
+  const isOSN = activationType === 'osn' || productNameAr.toLowerCase().includes('osn') || productNameEn.toLowerCase().includes('osn');
+  const isChatGPT = activationType === 'chatgpt' || productNameAr.toLowerCase().includes('chatgpt') || productNameEn.toLowerCase().includes('chatgpt');
 
   // Save session
   userSessions[chatId] = {
@@ -291,8 +297,10 @@ async function handleActivationCode(chatId, code, username) {
     productNameEn,
     productId: activationCode.product_id,
     orderId: activationCode.order_id,
-    activationType: activationCode.products?.activation_type || 'otp',
+    activationType: activationType,
+    productCategory: isOSN ? 'osn' : isChatGPT ? 'chatgpt' : 'other',
     accountEmail: accountEmail,
+    accountPassword: accountPassword,
     step: 'choose_type',
     retryCount: 0,
   };
@@ -308,7 +316,21 @@ async function handleActivationCode(chatId, code, username) {
     })
     .eq('id', activationCode.id);
 
-  // Show activation type choices
+  // === تدفق ChatGPT: إيميل + باسورد فوراً ثم زر OTP ===
+  if (isChatGPT) {
+    const emailLine = accountEmail ? `\n📧 <b>الإيميل:</b> <code>${accountEmail}</code>` : '';
+    const passLine = accountPassword ? `\n🔑 <b>كلمة المرور:</b> <code>${accountPassword}</code>` : '';
+
+    userSessions[chatId].step = 'awaiting_otp_request';
+
+    await sendMessage(chatId, bi(
+      `✅ <b>كود صالح!</b>\n\n📦 المنتج: <b>${productNameAr}</b>${emailLine}${passLine}\n\n📝 <b>التعليمات:</b>\n1️⃣ سجّل دخول بالبيانات أعلاه\n2️⃣ إذا طلب رمز تحقق، اضغط الزر أدناه\n\n⚠️ <b>سجّل دخول أولاً ثم اطلب الرمز!</b>`,
+      `✅ <b>Valid code!</b>\n\n📦 Product: <b>${productNameEn}</b>${emailLine}${passLine}\n\n📝 <b>Instructions:</b>\n1️⃣ Login with the credentials above\n2️⃣ If it asks for a verification code, press the button below\n\n⚠️ <b>Login first, then request the code!</b>`
+    ), [[{ text: '🔑 أحضر لي الرمز / Get my code', callback_data: 'get_otp' }]]);
+    return;
+  }
+
+  // === تدفق OSN: تلفزيون أو هاتف ===
   const emailLine = accountEmail 
     ? `\n📧 ${accountEmail}` 
     : '';
@@ -390,19 +412,31 @@ async function handleCallbackQuery(callbackQuery) {
 
   // === Get OTP (Auto-polling) ===
   if (data === 'get_otp') {
+    const category = session.productCategory || 'osn';
+    const appNameAr = category === 'chatgpt' ? 'ChatGPT' : 'OSN';
+    const appNameEn = appNameAr;
+
     await editMessage(chatId, messageId, bi(
-      '⏳ جاري البحث عن رمز التحقق تلقائياً...\n\n🔄 سأحاول عدة مرات خلال 60 ثانية.',
-      '⏳ Searching for verification code automatically...\n\n🔄 I will retry multiple times over 60 seconds.'
+      `⏳ جاري البحث عن رمز التحقق من ${appNameAr} تلقائياً...\n\n🔄 سأحاول عدة مرات خلال 60 ثانية.`,
+      `⏳ Searching for ${appNameEn} verification code automatically...\n\n🔄 I will retry multiple times over 60 seconds.`
     ));
+
+    // تحديد فلتر المرسل حسب نوع المنتج
+    let senderFilter = null;
+    if (category === 'chatgpt') {
+      senderFilter = ['openai.com', 'chatgpt.com', 'openai'];
+    } else if (category === 'osn') {
+      senderFilter = ['osn', 'osnplus'];
+    }
 
     // محاولة تلقائية: 6 محاولات × 10 ثواني = 60 ثانية
     const maxAttempts = 6;
     const delayBetween = 10000; // 10 ثواني
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      console.log(`🔍 OTP attempt ${attempt}/${maxAttempts}...`);
+      console.log(`🔍 OTP attempt ${attempt}/${maxAttempts} for ${category}...`);
 
-      const otpResult = await getOTPFromSession();
+      const otpResult = await getOTPFromSession(senderFilter);
 
       if (otpResult.success && otpResult.otp) {
         // تم العثور على الرمز!
@@ -415,8 +449,8 @@ async function handleCallbackQuery(callbackQuery) {
         });
 
         await editMessage(chatId, messageId, bi(
-          `✅ <b>رمز التحقق:</b>\n\n<code>${otpResult.otp}</code>\n\n📱 أدخل هذا الرمز في تطبيق OSN.\n\n⚠️ الرمز صالح لمدة محدودة!`,
-          `✅ <b>Verification code:</b>\n\n<code>${otpResult.otp}</code>\n\n📱 Enter this code in the OSN app.\n\n⚠️ The code is valid for a limited time!`
+          `✅ <b>رمز التحقق:</b>\n\n<code>${otpResult.otp}</code>\n\n📱 أدخل هذا الرمز في ${appNameAr}.\n\n⚠️ الرمز صالح لمدة محدودة!`,
+          `✅ <b>Verification code:</b>\n\n<code>${otpResult.otp}</code>\n\n📱 Enter this code in ${appNameEn}.\n\n⚠️ The code is valid for a limited time!`
         ));
 
         await markCodeAsUsed(session.activationCodeId);
@@ -437,8 +471,8 @@ async function handleCallbackQuery(callbackQuery) {
 
     // فشلت كل المحاولات
     await editMessage(chatId, messageId, bi(
-      `❌ لم يُعثر على رمز بعد ${maxAttempts} محاولات.\n\n📝 <b>تأكد من:</b>\n• فتح تطبيق OSN\n• طلب رمز التحقق من التطبيق\n• وصول الرمز للبريد\n\nاضغط للمحاولة مرة أخرى:`,
-      `❌ No code found after ${maxAttempts} attempts.\n\n📝 <b>Make sure:</b>\n• OSN app is open\n• You requested the code\n• The code arrived in email\n\nPress to try again:`
+      `❌ لم يُعثر على رمز من ${appNameAr} بعد ${maxAttempts} محاولات.\n\n📝 <b>تأكد من:</b>\n• سجّلت دخول في ${appNameAr} أولاً\n• طلبت رمز التحقق\n• الرمز وصل للبريد من ${appNameAr}\n\n⚠️ يجب تسجيل الدخول أولاً قبل طلب الرمز!\n\nاضغط للمحاولة مرة أخرى:`,
+      `❌ No ${appNameEn} code found after ${maxAttempts} attempts.\n\n📝 <b>Make sure:</b>\n• You logged in to ${appNameEn} first\n• You requested the verification code\n• The code arrived from ${appNameEn}\n\n⚠️ You must login first before requesting the code!\n\nPress to try again:`
     ), [[{ text: '🔄 إعادة المحاولة / Retry', callback_data: 'get_otp' }]]);
     return;
   }
@@ -487,7 +521,7 @@ async function getQRFromSession() {
   }
 }
 
-async function getOTPFromSession() {
+async function getOTPFromSession(senderFilter = null) {
   try {
     // osn_sessions مخزن في قاعدة البيانات الخارجية
     const { data: sessions, error: dbError } = await supabase
@@ -512,7 +546,7 @@ async function getOTPFromSession() {
       return { success: false, error: 'لا توجد جلسة نشطة ببيانات Gmail. تأكد من إضافة عنوان Gmail وكلمة مرور التطبيق في إعدادات الجلسة.' };
     }
 
-    console.log(`📧 Trying ${validSessions.length} sessions with Gmail credentials`);
+    console.log(`📧 Trying ${validSessions.length} sessions with Gmail credentials, senderFilter: ${JSON.stringify(senderFilter)}`);
 
     // Edge Function في Lovable Cloud
     const CLOUD_URL = process.env.SUPABASE_URL || 'https://wueacwqzafxsvowlqbwh.supabase.co';
@@ -523,17 +557,24 @@ async function getOTPFromSession() {
       console.log(`📧 Trying Gmail: ${session.gmail_address}`);
       
       try {
+        const requestBody = {
+          gmailAddress: session.gmail_address,
+          gmailAppPassword: session.gmail_app_password,
+          maxAgeMinutes: 5,
+        };
+
+        // إضافة فلتر المرسل إذا موجود
+        if (senderFilter) {
+          requestBody.senderFilter = senderFilter;
+        }
+
         const response = await fetch(`${CLOUD_URL}/functions/v1/gmail-read-otp`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${CLOUD_ANON}`,
           },
-          body: JSON.stringify({
-            gmailAddress: session.gmail_address,
-            gmailAppPassword: session.gmail_app_password,
-            maxAgeMinutes: 5,
-          }),
+          body: JSON.stringify(requestBody),
         });
 
         const result = await response.json();

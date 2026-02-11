@@ -265,7 +265,7 @@ serve(async (req) => {
   }
 
   try {
-    const { gmailAddress, gmailAppPassword, maxAgeMinutes = 5 } = await req.json();
+    const { gmailAddress, gmailAppPassword, maxAgeMinutes = 5, senderFilter } = await req.json();
 
     if (!gmailAddress || !gmailAppPassword) {
       return new Response(
@@ -274,7 +274,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`📧 Reading OTP from Gmail: ${gmailAddress}, maxAge: ${maxAgeMinutes} min`);
+    console.log(`📧 Reading OTP from Gmail: ${gmailAddress}, maxAge: ${maxAgeMinutes} min, senderFilter: ${senderFilter || 'none'}`);
 
     const imap = new IMAPClient();
     
@@ -323,6 +323,19 @@ serve(async (req) => {
           if (!isMessageRecent(messageBody, maxAgeMinutes)) {
             console.log(`⏭️ Message ${messageIds[i]} is older than ${maxAgeMinutes} minutes, skipping`);
             continue;
+          }
+
+          // فلترة حسب المرسل إذا تم تحديده
+          if (senderFilter) {
+            const fromMatch = messageBody.match(/From:\s*(.+?)(?:\r?\n)/i);
+            const fromHeader = fromMatch ? fromMatch[1].toLowerCase() : '';
+            const filters = Array.isArray(senderFilter) ? senderFilter : [senderFilter];
+            const matchesSender = filters.some(f => fromHeader.includes(f.toLowerCase()));
+            if (!matchesSender) {
+              console.log(`⏭️ Message ${messageIds[i]} from "${fromHeader.substring(0, 50)}" doesn't match sender filter [${filters.join(', ')}], skipping`);
+              continue;
+            }
+            console.log(`✅ Message ${messageIds[i]} matches sender filter`);
           }
           
           console.log(`📄 Message ${messageIds[i]} (${messageBody.length} bytes), preview: ${messageBody.substring(0, 200)}`);
