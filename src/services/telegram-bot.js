@@ -520,8 +520,8 @@ async function handleCallbackQuery(callbackQuery) {
 
     // فشلت كل المحاولات
     await editMessage(chatId, messageId, bi(
-      `❌ لم يُعثر على رمز من ${appNameAr} بعد ${maxAttempts} محاولات.\n\n📝 <b>تأكد من:</b>\n• سجّلت دخول في ${appNameAr} أولاً\n• طلبت رمز التحقق\n• الرمز وصل للبريد من ${appNameAr}\n\n⚠️ يجب تسجيل الدخول أولاً قبل طلب الرمز!\n\nاضغط للمحاولة مرة أخرى:`,
-      `❌ No ${appNameEn} code found after ${maxAttempts} attempts.\n\n📝 <b>Make sure:</b>\n• You logged in to ${appNameEn} first\n• You requested the verification code\n• The code arrived from ${appNameEn}\n\n⚠️ You must login first before requesting the code!\n\nPress to try again:`
+      `❌ لم يُعثر على رمز حديث من ${appNameAr} (خلال آخر 5 دقائق).\n\n📝 <b>تأكد من:</b>\n• سجّلت دخول في ${appNameAr} أولاً\n• طلبت رمز التحقق قبل الضغط على هذا الزر\n• الرمز يجب أن يصل خلال 5 دقائق\n\n⚠️ الرموز القديمة (أكثر من 5 دقائق) يتم تجاهلها تلقائياً!\n\nاضغط للمحاولة مرة أخرى:`,
+      `❌ No recent ${appNameEn} code found (within last 5 minutes).\n\n📝 <b>Make sure:</b>\n• You logged in to ${appNameEn} first\n• You requested the verification code before pressing this button\n• The code must arrive within 5 minutes\n\n⚠️ Old codes (more than 5 minutes) are automatically ignored!\n\nPress to try again:`
     ), [[{ text: '🔄 إعادة المحاولة / Retry', callback_data: 'get_otp' }]]);
     return;
   }
