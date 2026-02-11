@@ -552,6 +552,39 @@ async function sendSuccessMessage(chatId, session) {
 // ============================================================
 async function enterTVCodeFromSession(tvCode) {
   try {
+    // تحميل الكوكيز من قاعدة البيانات إذا لم تكن محملة في الذاكرة
+    if (!sessionManager.isLoggedIn || !sessionManager.storedCookies) {
+      console.log('🔄 Loading OSN cookies from database...');
+      const { data: sessions, error: dbError } = await supabase
+        .from('osn_sessions')
+        .select('cookies, email')
+        .eq('is_active', true)
+        .eq('is_connected', true)
+        .limit(1)
+        .maybeSingle();
+
+      if (dbError) {
+        console.error('❌ DB Error loading osn_sessions:', dbError.message);
+        return { success: false, error: 'خطأ في قراءة الجلسة من قاعدة البيانات: ' + dbError.message };
+      }
+
+      if (!sessions || !sessions.cookies) {
+        console.error('❌ No active OSN session found in database');
+        return { success: false, error: 'لا توجد جلسة OSN نشطة. يرجى استيراد كوكيز OSN أولاً.' };
+      }
+
+      // تحميل الكوكيز في الذاكرة مباشرة (بدون فتح متصفح للتحقق)
+      const cookies = typeof sessions.cookies === 'string' 
+        ? JSON.parse(sessions.cookies) 
+        : sessions.cookies;
+      
+      sessionManager.storedCookies = cookies;
+      sessionManager.isLoggedIn = true;
+      sessionManager.currentEmail = sessions.email || 'db-session';
+      sessionManager.lastActivity = new Date();
+      console.log(`✅ Loaded ${cookies.length} cookies from DB for: ${sessions.email}`);
+    }
+
     const result = await sessionManager.enterTVCode(tvCode);
     return result;
   } catch (error) {
