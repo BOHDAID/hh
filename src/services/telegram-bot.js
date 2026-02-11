@@ -560,8 +560,13 @@ async function sendSuccessMessage(chatId, session) {
 // ============================================================
 async function enterTVCodeFromSession(tvCode) {
   try {
-    // تحميل الكوكيز من قاعدة البيانات إذا لم تكن محملة في الذاكرة
-    if (!sessionManager.isLoggedIn || !sessionManager.storedCookies) {
+    // تحميل الكوكيز من قاعدة البيانات دائماً (لضمان أحدث كوكيز)
+    const hasValidCookies = sessionManager.isLoggedIn && 
+      sessionManager.storedCookies && 
+      Array.isArray(sessionManager.storedCookies) && 
+      sessionManager.storedCookies.length > 0;
+
+    if (!hasValidCookies) {
       console.log('🔄 Loading OSN cookies from database...');
       const { data: sessions, error: dbError } = await supabase
         .from('osn_sessions')
@@ -581,9 +586,10 @@ async function enterTVCodeFromSession(tvCode) {
         return { success: false, error: 'لا توجد جلسة OSN نشطة. يرجى استيراد كوكيز OSN أولاً.' };
       }
 
-      // تحميل الكوكيز في الذاكرة مباشرة (بدون فتح متصفح للتحقق)
+      // تحميل الكوكيز بطريقة آمنة
       const rawCookies = sessions.cookies;
-      console.log(`🔍 [DEBUG] Raw cookies type: ${typeof rawCookies}, isArray: ${Array.isArray(rawCookies)}, preview: ${JSON.stringify(rawCookies)?.substring(0, 200)}`);
+      console.log(`🔍 [DEBUG] Raw cookies type: ${typeof rawCookies}, isArray: ${Array.isArray(rawCookies)}`);
+      console.log(`🔍 [DEBUG] Raw cookies preview: ${JSON.stringify(rawCookies)?.substring(0, 300)}`);
       
       let cookies;
       if (typeof rawCookies === 'string') {
@@ -591,22 +597,24 @@ async function enterTVCodeFromSession(tvCode) {
           cookies = JSON.parse(rawCookies);
         } catch (e) {
           console.error('❌ Failed to parse cookies string:', e.message);
-          return { success: false, error: 'الكوكيز مخزنة بصيغة غير صحيحة في قاعدة البيانات' };
+          return { success: false, error: 'الكوكيز مخزنة بصيغة غير صحيحة' };
         }
       } else if (Array.isArray(rawCookies)) {
         cookies = rawCookies;
       } else if (rawCookies && typeof rawCookies === 'object') {
-        // ربما مخزنة كـ object وليس array
         cookies = Object.values(rawCookies);
-        console.log(`⚠️ Cookies stored as object, converted to array: ${cookies.length} items`);
+        console.log(`⚠️ Cookies were object, converted to array: ${cookies.length}`);
       } else {
-        console.error('❌ Cookies data is empty or invalid:', rawCookies);
-        return { success: false, error: 'الكوكيز فارغة في قاعدة البيانات. يرجى استيراد كوكيز جديدة.' };
+        return { success: false, error: 'الكوكيز فارغة. يرجى استيراد كوكيز جديدة.' };
       }
 
+      // التأكد إنها مصفوفة وفيها عناصر
       if (!Array.isArray(cookies) || cookies.length === 0) {
-        console.error('❌ Cookies array is empty after parsing');
-        return { success: false, error: 'الكوكيز فارغة. يرجى استيراد كوكيز OSN جديدة.' };
+        console.error('❌ Cookies empty after parsing. Raw type was:', typeof rawCookies);
+        // إعادة تعيين حالة الجلسة
+        sessionManager.isLoggedIn = false;
+        sessionManager.storedCookies = null;
+        return { success: false, error: 'الكوكيز فارغة في قاعدة البيانات. يرجى استيراد كوكيز OSN جديدة.' };
       }
       
       sessionManager.storedCookies = cookies;
@@ -614,6 +622,8 @@ async function enterTVCodeFromSession(tvCode) {
       sessionManager.currentEmail = sessions.email || 'db-session';
       sessionManager.lastActivity = new Date();
       console.log(`✅ Loaded ${cookies.length} cookies from DB for: ${sessions.email}`);
+    } else {
+      console.log(`✅ Using cached ${sessionManager.storedCookies.length} cookies for: ${sessionManager.currentEmail}`);
     }
 
     const result = await sessionManager.enterTVCode(tvCode);
