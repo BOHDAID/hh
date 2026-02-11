@@ -21,6 +21,7 @@ interface ProductCardProps {
   platform?: string;
   warranty_days?: number;
   sales_count?: number;
+  average_rating?: number;
 }
 
 const ProductCard = ({
@@ -35,6 +36,7 @@ const ProductCard = ({
   platform,
   warranty_days,
   sales_count,
+  average_rating,
 }: ProductCardProps) => {
   const { t, i18n } = useTranslation();
   const isRTL = i18n.language === 'ar';
@@ -300,6 +302,7 @@ const ProductCard = ({
           platform,
           warranty_days,
           sales_count,
+          average_rating,
         }}
       />
     </motion.div>
