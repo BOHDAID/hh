@@ -627,6 +627,30 @@ async function enterTVCodeFromSession(tvCode) {
     }
 
     const result = await sessionManager.enterTVCode(tvCode);
+    
+    // حفظ الكوكيز المجدّدة تلقائياً في قاعدة البيانات
+    if (result.refreshedCookies && sessionManager.storedCookies?.length > 0) {
+      console.log('🔄 Saving refreshed cookies to database...');
+      try {
+        const { error: updateErr } = await supabase
+          .from('osn_sessions')
+          .update({ 
+            cookies: sessionManager.storedCookies,
+            last_activity: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('is_active', true)
+          .eq('is_connected', true);
+        if (updateErr) {
+          console.error('⚠️ Failed to save refreshed cookies:', updateErr.message);
+        } else {
+          console.log('✅ Refreshed cookies saved to DB');
+        }
+      } catch (e) {
+        console.error('⚠️ Error saving refreshed cookies:', e.message);
+      }
+    }
+    
     return result;
   } catch (error) {
     console.error('❌ TV code entry error:', error.message);
