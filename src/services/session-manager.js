@@ -275,29 +275,49 @@ class OSNSessionManager {
           console.log('⚠️ [enterTVCode] Screenshot failed:', ssErr.message);
         }
 
-        // التحقق أن الجلسة لا تزال صالحة
-        if (currentUrl.includes('login') && !currentUrl.includes('login/tv')) {
-          console.error('❌ [enterTVCode] Redirected to login - cookies expired!');
+        // التحقق أن الجلسة لا تزال صالحة - بفحص محتوى الصفحة وليس URL فقط
+        // لأن URL يبقى /login/tv حتى لو عرض صفحة تسجيل الدخول العادية
+        const pageTextCheck = await page.evaluate(() => document.body?.innerText?.toLowerCase() || '');
+        const isLoginPage = pageTextCheck.includes('continue with google') || 
+                           pageTextCheck.includes('continue with apple') ||
+                           pageTextCheck.includes('continue with facebook') ||
+                           pageTextCheck.includes('sign up or login') ||
+                           pageTextCheck.includes('more ways to sign up');
+        
+        const hasCodeInputs = await page.$$eval(
+          'input[type="tel"], input[type="number"], input[inputmode="numeric"]',
+          inputs => inputs.length
+        ).catch(() => 0);
+
+        console.log(`🔍 [enterTVCode] Page analysis: isLoginPage=${isLoginPage}, codeInputsFound=${hasCodeInputs}`);
+
+        if (isLoginPage && hasCodeInputs === 0) {
+          console.error('❌ [enterTVCode] Page shows LOGIN form instead of TV code form! Cookies are expired or invalid.');
           this.isLoggedIn = false;
           this.storedCookies = null;
           return { 
             success: false, 
-            error: 'الكوكيز منتهية - يرجى استيراد كوكيز جديدة',
+            error: 'الكوكيز منتهية أو غير صالحة - الموقع يعرض صفحة تسجيل الدخول بدل صفحة كود التلفزيون. يرجى استيراد كوكيز جديدة من الجلسة.',
             screenshot: beforeScreenshot ? `data:image/png;base64,${beforeScreenshot}` : null,
             finalUrl: currentUrl,
           };
         }
 
         // انتظار إضافي للتأكد أن الحقول جاهزة
-        console.log('⏳ [enterTVCode] Waiting for input fields...');
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        console.log('⏳ [enterTVCode] Waiting for code input fields...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
-        // محاولة انتظار الحقول بشكل أذكى
+        // انتظار حقول الكود تحديداً
         try {
-          await page.waitForSelector('input', { timeout: 10000 });
-          console.log('✅ [enterTVCode] Input element found on page');
+          await page.waitForSelector('input[type="tel"], input[type="number"], input[inputmode="numeric"], input[maxlength="1"]', { timeout: 10000 });
+          console.log('✅ [enterTVCode] Code input fields found');
         } catch {
-          console.log('⚠️ [enterTVCode] No input found after waiting 10s');
+          console.log('⚠️ [enterTVCode] No code input found after waiting 10s, trying any input...');
+          try {
+            await page.waitForSelector('input', { timeout: 5000 });
+          } catch {
+            console.log('⚠️ [enterTVCode] No input found at all');
+          }
         }
 
         // البحث عن حقول الإدخال - OSN عادة 5 حقول منفصلة
