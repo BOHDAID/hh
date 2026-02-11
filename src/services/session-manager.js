@@ -113,10 +113,10 @@ class OSNSessionManager {
     console.log(`📧 [Login] Gmail for OTP: ${gmailAddress}`);
 
     try {
-      // ====== الخطوة 1: الذهاب لصفحة تسجيل الدخول ======
-      console.log('🌐 [Login] Step 1: Navigating to login page...');
+      // ====== الخطوة 1: الذهاب مباشرة لصفحة تسجيل الدخول بالإيميل ======
+      console.log('🌐 [Login] Step 1: Navigating directly to email login page...');
       try {
-        await page.goto('https://osnplus.com/en/login', {
+        await page.goto('https://osnplus.com/en-sa/login/more-options?input_type=email', {
           waitUntil: 'networkidle2',
           timeout: 30000,
         });
@@ -128,24 +128,8 @@ class OSNSessionManager {
       const loginUrl = page.url();
       console.log('🔗 [Login] Current URL:', loginUrl);
 
-      // ====== الخطوة 2: البحث عن "More ways to sign up or login" أو حقل الإيميل ======
-      console.log('🔍 [Login] Step 2: Looking for email login option...');
-      
-      // أولاً: نبحث عن زر "more ways" أو "email" أو "sign up"
-      const moreWaysBtn = await this._findButton(page, [
-        'more ways', 'sign up or login', 'email', 'البريد', 'تسجيل',
-        'log in with email', 'sign in with email', 'use email'
-      ]);
-      
-      if (moreWaysBtn) {
-        const btnText = await page.evaluate(el => el.textContent?.trim(), moreWaysBtn);
-        console.log(`🔘 [Login] Clicking: "${btnText}"`);
-        await moreWaysBtn.click();
-        await this._sleep(3000);
-      }
-
-      // ====== الخطوة 3: البحث عن حقل الإيميل وإدخاله ======
-      console.log('🔍 [Login] Step 3: Looking for email input...');
+      // ====== الخطوة 2: البحث عن حقل الإيميل وإدخاله ======
+      console.log('🔍 [Login] Step 2: Looking for email input...');
       
       let emailInput = await page.$('input[type="email"]');
       if (!emailInput) {
@@ -184,8 +168,8 @@ class OSNSessionManager {
       console.log(`📧 [Login] Email entered: ${email}`);
       await this._sleep(1000);
 
-      // ====== الخطوة 4: الضغط على زر المتابعة ======
-      console.log('🔍 [Login] Step 4: Looking for continue/submit button...');
+      // ====== الخطوة 3: الضغط على زر المتابعة ======
+      console.log('🔍 [Login] Step 3: Looking for continue/submit button...');
       
       const continueBtn = await this._findButton(page, [
         'continue', 'next', 'submit', 'sign in', 'log in', 'send code',
