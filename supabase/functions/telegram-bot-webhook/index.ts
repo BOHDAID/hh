@@ -543,30 +543,41 @@ Deno.serve(async (req) => {
             [[{ text: "✅ سجلت دخول | Logged in", callback_data: "logged_in" }]]
           );
         } else {
-          // OTP: هاتف
+          // هاتف: إعطاء الإيميل والباسورد مباشرة بدون OTP
           await editTelegramMessage(
             botToken, chatId, messageId,
-            `✅ اخترت: هاتف (OTP) 📱\n` +
+            `✅ اخترت: هاتف 📱\n` +
             `─────────\n` +
-            `✅ You chose: Phone (OTP) 📱\n\n` +
-            `📧 البريد / Email: <code>${session.accountEmail}</code>\n\n` +
+            `✅ You chose: Phone 📱\n\n` +
+            `📧 البريد / Email: <code>${session.accountEmail}</code>\n` +
+            `🔑 كلمة المرور / Password: <code>${session.accountPassword || "غير محدد / N/A"}</code>\n\n` +
             `📝 <b>التعليمات:</b>\n` +
             `1️⃣ افتح تطبيق OSN\n` +
             `2️⃣ اختر "تسجيل الدخول"\n` +
-            `3️⃣ أدخل البريد أعلاه\n` +
-            `4️⃣ ⚠️ يجب تسجيل الدخول أولاً قبل طلب الرمز\n` +
-            `5️⃣ بعد الدخول، اضغط الزر أدناه\n` +
+            `3️⃣ أدخل البريد وكلمة المرور أعلاه\n` +
+            `4️⃣ استمتع بالخدمة! 🎉\n` +
             `─────────\n` +
             `📝 <b>Instructions:</b>\n` +
             `1️⃣ Open OSN app\n` +
             `2️⃣ Select "Login"\n` +
-            `3️⃣ Enter the email above\n` +
-            `4️⃣ ⚠️ You must login first before requesting the code\n` +
-            `5️⃣ After login, press the button below`,
-            [[{ text: "🔑 أحضر لي الرمز | Get OTP", callback_data: "get_otp" }]]
+            `3️⃣ Enter the email and password above\n` +
+            `4️⃣ Enjoy the service! 🎉`
           );
-          session.step = "awaiting_otp_request";
-          await updateActivationCode(session.activationCodeId, chatId, username, "awaiting_otp");
+          
+          // تحديث الكود كمستخدم وإنهاء الجلسة
+          await markCodeAsUsed(session.activationCodeId);
+          const invoiceUrl = await getInvoiceUrl(session.activationCodeId);
+          const siteUrl = await getSetting("store_url") || await getSetting("site_url") || "";
+          delete userSessions[chatId];
+          
+          const ratingButtons: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
+          if (siteUrl) ratingButtons.push([{ text: "⭐ قيّمنا في الموقع | Rate us", url: siteUrl }]);
+          if (invoiceUrl) ratingButtons.push([{ text: "🧾 عرض الإيصال / View Receipt", url: invoiceUrl }]);
+          
+          if (ratingButtons.length > 0) {
+            const successMsg = `🎉 تم التفعيل بنجاح! استمتع بالخدمة.\n\n⭐ <b>مرجو تقييمنا في موقعنا!</b>\nساعدنا بتقييم المنتج لنحسّن خدماتنا.\n\n─────────\n\n🎉 Activation successful! Enjoy the service.\n\n⭐ <b>Please rate us on our website!</b>`;
+            await sendTelegramMessage(botToken, chatId, successMsg, ratingButtons);
+          }
         }
         
         return new Response(JSON.stringify({ ok: true }), {
@@ -1132,11 +1143,12 @@ Deno.serve(async (req) => {
       // ============================================
       // 🔥 OSN Flow - التدفق الحالي
       // ============================================
-      const accountEmail = sessionData.gmail_address;
+      const accountEmail = sessionData.gmail_address || sessionData.email || "";
+      const accountPassword = sessionData.account_password || "";
       const activationTypes = ["qr", "otp"];
 
       await updateActivationCode(
-        activationCode.id, chatId, username, "in_progress", accountEmail
+        activationCode.id, chatId, username, "in_progress", accountEmail, accountPassword
       );
 
       userSessions[chatId] = {
@@ -1145,6 +1157,7 @@ Deno.serve(async (req) => {
         productId: productId,
         activationType: activationTypes[0],
         accountEmail: accountEmail,
+        accountPassword: accountPassword,
         step: activationTypes.length > 1 ? "choose_type" : "awaiting_login",
         retryCount: 0,
         gmailAddress: sessionData.gmail_address,
@@ -1156,12 +1169,12 @@ Deno.serve(async (req) => {
           botToken, chatId,
           `✅ <b>كود صالح!</b>\n\n` +
           `📦 المنتج: <b>${productName}</b>\n\n` +
-          `📧 البريد: <code>${accountEmail}</code>\n\n` +
-          `اختر طريقة التفعيل:`,
+          `📧 البريد / Email: <code>${accountEmail}</code>\n\n` +
+          `اختر طريقة التفعيل / Choose activation method:`,
           [
             [
-              { text: "📺 QR للتلفزيون", callback_data: "choose_qr" },
-              { text: "📱 OTP للجوال", callback_data: "choose_otp" }
+              { text: "📺 تلفزيون | TV", callback_data: "choose_qr" },
+              { text: "📱 هاتف | Phone", callback_data: "choose_otp" }
             ]
           ]
         );
