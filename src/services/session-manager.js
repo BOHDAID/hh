@@ -575,14 +575,32 @@ class OSNSessionManager {
    * استخراج Auth Token من الكوكيز
    */
   _extractAuthToken(cookies) {
-    // البحث عن توكن المصادقة في الكوكيز
-    const tokenCookieNames = [
-      'access_token', 'token', 'auth_token', 'jwt', 'session',
-      'osnplus_token', 'Authorization', 'bearer',
-      // كوكيز OSN المحتملة
-      'osn_token', 'user_token', 'sid', 'connect.sid',
-    ];
-    
+    // ====== الطريقة الصحيحة: كوكيز auth مشفرة بـ URL Encoding ======
+    const authCookie = cookies.find(c => c.name === 'auth');
+    if (authCookie?.value) {
+      try {
+        const decoded = decodeURIComponent(authCookie.value);
+        const authData = JSON.parse(decoded);
+        if (authData.requestToken) {
+          console.log(`🔑 Found requestToken from 'auth' cookie (${authData.requestToken.substring(0, 20)}...)`);
+          return authData.requestToken;
+        }
+        // fallback: أي حقل token آخر داخل الكوكيز
+        const possibleKeys = ['accessToken', 'access_token', 'token', 'jwt'];
+        for (const key of possibleKeys) {
+          if (authData[key]) {
+            console.log(`🔑 Found ${key} from 'auth' cookie`);
+            return authData[key];
+          }
+        }
+        console.log('⚠️ auth cookie found but no token field. Keys:', Object.keys(authData).join(', '));
+      } catch (e) {
+        console.log(`⚠️ Failed to parse 'auth' cookie: ${e.message}`);
+      }
+    }
+
+    // ====== Fallback: البحث في كوكيز أخرى ======
+    const tokenCookieNames = ['access_token', 'token', 'auth_token', 'jwt', 'session', 'osnplus_token'];
     for (const name of tokenCookieNames) {
       const cookie = cookies.find(c => c.name?.toLowerCase() === name.toLowerCase());
       if (cookie?.value) {
@@ -591,7 +609,7 @@ class OSNSessionManager {
       }
     }
 
-    // البحث عن أي كوكيز تبدو كـ JWT token
+    // البحث عن JWT token
     for (const cookie of cookies) {
       if (cookie.value && cookie.value.startsWith('eyJ') && cookie.value.includes('.')) {
         console.log(`🔑 Found JWT-like token in cookie: ${cookie.name}`);
@@ -599,15 +617,7 @@ class OSNSessionManager {
       }
     }
 
-    // البحث عن كوكيز طويلة قد تكون tokens
-    for (const cookie of cookies) {
-      if (cookie.value && cookie.value.length > 100 && !cookie.name?.startsWith('_')) {
-        console.log(`🔑 Found long token in cookie: ${cookie.name} (${cookie.value.length} chars)`);
-        return cookie.value;
-      }
-    }
-
-    console.log('❌ No auth token found in cookies. Available cookies:', cookies.map(c => c.name).join(', '));
+    console.log('❌ No auth token found. Available cookies:', cookies.map(c => c.name).join(', '));
     return null;
   }
 
@@ -615,8 +625,21 @@ class OSNSessionManager {
    * استخراج Device ID من الكوكيز أو توليد واحد
    */
   _extractDeviceId(cookies) {
+    // أولاً: البحث في كوكيز auth عن UDID
+    const authCookie = cookies.find(c => c.name === 'auth');
+    if (authCookie?.value) {
+      try {
+        const decoded = decodeURIComponent(authCookie.value);
+        const authData = JSON.parse(decoded);
+        if (authData.udid || authData.deviceId || authData.device_id) {
+          const udid = authData.udid || authData.deviceId || authData.device_id;
+          console.log(`📱 Found UDID from auth cookie: ${udid}`);
+          return udid;
+        }
+      } catch {}
+    }
+
     const deviceCookieNames = ['device_id', 'deviceId', 'X-Device-Id', 'udid', 'did'];
-    
     for (const name of deviceCookieNames) {
       const cookie = cookies.find(c => c.name?.toLowerCase() === name.toLowerCase());
       if (cookie?.value) return cookie.value;
@@ -652,7 +675,7 @@ class OSNSessionManager {
           'Accept': 'application/json, text/plain, */*',
           'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
           'Origin': 'https://www.osnplus.com',
-          'Referer': 'https://www.osnplus.com/en/login/tv',
+          'Referer': 'https://www.osnplus.com/en-ma/activate',
           'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131"',
           'sec-ch-ua-mobile': '?0',
           'sec-ch-ua-platform': '"Windows"',
