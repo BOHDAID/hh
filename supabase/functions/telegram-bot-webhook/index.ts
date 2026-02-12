@@ -706,8 +706,12 @@ Deno.serve(async (req) => {
       // 🔥 ChatGPT Flow - مختلف تماماً عن OSN
       // ============================================
       if (productActivationType === "chatgpt") {
-        const accountEmail = sessionData.email || sessionData.gmail_address;
+        const accountEmail = sessionData.email || sessionData.gmail_address || activationCode.account_email || "";
         const accountPassword = sessionData.account_password || activationCode.account_password || "";
+
+        console.log(`🔍 ChatGPT credentials: email=${accountEmail}, password=${accountPassword ? "***" : "EMPTY"}`);
+        console.log(`🔍 sessionData: email=${sessionData.email}, gmail=${sessionData.gmail_address}, pass=${sessionData.account_password ? "***" : "null"}`);
+        console.log(`🔍 activationCode: email=${activationCode.account_email}, pass=${activationCode.account_password ? "***" : "null"}`);
 
         // تحديث كود التفعيل
         await updateActivationCode(
@@ -730,18 +734,29 @@ Deno.serve(async (req) => {
         };
 
         // إرسال البيانات الأساسية وزر جلب OTP
+        const emailDisplay = accountEmail || "⚠️ غير متوفر - تواصل مع الدعم";
+        const passwordDisplay = accountPassword || "⚠️ غير متوفر - تواصل مع الدعم";
+        
         await sendTelegramMessage(
           botToken, chatId,
           `✅ <b>كود صالح!</b>\n\n` +
           `📦 المنتج: <b>${productName}</b>\n\n` +
-          `📧 البريد: <code>${accountEmail}</code>\n` +
-          `🔑 كلمة المرور: <code>${accountPassword || "سيتم إرسالها"}</code>\n\n` +
+          `📧 البريد: <code>${emailDisplay}</code>\n` +
+          `🔑 كلمة المرور: <code>${passwordDisplay}</code>\n\n` +
           `📝 <b>التعليمات:</b>\n` +
-          `1️⃣ افتح ChatGPT وسجل الدخول بالبريد أعلاه\n` +
-          `2️⃣ سيطلب منك رمز تحقق\n` +
-          `3️⃣ اضغط الزر أدناه لجلب الرمز\n\n` +
-          `⏰ اضغط بعد أن يطلب التطبيق الرمز:`,
-          [[{ text: "🔑 أحضر لي رمز التحقق", callback_data: "chatgpt_get_otp" }]]
+          `1️⃣ سجّل دخول بالبيانات أعلاه\n` +
+          `2️⃣ إذا طلب رمز تحقق، اضغط الزر أدناه\n\n` +
+          `⚠️ سجّل دخول أولاً ثم اطلب الرمز!\n\n` +
+          `─────────\n\n` +
+          `✅ <b>Valid code!</b>\n\n` +
+          `📦 Product: <b>${productName}</b>\n\n` +
+          `📧 Email: <code>${emailDisplay}</code>\n` +
+          `🔑 Password: <code>${passwordDisplay}</code>\n\n` +
+          `📝 <b>Instructions:</b>\n` +
+          `1️⃣ Login with the credentials above\n` +
+          `2️⃣ If it asks for a verification code, press the button below\n\n` +
+          `⚠️ Login first, then request the code!`,
+          [[{ text: "🔑 أحضر لي رمز التحقق | Get OTP", callback_data: "chatgpt_get_otp" }]]
         );
 
         return new Response(JSON.stringify({ ok: true }), {
