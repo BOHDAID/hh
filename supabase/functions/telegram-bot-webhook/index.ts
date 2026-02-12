@@ -551,18 +551,19 @@ Deno.serve(async (req) => {
             `✅ اخترت: هاتف (OTP) 📱\n` +
             `─────────\n` +
             `✅ You chose: Phone (OTP) 📱\n\n` +
-            `📧 البريد / Email: <code>${session.accountEmail}</code>\n\n` +
+            `📧 البريد / Email: <code>${session.accountEmail || "غير متوفر"}</code>\n` +
+            `🔑 كلمة المرور / Password: <code>${session.accountPassword || "غير متوفر"}</code>\n\n` +
             `📝 <b>التعليمات:</b>\n` +
             `1️⃣ افتح تطبيق OSN\n` +
             `2️⃣ اختر "تسجيل الدخول"\n` +
-            `3️⃣ أدخل البريد أعلاه\n` +
+            `3️⃣ أدخل البريد وكلمة المرور أعلاه\n` +
             `4️⃣ ⚠️ يجب تسجيل الدخول أولاً قبل طلب الرمز\n` +
             `5️⃣ بعد الدخول، اضغط الزر أدناه\n` +
             `─────────\n` +
             `📝 <b>Instructions:</b>\n` +
             `1️⃣ Open OSN app\n` +
             `2️⃣ Select "Login"\n` +
-            `3️⃣ Enter the email above\n` +
+            `3️⃣ Enter the email and password above\n` +
             `4️⃣ ⚠️ You must login first before requesting the code\n` +
             `5️⃣ After login, press the button below`,
             [[{ text: "✅ سجلت دخول | Logged in", callback_data: "logged_in" }]]
@@ -1132,8 +1133,9 @@ Deno.serve(async (req) => {
       // ============================================
       // 🔥 OSN Flow - التدفق الحالي
       // ============================================
-      const accountEmail = sessionData.gmail_address || sessionData.email || "";
-      const accountPassword = sessionData.account_password || "";
+      const accountEmail = sessionData?.gmail_address || sessionData?.email || activationCode.account_email || "";
+      const accountPassword = sessionData?.account_password || activationCode.account_password || "";
+      console.log(`📧 OSN session data: email=${accountEmail}, hasPassword=${!!accountPassword}, sessionData=`, JSON.stringify(sessionData));
       const activationTypes = ["qr", "otp"];
 
       await updateActivationCode(
