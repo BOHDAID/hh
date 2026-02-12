@@ -689,10 +689,23 @@ serve(async (req: Request) => {
       );
     }
 
-    // Calculate warranty expiry (use max warranty from all products)
-    const maxWarrantyDays = Math.max(
-      ...orderItems.map(item => item.products?.warranty_days || 7)
-    );
+    // Calculate warranty expiry (variant warranty has priority over product warranty)
+    let maxWarrantyDays = 7; // default fallback
+    for (const item of orderItems) {
+      let itemWarranty = item.products?.warranty_days || 7;
+      const variantId = (item as any).variant_id;
+      if (variantId) {
+        const { data: variant } = await adminClient
+          .from("product_variants")
+          .select("warranty_days")
+          .eq("id", variantId)
+          .single();
+        if (variant?.warranty_days && variant.warranty_days > 0) {
+          itemWarranty = variant.warranty_days;
+        }
+      }
+      maxWarrantyDays = Math.max(maxWarrantyDays, itemWarranty);
+    }
     const warrantyExpiry = new Date();
     warrantyExpiry.setDate(warrantyExpiry.getDate() + maxWarrantyDays);
 
