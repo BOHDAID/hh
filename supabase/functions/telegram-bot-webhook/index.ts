@@ -521,19 +521,53 @@ Deno.serve(async (req) => {
         session.activationType = chosenType;
         session.step = "awaiting_login";
         
-        const typeLabel = chosenType === "qr" ? "رمز QR 📺" : "رمز OTP 📱";
-        
-        await editTelegramMessage(
-          botToken, chatId, messageId,
-          `✅ اخترت: <b>${typeLabel}</b>\n\n` +
-          `📧 البريد: <code>${session.accountEmail}</code>\n\n` +
-          `📝 <b>التعليمات:</b>\n` +
-          `1️⃣ افتح تطبيق OSN\n` +
-          `2️⃣ اختر "تسجيل الدخول"\n` +
-          `3️⃣ أدخل البريد أعلاه\n` +
-          `4️⃣ بعد الدخول، اضغط الزر أدناه`,
-          [[{ text: "✅ سجلت دخول", callback_data: "logged_in" }]]
-        );
+        if (chosenType === "qr") {
+          // QR: تلفزيون
+          await editTelegramMessage(
+            botToken, chatId, messageId,
+            `✅ اخترت: تلفزيون (QR) 📺\n` +
+            `─────────\n` +
+            `✅ You chose: TV (QR) 📺\n\n` +
+            `📧 البريد / Email: <code>${session.accountEmail}</code>\n\n` +
+            `📝 <b>التعليمات:</b>\n` +
+            `1️⃣ افتح تطبيق OSN على التلفزيون\n` +
+            `2️⃣ اختر "تسجيل الدخول"\n` +
+            `3️⃣ أدخل البريد أعلاه\n` +
+            `4️⃣ بعد الدخول، اضغط الزر أدناه\n` +
+            `─────────\n` +
+            `📝 <b>Instructions:</b>\n` +
+            `1️⃣ Open OSN app on TV\n` +
+            `2️⃣ Select "Login"\n` +
+            `3️⃣ Enter the email above\n` +
+            `4️⃣ After login, press the button below`,
+            [[{ text: "✅ سجلت دخول | Logged in", callback_data: "logged_in" }]]
+          );
+        } else {
+          // OTP: هاتف
+          await editTelegramMessage(
+            botToken, chatId, messageId,
+            `✅ اخترت: هاتف (OTP) 📱\n` +
+            `─────────\n` +
+            `✅ You chose: Phone (OTP) 📱\n\n` +
+            `📧 البريد / Email: <code>${session.accountEmail}</code>\n\n` +
+            `📝 <b>التعليمات:</b>\n` +
+            `1️⃣ افتح تطبيق OSN\n` +
+            `2️⃣ اختر "تسجيل الدخول"\n` +
+            `3️⃣ أدخل البريد أعلاه\n` +
+            `4️⃣ ⚠️ يجب تسجيل الدخول أولاً قبل طلب الرمز\n` +
+            `5️⃣ بعد الدخول، اضغط الزر أدناه\n` +
+            `─────────\n` +
+            `📝 <b>Instructions:</b>\n` +
+            `1️⃣ Open OSN app\n` +
+            `2️⃣ Select "Login"\n` +
+            `3️⃣ Enter the email above\n` +
+            `4️⃣ ⚠️ You must login first before requesting the code\n` +
+            `5️⃣ After login, press the button below`,
+            [[{ text: "🔑 أحضر لي الرمز | Get OTP", callback_data: "get_otp" }]]
+          );
+          session.step = "awaiting_otp_request";
+          await updateActivationCode(session.activationCodeId, chatId, username, "awaiting_otp");
+        }
         
         return new Response(JSON.stringify({ ok: true }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
