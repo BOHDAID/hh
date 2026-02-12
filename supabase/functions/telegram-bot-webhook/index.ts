@@ -725,6 +725,11 @@ Deno.serve(async (req) => {
           );
         }
         
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       // === Crunchyroll: اختيار تلفزيون أو هاتف ===
       if (data === "crunchyroll_tv" || data === "crunchyroll_phone") {
         if (data === "crunchyroll_tv") {
@@ -854,11 +859,6 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-
-      return new Response(JSON.stringify({ ok: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
 
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
