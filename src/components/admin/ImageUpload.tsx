@@ -5,7 +5,9 @@ import { Label } from "@/components/ui/label";
 import { db, getAuthClient, isExternalConfigured } from "@/lib/supabaseClient";
 import { invokeCloudFunction } from "@/lib/cloudFunctions";
 import { toast } from "@/hooks/use-toast";
-import { Upload, Loader2, X, Image as ImageIcon, Wand2 } from "lucide-react";
+import { Upload, Loader2, X, Image as ImageIcon, Wand2, Package } from "lucide-react";
+
+const BOX_FRAME_URL = "https://wueacwqzafxsvowlqbwh.supabase.co/storage/v1/object/public/product-images/box-frame-template.png";
 
 interface ImageUploadProps {
   value: string;
@@ -14,6 +16,7 @@ interface ImageUploadProps {
   label?: string;
   placeholder?: string;
   removeBackground?: boolean;
+  showMergeBox?: boolean;
 }
 
 const ImageUpload = ({
@@ -23,9 +26,11 @@ const ImageUpload = ({
   label = "الصورة",
   placeholder = "اختر صورة أو أدخل رابط",
   removeBackground = false,
+  showMergeBox = false,
 }: ImageUploadProps) => {
   const [uploading, setUploading] = useState(false);
   const [processingBg, setProcessingBg] = useState(false);
+  const [mergingBox, setMergingBox] = useState(false);
   const [showUrlInput, setShowUrlInput] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -281,11 +286,42 @@ const ImageUpload = ({
     return response.data?.processedImageUrl || imageUrl;
   };
 
+  const handleMergeWithBox = async () => {
+    if (!value) return;
+    setMergingBox(true);
+    try {
+      const authClient = isExternalConfigured ? getAuthClient() : db;
+      const { data: { session } } = await authClient.auth.getSession();
+      if (!session) throw new Error("يجب تسجيل الدخول");
+
+      const response = await invokeCloudFunction<{ mergedImageUrl?: string }>(
+        "merge-product-image",
+        { productImageUrl: value, boxFrameUrl: BOX_FRAME_URL },
+        session.access_token
+      );
+
+      if (response.error) throw response.error;
+      if (response.data?.mergedImageUrl) {
+        onChange(response.data.mergedImageUrl);
+        toast({ title: "تم الدمج", description: "تم دمج المنتج مع العلبة بنجاح ✨" });
+      }
+    } catch (error) {
+      console.error("Merge error:", error);
+      toast({
+        title: "خطأ في الدمج",
+        description: error instanceof Error ? error.message : "حدث خطأ",
+        variant: "destructive",
+      });
+    } finally {
+      setMergingBox(false);
+    }
+  };
+
   const handleRemove = () => {
     onChange("");
   };
 
-  const isProcessing = uploading || processingBg;
+  const isProcessing = uploading || processingBg || mergingBox;
 
   return (
     <div className="space-y-2">
@@ -331,6 +367,28 @@ const ImageUpload = ({
           >
             <X className="h-4 w-4" />
           </Button>
+          {showMergeBox && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="absolute bottom-2 right-2 gap-1 text-xs"
+              onClick={handleMergeWithBox}
+              disabled={mergingBox}
+            >
+              {mergingBox ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  جاري الدمج...
+                </>
+              ) : (
+                <>
+                  <Package className="h-3 w-3" />
+                  دمج مع العلبة
+                </>
+              )}
+            </Button>
+          )}
         </div>
       )}
 

@@ -124,6 +124,7 @@ const VariantImagesManager = ({ variantId }: VariantImagesManagerProps) => {
             onChange={(url) => addImage(url)}
             bucket="product-images"
             label="رفع صورة جديدة"
+            showMergeBox
           />
         </div>
       )}
