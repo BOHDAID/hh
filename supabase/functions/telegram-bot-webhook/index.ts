@@ -1004,9 +1004,15 @@ Deno.serve(async (req) => {
 
       const productName = activationCode.products?.name || "المنتج";
       const productId = activationCode.product_id;
-      const productActivationType = activationCode.products?.activation_type || null;
+      // كشف تلقائي من اسم المنتج إذا activation_type غير مضبوط
+      const dbActivationType = activationCode.products?.activation_type || null;
+      const nameLower = productName.toLowerCase();
+      const productActivationType = dbActivationType || 
+        (nameLower.includes("crunchyroll") ? "crunchyroll" : 
+         nameLower.includes("chatgpt") || nameLower.includes("openai") ? "chatgpt" : 
+         null);
       
-      console.log(`🔍 Product: ${productName}, activation_type: ${productActivationType}`);
+      console.log(`🔍 Product: ${productName}, db_type: ${dbActivationType}, resolved_type: ${productActivationType}`);
 
       // جلب الجلسة المناسبة لهذا المنتج
       const sessionData = await getSessionForProduct(productId);
