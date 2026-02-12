@@ -808,57 +808,84 @@ Deno.serve(async (req) => {
 
       // === Crunchyroll Phone: تم تسجيل الدخول - تغيير الباسورد ===
       if (data === "crunchyroll_phone_done") {
-        await editTelegramMessage(botToken, chatId, messageId, "⏳ جاري تغيير كلمة المرور...");
+        await editTelegramMessage(botToken, chatId, messageId, "⏳ جاري طلب تغيير كلمة المرور من Crunchyroll...");
         
-        // استدعاء السيرفر لتغيير الباسورد
-        const renderServerUrl = Deno.env.get("RENDER_SERVER_URL") || "https://angel-store.onrender.com";
-        const qrSecret = Deno.env.get("QR_AUTOMATION_SECRET") || "default-qr-secret-key";
+        const CLOUD_URL = Deno.env.get("SUPABASE_URL") || "https://wueacwqzafxsvowlqbwh.supabase.co";
+        const CLOUD_ANON = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
         
         try {
-          const response = await fetch(`${renderServerUrl}/api/qr/crunchyroll-change-password`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-              secret: qrSecret,
-              email: session.accountEmail,
-              gmailAddress: session.gmailAddress,
-              gmailAppPassword: session.gmailAppPassword,
-            }),
-          });
+          // === الخطوة 1: طلب تغيير كلمة المرور من Crunchyroll عبر HTTP ===
+          console.log(`🔐 [Crunchyroll] Triggering password reset for: ${session.accountEmail}`);
           
-          const result = await response.json();
+          // محاولة عدة endpoints محتملة
+          let resetTriggered = false;
+          const resetEndpoints = [
+            "https://sso.crunchyroll.com/reset_password",
+            "https://sso.crunchyroll.com/reset-password",
+          ];
           
-          if (result.success && result.newPassword) {
-            // حفظ الباسورد الجديد في الجلسة
-            const sessionData = await getSessionForProduct(session.productId);
-            if (sessionData) {
-              await supabase
-                .from("osn_sessions")
-                .update({ account_password: result.newPassword, last_activity: new Date().toISOString() })
-                .eq("variant_id", sessionData.variant_id);
+          for (const endpoint of resetEndpoints) {
+            try {
+              // أولاً: GET الصفحة للحصول على CSRF token
+              const pageResp = await fetch(endpoint, { 
+                headers: { 
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                  "Accept-Language": "ar,en;q=0.9",
+                },
+              });
+              const pageHtml = await pageResp.text();
+              console.log(`📄 [Crunchyroll] Page ${endpoint}: ${pageResp.status}, size: ${pageHtml.length}`);
+              
+              // استخراج CSRF token
+              const csrfMatch = pageHtml.match(/name="csrf[_-]?token"[^>]*value="([^"]+)"/i) 
+                || pageHtml.match(/name="_token"[^>]*value="([^"]+)"/i)
+                || pageHtml.match(/"csrfToken":"([^"]+)"/);
+              const csrf = csrfMatch ? csrfMatch[1] : "";
+              
+              // استخراج form action
+              const formAction = pageHtml.match(/action="([^"]+)"/i);
+              const actionUrl = formAction ? new URL(formAction[1], endpoint).href : endpoint;
+              
+              // الحصول على الكوكيز
+              const cookies = pageResp.headers.get("set-cookie") || "";
+              
+              console.log(`🔑 [Crunchyroll] CSRF: ${csrf ? "found" : "none"}, Action: ${actionUrl}`);
+              
+              // ثانياً: POST لطلب تغيير الباسورد
+              const postHeaders: Record<string, string> = {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Referer": endpoint,
+                "Origin": "https://sso.crunchyroll.com",
+              };
+              if (cookies) postHeaders["Cookie"] = cookies.split(",").map(c => c.split(";")[0]).join("; ");
+              
+              let formBody = `email=${encodeURIComponent(session.accountEmail)}`;
+              if (csrf) formBody += `&csrf_token=${encodeURIComponent(csrf)}&_token=${encodeURIComponent(csrf)}`;
+              
+              const postResp = await fetch(actionUrl, {
+                method: "POST",
+                headers: postHeaders,
+                body: formBody,
+                redirect: "follow",
+              });
+              
+              console.log(`📬 [Crunchyroll] POST reset: ${postResp.status}`);
+              
+              if (postResp.status >= 200 && postResp.status < 400) {
+                resetTriggered = true;
+                console.log(`✅ [Crunchyroll] Password reset email requested successfully via ${endpoint}`);
+                break;
+              }
+            } catch (endpointErr) {
+              console.log(`⚠️ [Crunchyroll] Endpoint ${endpoint} failed: ${endpointErr.message}`);
             }
-            
-            await markCodeAsUsed(session.activationCodeId);
-            const invoiceUrl = await getInvoiceUrl(session.activationCodeId);
-            const siteUrl = await getSetting("store_url") || await getSetting("site_url") || "";
-            delete userSessions[chatId];
-            
-            await editTelegramMessage(botToken, chatId, messageId,
-              `✅ <b>تم التفعيل بنجاح!</b>\n\n` +
-              `🔐 تم تغيير كلمة المرور تلقائياً.\n` +
-              `استمتع بالخدمة! 🎉`
-            );
-            
-            const ratingButtons: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
-            if (siteUrl) ratingButtons.push([{ text: "⭐ قيّمنا في الموقع | Rate us", url: siteUrl }]);
-            if (invoiceUrl) ratingButtons.push([{ text: "🧾 عرض الإيصال | View Receipt", url: invoiceUrl }]);
-            
-            await sendTelegramMessage(botToken, chatId,
-              `🎉 شكراً لك! استمتع بالخدمة.\n\n⭐ <b>مرجو تقييمنا في موقعنا!</b>\nساعدنا بتقييم المنتج لنحسّن خدماتنا.`,
-              ratingButtons.length > 0 ? ratingButtons : undefined
-            );
-          } else {
-            // فشل تغيير الباسورد - لكن التفعيل تم
+          }
+          
+          if (!resetTriggered) {
+            console.log("⚠️ [Crunchyroll] Could not trigger reset via HTTP, completing activation without password change");
             await markCodeAsUsed(session.activationCodeId);
             const invoiceUrl = await getInvoiceUrl(session.activationCodeId);
             const siteUrl = await getSetting("store_url") || await getSetting("site_url") || "";
@@ -867,22 +894,195 @@ Deno.serve(async (req) => {
             await editTelegramMessage(botToken, chatId, messageId,
               `✅ <b>تم التفعيل!</b>\n\n` +
               `⚠️ لم نتمكن من تغيير كلمة المرور تلقائياً.\n` +
-              `${result.error || "خطأ غير معروف"}`
+              `يرجى تغييرها يدوياً من: https://sso.crunchyroll.com/reset-password`
             );
             
             const ratingButtons: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
             if (siteUrl) ratingButtons.push([{ text: "⭐ قيّمنا في الموقع | Rate us", url: siteUrl }]);
             if (invoiceUrl) ratingButtons.push([{ text: "🧾 عرض الإيصال | View Receipt", url: invoiceUrl }]);
+            if (ratingButtons.length > 0) {
+              await sendTelegramMessage(botToken, chatId, `🎉 شكراً لك!\n\n⭐ <b>مرجو تقييمنا!</b>`, ratingButtons);
+            }
             
-            await sendTelegramMessage(botToken, chatId,
-              `🎉 شكراً لك!\n\n⭐ <b>مرجو تقييمنا في موقعنا!</b>`,
-              ratingButtons.length > 0 ? ratingButtons : undefined
+            return new Response(JSON.stringify({ ok: true }), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+          
+          // === الخطوة 2: انتظار وقراءة رابط التغيير من Gmail ===
+          await editTelegramMessage(botToken, chatId, messageId, "📧 جاري البحث عن رابط تغيير كلمة المرور في البريد...");
+          
+          if (!session.gmailAddress || !session.gmailAppPassword) {
+            console.log("⚠️ Gmail credentials not available");
+            await markCodeAsUsed(session.activationCodeId);
+            delete userSessions[chatId];
+            await editTelegramMessage(botToken, chatId, messageId,
+              `✅ <b>تم التفعيل!</b>\n\n⚠️ بيانات Gmail غير متوفرة لقراءة رابط التغيير.`
+            );
+            return new Response(JSON.stringify({ ok: true }), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+          
+          let resetLink: string | null = null;
+          
+          // محاولة 4 مرات مع انتظار 8 ثواني بين كل محاولة
+          for (let attempt = 1; attempt <= 4; attempt++) {
+            console.log(`📧 [Crunchyroll] Attempt ${attempt}/4 to find reset link...`);
+            await new Promise(r => setTimeout(r, 8000)); // انتظار 8 ثواني
+            
+            try {
+              const gmailResp = await fetch(`${CLOUD_URL}/functions/v1/gmail-read-otp`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${CLOUD_ANON}`,
+                  "apikey": CLOUD_ANON,
+                },
+                body: JSON.stringify({
+                  gmailAddress: session.gmailAddress,
+                  gmailAppPassword: session.gmailAppPassword,
+                  maxAgeMinutes: 5,
+                  senderFilter: "crunchyroll",
+                  extractType: "link",
+                  linkFilter: "crunchyroll",
+                }),
+              });
+              
+              const gmailResult = await gmailResp.json();
+              console.log(`📧 Gmail result attempt ${attempt}:`, JSON.stringify(gmailResult));
+              
+              if (gmailResult.success && gmailResult.link) {
+                resetLink = gmailResult.link;
+                break;
+              }
+            } catch (gmailErr) {
+              console.error(`❌ Gmail attempt ${attempt} error: ${gmailErr.message}`);
+            }
+          }
+          
+          if (!resetLink) {
+            console.log("⚠️ [Crunchyroll] Reset link not found in Gmail");
+            await markCodeAsUsed(session.activationCodeId);
+            const invoiceUrl = await getInvoiceUrl(session.activationCodeId);
+            const siteUrl = await getSetting("store_url") || await getSetting("site_url") || "";
+            delete userSessions[chatId];
+            
+            await editTelegramMessage(botToken, chatId, messageId,
+              `✅ <b>تم التفعيل!</b>\n\n` +
+              `⚠️ لم نعثر على رابط تغيير كلمة المرور في البريد.\n` +
+              `يرجى تغييرها يدوياً من: https://sso.crunchyroll.com/reset-password`
+            );
+            
+            const ratingButtons: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
+            if (siteUrl) ratingButtons.push([{ text: "⭐ قيّمنا في الموقع | Rate us", url: siteUrl }]);
+            if (invoiceUrl) ratingButtons.push([{ text: "🧾 عرض الإيصال | View Receipt", url: invoiceUrl }]);
+            if (ratingButtons.length > 0) {
+              await sendTelegramMessage(botToken, chatId, `🎉 شكراً لك!\n\n⭐ <b>مرجو تقييمنا!</b>`, ratingButtons);
+            }
+            
+            return new Response(JSON.stringify({ ok: true }), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+          
+          // === الخطوة 3: فتح رابط التغيير وتعيين كلمة مرور جديدة ===
+          await editTelegramMessage(botToken, chatId, messageId, "🔐 جاري تعيين كلمة المرور الجديدة...");
+          console.log(`🔗 [Crunchyroll] Reset link found: ${resetLink.substring(0, 80)}...`);
+          
+          const newPassword = "CR" + Math.random().toString(36).substring(2, 8) + "!" + Math.floor(Math.random() * 100);
+          
+          // فتح صفحة تغيير الباسورد
+          let passwordChanged = false;
+          try {
+            const resetPageResp = await fetch(resetLink, {
+              headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+              },
+            });
+            const resetPageHtml = await resetPageResp.text();
+            console.log(`📄 [Crunchyroll] Reset page: ${resetPageResp.status}, size: ${resetPageHtml.length}`);
+            
+            // استخراج form action و CSRF
+            const csrfMatch = resetPageHtml.match(/name="csrf[_-]?token"[^>]*value="([^"]+)"/i)
+              || resetPageHtml.match(/name="_token"[^>]*value="([^"]+)"/i)
+              || resetPageHtml.match(/"csrfToken":"([^"]+)"/);
+            const csrf = csrfMatch ? csrfMatch[1] : "";
+            const formAction = resetPageHtml.match(/action="([^"]+)"/i);
+            const actionUrl = formAction ? new URL(formAction[1], resetLink).href : resetLink;
+            const cookies = resetPageResp.headers.get("set-cookie") || "";
+            
+            // POST كلمة المرور الجديدة
+            const postHeaders: Record<string, string> = {
+              "Content-Type": "application/x-www-form-urlencoded",
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+              "Referer": resetLink,
+              "Origin": "https://sso.crunchyroll.com",
+            };
+            if (cookies) postHeaders["Cookie"] = cookies.split(",").map(c => c.split(";")[0]).join("; ");
+            
+            let formBody = `password=${encodeURIComponent(newPassword)}&confirm_password=${encodeURIComponent(newPassword)}&new_password=${encodeURIComponent(newPassword)}&password_confirmation=${encodeURIComponent(newPassword)}`;
+            if (csrf) formBody += `&csrf_token=${encodeURIComponent(csrf)}&_token=${encodeURIComponent(csrf)}`;
+            
+            const setPassResp = await fetch(actionUrl, {
+              method: "POST",
+              headers: postHeaders,
+              body: formBody,
+              redirect: "follow",
+            });
+            
+            console.log(`🔐 [Crunchyroll] Set password response: ${setPassResp.status}`);
+            
+            if (setPassResp.status >= 200 && setPassResp.status < 400) {
+              passwordChanged = true;
+            }
+          } catch (resetErr) {
+            console.error(`❌ [Crunchyroll] Password set error: ${resetErr.message}`);
+          }
+          
+          // === الخطوة 4: إنهاء التفعيل ===
+          if (passwordChanged) {
+            // حفظ الباسورد الجديد
+            const sessionData = await getSessionForProduct(session.productId);
+            if (sessionData) {
+              await supabase
+                .from("osn_sessions")
+                .update({ account_password: newPassword, last_activity: new Date().toISOString() })
+                .eq("variant_id", sessionData.variant_id);
+            }
+          }
+          
+          await markCodeAsUsed(session.activationCodeId);
+          const invoiceUrl = await getInvoiceUrl(session.activationCodeId);
+          const siteUrl = await getSetting("store_url") || await getSetting("site_url") || "";
+          delete userSessions[chatId];
+          
+          if (passwordChanged) {
+            await editTelegramMessage(botToken, chatId, messageId,
+              `✅ <b>تم التفعيل بنجاح!</b>\n\n🔐 تم تغيير كلمة المرور تلقائياً.\nاستمتع بالخدمة! 🎉`
+            );
+          } else {
+            await editTelegramMessage(botToken, chatId, messageId,
+              `✅ <b>تم التفعيل!</b>\n\n⚠️ لم نتمكن من تغيير كلمة المرور تلقائياً.\nيرجى تغييرها يدوياً.`
             );
           }
+          
+          const ratingButtons: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
+          if (siteUrl) ratingButtons.push([{ text: "⭐ قيّمنا في الموقع | Rate us", url: siteUrl }]);
+          if (invoiceUrl) ratingButtons.push([{ text: "🧾 عرض الإيصال | View Receipt", url: invoiceUrl }]);
+          if (ratingButtons.length > 0) {
+            await sendTelegramMessage(botToken, chatId, `🎉 شكراً لك!\n\n⭐ <b>مرجو تقييمنا في موقعنا!</b>`, ratingButtons);
+          }
+          
         } catch (error) {
+          console.error(`❌ [Crunchyroll] Phone done error: ${error.message}`);
+          // حتى لو فشل تغيير الباسورد، نكمل التفعيل
+          await markCodeAsUsed(session.activationCodeId);
+          delete userSessions[chatId];
+          
           await editTelegramMessage(botToken, chatId, messageId,
-            `❌ خطأ في الاتصال بالسيرفر: ${error.message}\n\nجرب مرة أخرى:`,
-            [[{ text: "🔄 إعادة المحاولة", callback_data: "crunchyroll_phone_done" }]]
+            `✅ <b>تم التفعيل!</b>\n\n⚠️ حدث خطأ: ${error.message}\nيرجى تغيير كلمة المرور يدوياً.`
           );
         }
         
