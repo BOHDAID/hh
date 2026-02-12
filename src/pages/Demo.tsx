@@ -80,14 +80,22 @@ const DemoProductCard = ({ product }: { product: typeof demoProducts[0] }) => {
           className="absolute inset-0 w-full h-full object-cover"
         />
 
-        {/* Product image centered in the black square area */}
-        <div className="absolute inset-0 flex items-center justify-center">
+        {/* Product image positioned exactly inside the black square */}
+        <div 
+          className="absolute z-10 flex items-center justify-center"
+          style={{
+            top: "22%",
+            left: "18%",
+            width: "64%",
+            height: "56%",
+          }}
+        >
           {product.image ? (
             <motion.img
               src={product.image}
               alt={product.name}
-              className="w-[35%] h-[35%] object-contain drop-shadow-[0_0_20px_hsla(280,100%,60%,0.5)] z-10"
-              animate={{ scale: isHovered ? 1.15 : 1 }}
+              className="max-w-[65%] max-h-[65%] object-contain drop-shadow-[0_0_25px_hsla(280,100%,60%,0.6)]"
+              animate={{ scale: isHovered ? 1.1 : 1 }}
               transition={{ duration: 0.5 }}
             />
           ) : (
