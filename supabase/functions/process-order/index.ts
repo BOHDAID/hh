@@ -241,8 +241,22 @@ serve(async (req: Request) => {
 
       // Only mark as completed if ALL items were delivered
       if (deliveredCount === createdItems.length && createdItems.length > 0) {
+        // Calculate warranty from variant (priority) or product warranty_days
+        let maxWarrantyDays = 7; // default fallback
+        for (const ci of createdItems) {
+          let variantWarranty = 0;
+          if (ci.variant_id) {
+            const { data: variant } = await db.from("product_variants").select("warranty_days").eq("id", ci.variant_id).single();
+            variantWarranty = variant?.warranty_days || 0;
+          }
+          if (variantWarranty <= 0) {
+            const { data: prod } = await db.from("products").select("warranty_days").eq("id", ci.product_id).single();
+            variantWarranty = prod?.warranty_days || 7;
+          }
+          maxWarrantyDays = Math.max(maxWarrantyDays, variantWarranty);
+        }
         const expiry = new Date();
-        expiry.setDate(expiry.getDate() + 7);
+        expiry.setDate(expiry.getDate() + maxWarrantyDays);
         await db.from("orders").update({ 
           status: "completed", 
           payment_status: "paid", 
