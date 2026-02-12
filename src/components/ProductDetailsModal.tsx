@@ -296,10 +296,10 @@ const ProductDetailsModal = ({
             </div>
           ) : (
             /* No Variants - Service/Virtual product - always available */
-            <div className="text-center py-6 border border-dashed border-border rounded-xl bg-emerald-500/5">
-              <Package className="h-10 w-10 mx-auto text-emerald-500 mb-2" />
+            <div className="text-center py-6 border border-dashed border-border rounded-xl bg-amber-500/5">
+              <Clock className="h-10 w-10 mx-auto text-amber-500 mb-2" />
               <p className="text-muted-foreground">
-                {isRTL ? "منتج متاح للطلب - سيتم التواصل معك للتسليم" : "Product available to order - We will contact you for delivery"}
+                {isRTL ? "سيتم توفير المنتج في أقرب وقت ممكن" : "Product will be available as soon as possible"}
               </p>
             </div>
           )}
