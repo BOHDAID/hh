@@ -38,25 +38,32 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // التحقق من الصلاحيات
+    // التحقق من الصلاحيات - يقبل auth token أو QR_AUTOMATION_SECRET
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const url = new URL(req.url);
+    const secretParam = url.searchParams.get("secret");
+    const expectedSecret = Deno.env.get("QR_AUTOMATION_SECRET");
+    
+    const hasValidSecret = secretParam && expectedSecret && secretParam === expectedSecret;
+    
+    if (!hasValidSecret) {
+      if (!authHeader?.startsWith("Bearer ")) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
 
-    // استخراج user_id من التوكن
-    const token = authHeader.replace("Bearer ", "");
-    const tokenPayload = JSON.parse(atob(token.split(".")[1]));
-    const userId = tokenPayload.sub;
+      const token = authHeader.replace("Bearer ", "");
+      const tokenPayload = JSON.parse(atob(token.split(".")[1]));
+      const userId = tokenPayload.sub;
 
-    if (!await isAdmin(userId)) {
-      return new Response(JSON.stringify({ error: "Admin access required" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      if (!await isAdmin(userId)) {
+        return new Response(JSON.stringify({ error: "Admin access required" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     // جلب Bot Token - من الإعدادات أولاً ثم من المتغير البيئي
