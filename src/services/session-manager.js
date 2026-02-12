@@ -1027,21 +1027,30 @@ class OSNSessionManager {
       await this._applyStealthToPage(page);
 
       try {
-        // طلب تغيير كلمة المرور من Crunchyroll
-        console.log('🔐 [Crunchyroll] Requesting password reset...');
-        await page.goto('https://www.crunchyroll.com/ar/account/password', { waitUntil: 'networkidle2', timeout: 30000 });
+        // طلب تغيير كلمة المرور من Crunchyroll - الرابط الصحيح
+        console.log('🔐 [Crunchyroll] Requesting password reset via sso.crunchyroll.com...');
+        await page.goto('https://sso.crunchyroll.com/reset-password', { waitUntil: 'networkidle2', timeout: 30000 });
         await this._sleep(3000);
 
-        const emailInput = await page.$('input[type="email"], input[name="email"]');
+        // البحث عن حقل الإيميل وإدخاله
+        const emailInput = await page.$('input[type="email"], input[name="email"], input[type="text"]');
         if (emailInput) {
+          await emailInput.click();
+          await this._sleep(300);
           await emailInput.type(email, { delay: 80 });
           await this._sleep(500);
+        } else {
+          console.error('❌ [Crunchyroll] Email input not found on reset page');
+          return { success: false, error: 'لم يتم العثور على حقل الإيميل في صفحة تغيير الباسورد' };
         }
 
-        const submitBtn = await this._findButton(page, ['submit', 'send', 'reset', 'إرسال']);
+        // الضغط على زر الإرسال
+        const submitBtn = await this._findButton(page, ['submit', 'send', 'reset', 'إرسال', 'Request', 'request']);
         if (submitBtn) await submitBtn.click();
         else await page.keyboard.press('Enter');
         await this._sleep(5000);
+        
+        console.log('✅ [Crunchyroll] Password reset request submitted');
 
         // انتظار رابط تغيير الباسورد من Gmail
         if (!gmailAddress || !gmailAppPassword) {
@@ -1068,6 +1077,7 @@ class OSNSessionManager {
                 maxAgeMinutes: 5,
                 senderFilter: 'crunchyroll',
                 extractType: 'link',
+                linkFilter: 'crunchyroll.com',
               }),
             });
             const result = await otpResponse.json();
@@ -1085,8 +1095,8 @@ class OSNSessionManager {
           return { success: false, error: 'لم يتم العثور على رابط تغيير كلمة المرور في Gmail' };
         }
 
-        // فتح رابط تغيير الباسورد
-        console.log('🔗 [Crunchyroll] Opening reset link...');
+        // فتح رابط تغيير الباسورد (مثل https://sso.crunchyroll.com/new-password?token=xxx)
+        console.log(`🔗 [Crunchyroll] Opening reset link: ${resetLink.substring(0, 80)}...`);
         await page.goto(resetLink, { waitUntil: 'networkidle2', timeout: 30000 });
         await this._sleep(3000);
 
