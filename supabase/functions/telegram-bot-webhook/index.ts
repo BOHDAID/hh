@@ -506,6 +506,37 @@ Deno.serve(async (req) => {
 
       await answerCallbackQuery(botToken, callbackQuery.id);
 
+      // === إلغاء العملية عبر الزر ===
+      if (data === "cancel_session") {
+        const session = userSessions[chatId];
+        const activationCodeId = session?.activationCodeId;
+        delete userSessions[chatId];
+        
+        if (activationCodeId) {
+          await supabase
+            .from("activation_codes")
+            .update({ status: "available", telegram_chat_id: null, telegram_username: null })
+            .eq("id", activationCodeId)
+            .eq("is_used", false);
+        } else {
+          await supabase
+            .from("activation_codes")
+            .update({ status: "available", telegram_chat_id: null, telegram_username: null })
+            .eq("telegram_chat_id", chatId)
+            .eq("is_used", false)
+            .in("status", ["in_progress", "awaiting_otp", "chatgpt_awaiting_otp", "crunchyroll_choosing", "crunchyroll_awaiting_tv_code", "crunchyroll_phone_sent"]);
+        }
+        
+        await editTelegramMessage(
+          botToken, chatId, messageId,
+          `✅ <b>تم إلغاء العملية!</b>\n\nيمكنك إدخال كود تفعيل جديد أو /start\n\n` +
+          `✅ <b>Operation cancelled!</b>\n\nYou can enter a new code or /start`
+        );
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       // محاولة استعادة الجلسة من الذاكرة أو من قاعدة البيانات
       let session = userSessions[chatId];
       
@@ -879,6 +910,59 @@ Deno.serve(async (req) => {
     const text = message.text?.trim() || "";
     const username = message.from?.username || null;
 
+    // === أمر الإلغاء /cancel ===
+    if (text === "/cancel" || text === "إلغاء" || text === "الغاء") {
+      const activeCheck = await hasActiveSession(chatId);
+      if (activeCheck.active) {
+        // إلغاء الجلسة من الذاكرة
+        const session = userSessions[chatId];
+        const activationCodeId = session?.activationCodeId;
+        delete userSessions[chatId];
+        
+        // إعادة حالة الكود في قاعدة البيانات
+        if (activationCodeId) {
+          await supabase
+            .from("activation_codes")
+            .update({ 
+              status: "available", 
+              telegram_chat_id: null, 
+              telegram_username: null 
+            })
+            .eq("id", activationCodeId)
+            .eq("is_used", false);
+        } else {
+          // إذا لم يكن في الذاكرة، ابحث في قاعدة البيانات
+          await supabase
+            .from("activation_codes")
+            .update({ 
+              status: "available", 
+              telegram_chat_id: null, 
+              telegram_username: null 
+            })
+            .eq("telegram_chat_id", chatId)
+            .eq("is_used", false)
+            .in("status", ["in_progress", "awaiting_otp", "chatgpt_awaiting_otp", "crunchyroll_choosing", "crunchyroll_awaiting_tv_code", "crunchyroll_phone_sent"]);
+        }
+        
+        await sendTelegramMessage(
+          botToken, chatId,
+          `✅ <b>تم إلغاء العملية بنجاح!</b>\n\n` +
+          `يمكنك الآن إدخال كود تفعيل جديد أو كتابة /start للبدء.\n\n` +
+          `─────────\n\n` +
+          `✅ <b>Operation cancelled!</b>\n\n` +
+          `You can now enter a new activation code or type /start.`
+        );
+      } else {
+        await sendTelegramMessage(
+          botToken, chatId,
+          `ℹ️ لا توجد عملية جارية للإلغاء.\n\nℹ️ No active operation to cancel.`
+        );
+      }
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // أمر البدء - 🛡️ منع /start أثناء جلسة نشطة
     if (text === "/start" || text.startsWith("/start ")) {
       const activeCheck = await hasActiveSession(chatId);
@@ -888,11 +972,13 @@ Deno.serve(async (req) => {
           `⚠️ <b>لديك عملية تفعيل جارية!</b>\n\n` +
           `📦 المنتج: <b>${activeCheck.productName}</b>\n\n` +
           `❌ لا يمكنك بدء عملية جديدة حتى تُنهي التفعيل الحالي.\n` +
-          `أكمل الخطوات المطلوبة أولاً.\n\n` +
+          `💡 لإلغاء العملية الحالية أرسل: /cancel\n\n` +
           `─────────\n\n` +
           `⚠️ <b>You have an active activation!</b>\n\n` +
           `📦 Product: <b>${activeCheck.productName}</b>\n\n` +
-          `❌ You cannot start a new process until you finish the current one.`
+          `❌ You cannot start a new process until you finish the current one.\n` +
+          `💡 To cancel, send: /cancel`,
+          [[{ text: "❌ إلغاء العملية | Cancel", callback_data: "cancel_session" }]]
         );
         return new Response(JSON.stringify({ ok: true }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
