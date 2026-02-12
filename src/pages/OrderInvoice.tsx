@@ -737,32 +737,53 @@ const OrderInvoice = () => {
                         </pre>
                       </div>
                     ) : (() => {
-                      // Check if there's an activation code for this product
-                      const itemCode = activationCodes.find(c => c.product_id === item.product_id);
+                      // Get ALL activation codes for this product item
+                      const itemCodes = activationCodes.filter(c => c.product_id === item.product_id);
                       
-                      if (itemCode && order.status === "completed") {
+                      if (itemCodes.length > 0 && order.status === "completed") {
                         return (
                           <div className="bg-muted rounded-lg p-4 space-y-4">
-                            {/* Activation Code */}
-                            <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-sm font-medium">🔑 كود التفعيل:</span>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => copyToClipboard(itemCode.code, `code-${item.id}`)}
-                                >
-                                  {copied === `code-${item.id}` ? (
-                                    <Check className="h-4 w-4 text-green-500" />
-                                  ) : (
-                                    <Copy className="h-4 w-4" />
-                                  )}
-                                  <span className="mr-2">{copied === `code-${item.id}` ? "تم النسخ" : "نسخ"}</span>
-                                </Button>
-                              </div>
-                              <pre className="bg-background rounded p-3 text-lg font-mono text-center tracking-widest font-bold">
-                                {itemCode.code}
-                              </pre>
+                            {/* Activation Codes Header */}
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium">🔑 أكواد التفعيل ({itemCodes.length}):</span>
+                            </div>
+
+                            {/* All Activation Codes */}
+                            <div className="space-y-3">
+                              {itemCodes.map((ac, codeIndex) => (
+                                <div key={`code-${item.id}-${codeIndex}`} className="bg-background rounded-lg p-3 border border-border/50">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className="text-xs text-muted-foreground">
+                                      كود {codeIndex + 1} من {itemCodes.length}
+                                      {ac.status === 'used' && (
+                                        <Badge className="mr-2 bg-green-500/20 text-green-500 text-[10px] px-1.5 py-0">مفعّل ✓</Badge>
+                                      )}
+                                      {ac.status === 'pending' && (
+                                        <Badge variant="secondary" className="mr-2 text-[10px] px-1.5 py-0">غير مفعّل</Badge>
+                                      )}
+                                      {ac.status === 'expired' && (
+                                        <Badge variant="destructive" className="mr-2 text-[10px] px-1.5 py-0">منتهي</Badge>
+                                      )}
+                                    </span>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => copyToClipboard(ac.code, `code-${item.id}-${codeIndex}`)}
+                                      className="h-7 px-2"
+                                    >
+                                      {copied === `code-${item.id}-${codeIndex}` ? (
+                                        <Check className="h-3.5 w-3.5 text-green-500" />
+                                      ) : (
+                                        <Copy className="h-3.5 w-3.5" />
+                                      )}
+                                      <span className="mr-1 text-xs">{copied === `code-${item.id}-${codeIndex}` ? "تم" : "نسخ"}</span>
+                                    </Button>
+                                  </div>
+                                  <pre className="text-base font-mono text-center tracking-widest font-bold py-1">
+                                    {ac.code}
+                                  </pre>
+                                </div>
+                              ))}
                             </div>
 
                             {/* Telegram Bot Link */}
@@ -784,9 +805,9 @@ const OrderInvoice = () => {
                             )}
 
                             {/* Expiry info */}
-                            {itemCode.expires_at && (
+                            {itemCodes[0]?.expires_at && (
                               <p className="text-xs text-muted-foreground text-center">
-                                ⏰ صلاحية الكود تنتهي: {formatDateTimeArabic(itemCode.expires_at)}
+                                ⏰ صلاحية الأكواد تنتهي: {formatDateTimeArabic(itemCodes[0].expires_at)}
                               </p>
                             )}
                           </div>
