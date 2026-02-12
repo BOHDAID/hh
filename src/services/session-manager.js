@@ -670,18 +670,10 @@ class OSNSessionManager {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${authToken}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json, text/plain, */*',
-          'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
           'X-Device-Id': deviceId || this._extractDeviceId([]),
           'X-Platform': 'web',
-          'X-Os-Name': 'windows',
-          'Origin': 'https://osnplus.com',
-          'Referer': 'https://osnplus.com/en-sa/settings/devices',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'sec-ch-ua': '"Google Chrome";v="120", "Chromium";v="120"',
-          'sec-ch-ua-mobile': '?0',
-          'sec-ch-ua-platform': '"Windows"',
+          'Accept': 'application/json, text/plain, */*',
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           linkCode: tvCode,
@@ -958,22 +950,13 @@ class OSNSessionManager {
 
     return cookies
       .filter(c => c.name && c.value !== undefined)
-      .map(c => {
-        const sameSite = mapSameSite(c.sameSite);
-        const domain = (c.domain && c.domain.startsWith('.')) ? c.domain : ('.' + (c.domain || 'osnplus.com'));
-        const cookie = {
-          name: c.name,
-          value: c.value,
-          domain,
-          path: '/',
-          secure: true,
-          httpOnly: c.name === 'auth' ? true : (c.httpOnly || false),
-          ...(c.expirationDate ? { expires: c.expirationDate } : {}),
-        };
-        if (sameSite) cookie.sameSite = sameSite;
-        return cookie;
-      });
-  }
+      .map(c => ({
+        name: c.name,
+        value: c.value,
+        domain: '.osnplus.com',
+        path: '/',
+        secure: true,
+      }));
 
   /**
    * بحث عن زر بالنص
