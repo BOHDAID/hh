@@ -56,6 +56,7 @@ export const FUNCTION_SLUGS: Record<string, string> = {
 
   // === Admin utilities ===
   'admin-adjust-wallet': 'admin-adjust-wallet',
+  'merge-product-image': 'merge-product-image',
 
   // === Telegram Bot ===
   'telegram-bot-webhook': 'telegram-bot-webhook',

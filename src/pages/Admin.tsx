@@ -935,6 +935,7 @@ const Admin = () => {
                     onChange={(url) => setProductForm({ ...productForm, image_url: url })}
                     bucket="product-images"
                     label="صورة المنتج"
+                    showMergeBox
                   />
 
                   {/* Product Accounts Section - Only show when editing */}

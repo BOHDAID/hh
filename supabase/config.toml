@@ -1,1 +1,4 @@
 project_id = "wueacwqzafxsvowlqbwh"
+
+[functions.merge-product-image]
+verify_jwt = false
