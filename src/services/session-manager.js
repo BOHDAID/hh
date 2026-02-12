@@ -686,7 +686,38 @@ class OSNSessionManager {
       
       console.log(`📬 [API] Response: ${statusCode} - ${responseText.substring(0, 300)}`);
 
-      if (statusCode === 200 || statusCode === 201) {
+      // التحقق من أن الرد JSON وليس HTML (OSN يرجع HTML مع 200 عند فشل الكود)
+      const isHtml = responseText.trim().startsWith('<!') || responseText.trim().startsWith('<html');
+      
+      if (isHtml) {
+        console.log('❌ [API] Received HTML instead of JSON - code is likely invalid');
+        return {
+          success: false,
+          paired: false,
+          failed: true,
+          message: '❌ الكود غير صحيح أو منتهي الصلاحية',
+          method: 'api',
+        };
+      }
+
+      // محاولة تحليل JSON
+      let jsonResponse = null;
+      try { jsonResponse = JSON.parse(responseText); } catch {}
+
+      if ((statusCode === 200 || statusCode === 201) && jsonResponse && !isHtml) {
+        // التحقق من أن الرد يدل فعلاً على نجاح
+        const hasError = jsonResponse.error || jsonResponse.errors || jsonResponse.message?.toLowerCase().includes('invalid');
+        if (hasError) {
+          console.log('❌ [API] Server returned error in JSON:', jsonResponse.error || jsonResponse.message);
+          return {
+            success: false,
+            paired: false,
+            failed: true,
+            message: `❌ ${jsonResponse.message || jsonResponse.error || 'الكود غير صحيح'}`,
+            method: 'api',
+          };
+        }
+        
         console.log('🎉 [API] TV linked successfully!');
         return {
           success: true,
