@@ -543,41 +543,30 @@ Deno.serve(async (req) => {
             [[{ text: "✅ سجلت دخول | Logged in", callback_data: "logged_in" }]]
           );
         } else {
-          // هاتف: إعطاء الإيميل والباسورد مباشرة بدون OTP
+          // OTP: هاتف - التدفق الأصلي
+          session.step = "awaiting_login";
+          
           await editTelegramMessage(
             botToken, chatId, messageId,
-            `✅ اخترت: هاتف 📱\n` +
+            `✅ اخترت: هاتف (OTP) 📱\n` +
             `─────────\n` +
-            `✅ You chose: Phone 📱\n\n` +
-            `📧 البريد / Email: <code>${session.accountEmail}</code>\n` +
-            `🔑 كلمة المرور / Password: <code>${session.accountPassword || "غير محدد / N/A"}</code>\n\n` +
+            `✅ You chose: Phone (OTP) 📱\n\n` +
+            `📧 البريد / Email: <code>${session.accountEmail}</code>\n\n` +
             `📝 <b>التعليمات:</b>\n` +
             `1️⃣ افتح تطبيق OSN\n` +
             `2️⃣ اختر "تسجيل الدخول"\n` +
-            `3️⃣ أدخل البريد وكلمة المرور أعلاه\n` +
-            `4️⃣ استمتع بالخدمة! 🎉\n` +
+            `3️⃣ أدخل البريد أعلاه\n` +
+            `4️⃣ ⚠️ يجب تسجيل الدخول أولاً قبل طلب الرمز\n` +
+            `5️⃣ بعد الدخول، اضغط الزر أدناه\n` +
             `─────────\n` +
             `📝 <b>Instructions:</b>\n` +
             `1️⃣ Open OSN app\n` +
             `2️⃣ Select "Login"\n` +
-            `3️⃣ Enter the email and password above\n` +
-            `4️⃣ Enjoy the service! 🎉`
+            `3️⃣ Enter the email above\n` +
+            `4️⃣ ⚠️ You must login first before requesting the code\n` +
+            `5️⃣ After login, press the button below`,
+            [[{ text: "✅ سجلت دخول | Logged in", callback_data: "logged_in" }]]
           );
-          
-          // تحديث الكود كمستخدم وإنهاء الجلسة
-          await markCodeAsUsed(session.activationCodeId);
-          const invoiceUrl = await getInvoiceUrl(session.activationCodeId);
-          const siteUrl = await getSetting("store_url") || await getSetting("site_url") || "";
-          delete userSessions[chatId];
-          
-          const ratingButtons: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
-          if (siteUrl) ratingButtons.push([{ text: "⭐ قيّمنا في الموقع | Rate us", url: siteUrl }]);
-          if (invoiceUrl) ratingButtons.push([{ text: "🧾 عرض الإيصال / View Receipt", url: invoiceUrl }]);
-          
-          if (ratingButtons.length > 0) {
-            const successMsg = `🎉 تم التفعيل بنجاح! استمتع بالخدمة.\n\n⭐ <b>مرجو تقييمنا في موقعنا!</b>\nساعدنا بتقييم المنتج لنحسّن خدماتنا.\n\n─────────\n\n🎉 Activation successful! Enjoy the service.\n\n⭐ <b>Please rate us on our website!</b>`;
-            await sendTelegramMessage(botToken, chatId, successMsg, ratingButtons);
-          }
         }
         
         return new Response(JSON.stringify({ ok: true }), {
