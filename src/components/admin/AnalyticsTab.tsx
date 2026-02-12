@@ -262,16 +262,26 @@ const AnalyticsTab = () => {
       }
 
       // Get date filter
-      let dateFilter = monthStart;
-      if (dateRange === "week") dateFilter = weekStart;
+      let dateFilter: string | null = monthStart;
       if (dateRange === "today") dateFilter = todayStart;
+      else if (dateRange === "week") dateFilter = weekStart;
+      else if (dateRange === "month") dateFilter = monthStart;
+      else if (dateRange === "year") {
+        dateFilter = new Date(now.getFullYear(), 0, 1).toISOString();
+      } else if (dateRange === "all") {
+        dateFilter = null; // no filter
+      }
 
       // Country stats - fetch ALL data with pagination to avoid 1000 row limit
+      const dateFilters = dateFilter 
+        ? [{ column: "created_at", operator: "gte", value: dateFilter }] 
+        : [];
+      
       const countryData = await fetchAllRows<{ country_code: string; country_name: string }>(
         "page_visits",
         "country_code, country_name",
         [
-          { column: "created_at", operator: "gte", value: dateFilter },
+          ...dateFilters,
           { column: "country_code", operator: "not.is", value: null }
         ]
       );
@@ -307,7 +317,7 @@ const AnalyticsTab = () => {
       const pageData = await fetchAllRows<{ page_path: string }>(
         "page_visits",
         "page_path",
-        [{ column: "created_at", operator: "gte", value: dateFilter }]
+        dateFilters.length > 0 ? dateFilters : undefined
       );
 
       if (pageData && pageData.length > 0) {
@@ -329,7 +339,7 @@ const AnalyticsTab = () => {
       const deviceData = await fetchAllRows<{ device_type: string }>(
         "page_visits",
         "device_type",
-        [{ column: "created_at", operator: "gte", value: dateFilter }]
+        dateFilters.length > 0 ? dateFilters : undefined
       );
 
       if (deviceData && deviceData.length > 0) {
@@ -352,7 +362,7 @@ const AnalyticsTab = () => {
         "page_visits",
         "referrer",
         [
-          { column: "created_at", operator: "gte", value: dateFilter },
+          ...dateFilters,
           { column: "referrer", operator: "not.is", value: null }
         ]
       );
@@ -406,7 +416,7 @@ const AnalyticsTab = () => {
           <p className="text-muted-foreground">نظرة شاملة على أداء متجرك</p>
         </div>
         <div className="flex items-center gap-3">
-          <Select value={dateRange} onValueChange={setDateRange}>
+           <Select value={dateRange} onValueChange={setDateRange}>
             <SelectTrigger className="w-32">
               <SelectValue />
             </SelectTrigger>
@@ -414,6 +424,8 @@ const AnalyticsTab = () => {
               <SelectItem value="today">اليوم</SelectItem>
               <SelectItem value="week">الأسبوع</SelectItem>
               <SelectItem value="month">الشهر</SelectItem>
+              <SelectItem value="year">السنة</SelectItem>
+              <SelectItem value="all">الكل</SelectItem>
             </SelectContent>
           </Select>
           <Button variant="outline" size="icon" onClick={fetchAnalytics} disabled={loading}>
