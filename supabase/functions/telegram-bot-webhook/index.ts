@@ -180,6 +180,7 @@ async function getSessionForProduct(productId?: string): Promise<{
 }
 
 // التحقق من كود التفعيل - مع جلب activation_type من المنتج
+// يُرجع الكود حتى لو مربوط بمستخدم آخر (للتحقق من الاحتيال)
 async function verifyActivationCode(code: string) {
   const { data, error } = await supabase
     .from("activation_codes")
@@ -197,6 +198,34 @@ async function verifyActivationCode(code: string) {
   }
 
   return data;
+}
+
+// 🛡️ التحقق من وجود جلسة نشطة للمستخدم (مضاد احتيال)
+async function hasActiveSession(chatId: string): Promise<{ active: boolean; productName?: string }> {
+  // أولاً: التحقق من الذاكرة
+  if (userSessions[chatId]) {
+    return { active: true, productName: userSessions[chatId].productName };
+  }
+  
+  // ثانياً: التحقق من قاعدة البيانات
+  const { data } = await supabase
+    .from("activation_codes")
+    .select(`
+      id, status, product_id,
+      products:product_id (name)
+    `)
+    .eq("telegram_chat_id", chatId)
+    .eq("is_used", false)
+    .in("status", ["in_progress", "awaiting_otp", "chatgpt_awaiting_otp"])
+    .gt("expires_at", new Date().toISOString())
+    .limit(1)
+    .maybeSingle();
+
+  if (data) {
+    return { active: true, productName: (data as any).products?.name || "المنتج" };
+  }
+  
+  return { active: false };
 }
 
 // جلب كود التفعيل بالـ ID
@@ -667,8 +696,26 @@ Deno.serve(async (req) => {
     const text = message.text?.trim() || "";
     const username = message.from?.username || null;
 
-    // أمر البدء
+    // أمر البدء - 🛡️ منع /start أثناء جلسة نشطة
     if (text === "/start" || text.startsWith("/start ")) {
+      const activeCheck = await hasActiveSession(chatId);
+      if (activeCheck.active) {
+        await sendTelegramMessage(
+          botToken, chatId,
+          `⚠️ <b>لديك عملية تفعيل جارية!</b>\n\n` +
+          `📦 المنتج: <b>${activeCheck.productName}</b>\n\n` +
+          `❌ لا يمكنك بدء عملية جديدة حتى تُنهي التفعيل الحالي.\n` +
+          `أكمل الخطوات المطلوبة أولاً.\n\n` +
+          `─────────\n\n` +
+          `⚠️ <b>You have an active activation!</b>\n\n` +
+          `📦 Product: <b>${activeCheck.productName}</b>\n\n` +
+          `❌ You cannot start a new process until you finish the current one.`
+        );
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      
       const welcomeMessage = await getSetting("telegram_welcome_message") || 
         "مرحباً بك في بوت المتجر! 🎉\n\nأدخل كود التفعيل الذي حصلت عليه بعد الشراء:";
       
@@ -683,6 +730,40 @@ Deno.serve(async (req) => {
     const activationCode = await verifyActivationCode(text);
 
     if (activationCode) {
+      // 🛡️ مضاد احتيال: التحقق من أن الكود غير مربوط بمستخدم آخر
+      if (activationCode.telegram_chat_id && activationCode.telegram_chat_id !== chatId) {
+        await sendTelegramMessage(
+          botToken, chatId,
+          `🚫 <b>هذا الكود مستخدم بالفعل!</b>\n\n` +
+          `تم ربط هذا الكود بحساب تيليجرام آخر.\n` +
+          `لا يمكن استخدام نفس الكود من حسابين مختلفين.\n\n` +
+          `─────────\n\n` +
+          `🚫 <b>This code is already in use!</b>\n\n` +
+          `This code is linked to another Telegram account.\n` +
+          `You cannot use the same code from two different accounts.`
+        );
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // 🛡️ مضاد احتيال: منع إرسال كود جديد أثناء تفعيل جاري
+      const activeCheck = await hasActiveSession(chatId);
+      if (activeCheck.active) {
+        await sendTelegramMessage(
+          botToken, chatId,
+          `⚠️ <b>لديك عملية تفعيل جارية!</b>\n\n` +
+          `📦 المنتج: <b>${activeCheck.productName}</b>\n\n` +
+          `❌ أكمل التفعيل الحالي أولاً قبل إدخال كود جديد.\n\n` +
+          `─────────\n\n` +
+          `⚠️ <b>You have an active activation!</b>\n\n` +
+          `❌ Complete the current activation first before entering a new code.`
+        );
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       const productName = activationCode.products?.name || "المنتج";
       const productId = activationCode.product_id;
       const productActivationType = activationCode.products?.activation_type || null;
