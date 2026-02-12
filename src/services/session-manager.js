@@ -912,14 +912,14 @@ class OSNSessionManager {
         this.lastActivity = new Date();
 
         return {
-          success: true,
+          success: isSuccess && !isFailed,
           paired: isSuccess,
           failed: isFailed,
           newSessionCookies: !!this._newSessionCookies,
           screenshot: resultScreenshot ? `data:image/png;base64,${resultScreenshot}` : null,
-          message: isSuccess ? 'تم ربط التلفزيون بنجاح!' 
-            : isFailed ? 'فشل - الكود غير صحيح أو منتهي'
-            : 'تم إدخال الكود - تحقق من الصورة',
+          message: isSuccess ? '✅ تم ربط التلفزيون بنجاح!' 
+            : isFailed ? '❌ الكود غير صحيح أو منتهي الصلاحية'
+            : '⚠️ تم إدخال الكود - تحقق من الصورة',
           method: 'browser',
         };
       } catch (innerError) {
