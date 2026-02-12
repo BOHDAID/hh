@@ -147,38 +147,47 @@ const ProductCard = ({
         transition={{ duration: 0.3 }}
       />
 
-      {/* Image Container */}
-      <div className="relative w-28 h-28 sm:w-full sm:h-auto sm:aspect-[4/3] overflow-hidden bg-muted/30 flex-shrink-0 rounded-r-2xl sm:rounded-r-none sm:rounded-t-3xl">
-        {image ? (
-          <motion.img
-            src={image}
-            alt={title}
-            className="h-full w-full object-cover"
-            animate={{ scale: isHovered ? 1.1 : 1 }}
-            transition={{ duration: 0.5 }}
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted/50 to-muted">
-            <motion.div
-              animate={{ rotate: isHovered ? 360 : 0 }}
-              transition={{ duration: 0.8 }}
-            >
-              <Package className="h-16 w-16 text-muted-foreground/30" />
-            </motion.div>
-          </div>
-        )}
-        
-        {/* Overlay gradient */}
+      {/* Image Container - Black box with purple glow */}
+      <div className="relative w-28 h-28 sm:w-full sm:h-auto sm:aspect-square overflow-hidden flex-shrink-0 rounded-r-2xl sm:rounded-r-none sm:rounded-t-3xl p-1 sm:p-3">
+        {/* Purple glow border */}
         <motion.div 
-          className="absolute inset-0 bg-gradient-to-t from-background via-background/20 to-transparent"
-          animate={{ opacity: isHovered ? 1 : 0.5 }}
-          transition={{ duration: 0.3 }}
-        />
+          className="absolute inset-1 sm:inset-3 rounded-2xl sm:rounded-3xl"
+          style={{
+            background: "linear-gradient(135deg, hsl(280, 100%, 60%), hsl(300, 100%, 50%), hsl(260, 100%, 55%))",
+            padding: "3px",
+          }}
+          animate={{ 
+            boxShadow: isHovered 
+              ? "0 0 30px 8px hsla(280, 100%, 60%, 0.5), 0 0 60px 15px hsla(300, 100%, 50%, 0.2)" 
+              : "0 0 15px 3px hsla(280, 100%, 60%, 0.3), 0 0 30px 8px hsla(300, 100%, 50%, 0.1)"
+          }}
+          transition={{ duration: 0.4 }}
+        >
+          {/* Inner black box */}
+          <div className="w-full h-full rounded-[14px] sm:rounded-[22px] bg-black flex items-center justify-center overflow-hidden">
+            {image ? (
+              <motion.img
+                src={image}
+                alt={title}
+                className="h-[70%] w-[70%] object-contain drop-shadow-[0_0_15px_hsla(280,100%,60%,0.3)]"
+                animate={{ scale: isHovered ? 1.1 : 1 }}
+                transition={{ duration: 0.5 }}
+              />
+            ) : (
+              <motion.div
+                animate={{ rotate: isHovered ? 360 : 0 }}
+                transition={{ duration: 0.8 }}
+              >
+                <Package className="h-10 w-10 sm:h-16 sm:w-16 text-muted-foreground/30" />
+              </motion.div>
+            )}
+          </div>
+        </motion.div>
         
         {/* Category Badge */}
         {category && (
           <motion.span 
-            className="absolute top-4 right-4 rounded-full bg-primary px-4 py-1.5 text-xs font-bold text-primary-foreground shadow-lg"
+            className="absolute top-5 right-5 sm:top-6 sm:right-6 z-10 rounded-full bg-primary px-3 sm:px-4 py-1 sm:py-1.5 text-xs font-bold text-primary-foreground shadow-lg"
             initial={{ x: 20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             transition={{ delay: 0.1 }}
@@ -187,8 +196,8 @@ const ProductCard = ({
           </motion.span>
         )}
 
-        {/* Floating Sparkle */}
-        <div className="absolute top-4 left-4">
+        {/* Wishlist */}
+        <div className="absolute top-5 left-5 sm:top-6 sm:left-6 z-10">
           <WishlistButton productId={id} />
         </div>
       </div>
