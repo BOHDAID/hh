@@ -213,78 +213,30 @@ const ProductCard = ({
             animate={{ scale: isHovered ? 1.05 : 1 }}
             transition={{ duration: 0.2 }}
           >
-            {hasVariants ? (
-              <>
-                <span className="text-xs sm:text-sm text-muted-foreground hidden sm:inline">
-                  {isRTL ? "يبدأ من" : "From"}
-                </span>
-                <span className="text-lg sm:text-2xl font-extrabold text-primary">{minPrice}</span>
-                <span className="text-xs sm:text-sm text-muted-foreground font-medium">{currency}</span>
-              </>
-            ) : (
-              <>
-                <span className="text-xl sm:text-3xl font-extrabold text-primary">{price}</span>
-                <span className="text-xs sm:text-sm text-muted-foreground font-medium">{currency}</span>
-              </>
-            )}
+            <span className="text-lg sm:text-2xl font-extrabold text-primary">
+              {hasVariants ? minPrice : price}
+            </span>
+            <span className="text-xs sm:text-sm text-muted-foreground font-medium">{currency}</span>
           </motion.div>
           
-          {/* Actions based on variants */}
-          {hasVariants ? (
-            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              <Button 
-                variant="hero" 
-                size="sm" 
-                className="gap-1 sm:gap-2 rounded-lg sm:rounded-xl px-2 sm:px-5 shadow-lg text-xs sm:text-sm"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setDetailsOpen(true);
-                }}
-              >
-                <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
-                <span className="hidden sm:inline">{isRTL ? "عرض الخيارات" : "View Options"}</span>
-                <span className="sm:hidden">{isRTL ? "عرض" : "View"}</span>
-                ({variantsCount})
-              </Button>
-            </motion.div>
-          ) : (
-            <div className="flex gap-1 sm:gap-2">
-              <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} className="hidden sm:block">
-                <Button 
-                  variant="outline" 
-                  size="icon"
-                  className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg sm:rounded-xl border-2"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setDetailsOpen(true);
-                  }}
-                >
-                  <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
-                </Button>
-              </motion.div>
-              <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} className="hidden sm:block">
-                <Button 
-                  variant="outline" 
-                  size="icon"
-                  className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg sm:rounded-xl border-2"
-                  onClick={handleAddToCart}
-                  disabled={addingToCart}
-                >
-                  <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
-                </Button>
-              </motion.div>
-              <Link to={`/checkout/${id}`}>
-                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                  <Button variant="hero" size="sm" className="gap-1 sm:gap-2 rounded-lg sm:rounded-xl px-3 sm:px-5 shadow-lg text-xs sm:text-sm h-8 sm:h-auto">
-                    <ShoppingCart className="h-3 w-3 sm:h-4 sm:w-4" />
-                    {t('products.buyNow')}
-                  </Button>
-                </motion.div>
-              </Link>
-            </div>
-          )}
+          {/* Actions - consistent layout for all products */}
+          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+            <Button 
+              variant="hero" 
+              size="sm" 
+              className="gap-1 sm:gap-2 rounded-lg sm:rounded-xl px-2 sm:px-5 shadow-lg text-xs sm:text-sm"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setDetailsOpen(true);
+              }}
+            >
+              <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">{hasVariants ? (isRTL ? "عرض الخيارات" : "View Options") : (isRTL ? "عرض التفاصيل" : "View Details")}</span>
+              <span className="sm:hidden">{isRTL ? "عرض" : "View"}</span>
+              {hasVariants && ` (${variantsCount})`}
+            </Button>
+          </motion.div>
         </div>
       </div>
 
