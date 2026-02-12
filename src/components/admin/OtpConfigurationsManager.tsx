@@ -111,7 +111,7 @@ const OtpConfigurationsManager = () => {
   const [smtpGmailAddress, setSmtpGmailAddress] = useState("");
   const [smtpGmailAppPassword, setSmtpGmailAppPassword] = useState("");
   const [smtpAccountPassword, setSmtpAccountPassword] = useState("");
-  const [sessionType, setSessionType] = useState<"osn" | "chatgpt">("osn");
+  const [sessionType, setSessionType] = useState<"osn" | "chatgpt" | "crunchyroll">("osn");
   const [chatgptPassword, setChatgptPassword] = useState("");
 
   const [form, setForm] = useState({
@@ -333,8 +333,8 @@ const OtpConfigurationsManager = () => {
     if (!selectedVariantId) { toast({ title: "خطأ", description: "يرجى اختيار المنتج الفرعي", variant: "destructive" }); return; }
     if (!manualEmail.trim()) { toast({ title: "خطأ", description: "يرجى إدخال إيميل الحساب", variant: "destructive" }); return; }
 
-    // ChatGPT: email + password only, no cookies
-    if (sessionType === "chatgpt") {
+    // ChatGPT or Crunchyroll: email + password only, no cookies
+    if (sessionType === "chatgpt" || sessionType === "crunchyroll") {
       if (!chatgptPassword.trim()) { toast({ title: "خطأ", description: "يرجى إدخال كلمة مرور الحساب", variant: "destructive" }); return; }
       setImportingCookies(true);
       try {
@@ -351,7 +351,8 @@ const OtpConfigurationsManager = () => {
           toast({ title: "❌ خطأ", description: insertError.message, variant: "destructive" });
         } else {
           await db.from("product_variants").update({ is_unlimited: true }).eq("id", selectedVariantId);
-          toast({ title: "✅ تم إنشاء جلسة ChatGPT", description: `${manualEmail.trim()} — يمكنك إضافة Gmail SMTP لاحقاً` });
+          const label = sessionType === "crunchyroll" ? "Crunchyroll" : "ChatGPT";
+          toast({ title: `✅ تم إنشاء جلسة ${label}`, description: `${manualEmail.trim()} — يمكنك إضافة Gmail SMTP لاحقاً` });
         }
         setCookieDialogOpen(false); setCookieText(""); setSelectedVariantId(""); setManualEmail(""); setChatgptPassword(""); setSessionType("osn");
         await Promise.all([fetchOsnSessions(), fetchSessionStatus()]);
@@ -860,15 +861,15 @@ const OtpConfigurationsManager = () => {
         <DialogContent className="max-w-lg" dir="rtl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              {sessionType === "chatgpt" ? <Key className="h-5 w-5" /> : <Cookie className="h-5 w-5" />}
-              {sessionType === "chatgpt" ? "إنشاء جلسة ChatGPT" : "استيراد كوكيز OSN"}
+              {sessionType === "crunchyroll" ? <Package className="h-5 w-5" /> : sessionType === "chatgpt" ? <Key className="h-5 w-5" /> : <Cookie className="h-5 w-5" />}
+              {sessionType === "crunchyroll" ? "إنشاء جلسة Crunchyroll" : sessionType === "chatgpt" ? "إنشاء جلسة ChatGPT" : "استيراد كوكيز OSN"}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             {/* نوع الجلسة */}
             <div className="space-y-2">
               <Label>نوع الجلسة <span className="text-destructive">*</span></Label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={() => setSessionType("osn")}
@@ -884,6 +885,14 @@ const OtpConfigurationsManager = () => {
                 >
                   <Key className="h-5 w-5 mx-auto mb-1" />
                   <span className="text-sm">ChatGPT</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSessionType("crunchyroll")}
+                  className={`p-3 rounded-lg border text-center transition-all ${sessionType === "crunchyroll" ? "border-primary bg-primary/10 text-primary font-medium" : "border-border hover:border-primary/50"}`}
+                >
+                  <Package className="h-5 w-5 mx-auto mb-1" />
+                  <span className="text-sm">Crunchyroll</span>
                 </button>
               </div>
             </div>
@@ -918,18 +927,22 @@ const OtpConfigurationsManager = () => {
               />
             </div>
 
-            {/* ChatGPT: كلمة مرور مطلوبة */}
-            {sessionType === "chatgpt" && (
+            {/* ChatGPT/Crunchyroll: كلمة مرور مطلوبة */}
+            {(sessionType === "chatgpt" || sessionType === "crunchyroll") && (
               <div className="space-y-2">
                 <Label>كلمة مرور الحساب <span className="text-destructive">*</span></Label>
                 <Input
                   type="password"
-                  placeholder="كلمة مرور الحساب"
+                  placeholder={sessionType === "crunchyroll" ? "كلمة مرور Crunchyroll" : "كلمة مرور الحساب"}
                   value={chatgptPassword}
                   onChange={(e) => setChatgptPassword(e.target.value)}
                   dir="ltr"
                 />
-                <p className="text-xs text-muted-foreground">تُرسل للعميل مع الإيميل. يمكنك إضافة Gmail SMTP لاحقاً لقراءة OTP.</p>
+                <p className="text-xs text-muted-foreground">
+                  {sessionType === "crunchyroll" 
+                    ? "تُرسل للعميل عند اختيار الهاتف. يتم تغييرها تلقائياً بعد كل تفعيل."
+                    : "تُرسل للعميل مع الإيميل. يمكنك إضافة Gmail SMTP لاحقاً لقراءة OTP."}
+                </p>
               </div>
             )}
 
@@ -951,7 +964,15 @@ const OtpConfigurationsManager = () => {
             <div className="flex items-start gap-2 p-3 rounded-lg border bg-muted/50">
               <AlertCircle className="h-4 w-4 text-muted-foreground mt-0.5" />
               <div className="text-xs text-muted-foreground space-y-1">
-                {sessionType === "chatgpt" ? (
+                {sessionType === "crunchyroll" ? (
+                  <>
+                    <p><strong>Crunchyroll:</strong></p>
+                    <p>1. أدخل إيميل وكلمة مرور حساب Crunchyroll</p>
+                    <p>2. بعد الإنشاء، أضف Gmail SMTP من زر ✉️ لقراءة رابط تغيير الباسورد</p>
+                    <p>3. البوت يعطي العميل خيار: تلفزيون (كود 6 أرقام) أو هاتف (إيميل + باسورد)</p>
+                    <p>4. بعد تفعيل الهاتف، يتم تغيير الباسورد تلقائياً عبر Gmail</p>
+                  </>
+                ) : sessionType === "chatgpt" ? (
                   <>
                     <p><strong>ChatGPT:</strong></p>
                     <p>1. أدخل إيميل وكلمة مرور حساب ChatGPT</p>
@@ -974,7 +995,7 @@ const OtpConfigurationsManager = () => {
             <Button variant="outline" onClick={() => setCookieDialogOpen(false)}>إلغاء</Button>
             <Button onClick={handleImportCookies} disabled={importingCookies}>
               {importingCookies && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
-              {sessionType === "chatgpt" ? "إنشاء" : "استيراد"}
+              {sessionType === "chatgpt" || sessionType === "crunchyroll" ? "إنشاء" : "استيراد"}
             </Button>
           </DialogFooter>
         </DialogContent>

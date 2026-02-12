@@ -62,6 +62,9 @@ export const FUNCTION_SLUGS: Record<string, string> = {
   'telegram-bot-webhook': 'telegram-bot-webhook',
   'telegram-send-otp': 'telegram-send-otp',
   'telegram-setup-webhook': 'telegram-setup-webhook',
+  
+  // === Gmail OTP ===
+  'gmail-read-otp': 'gmail-read-otp',
 };
 
 console.log('🔗 Cloud Functions Client:', CLOUD_URL);
