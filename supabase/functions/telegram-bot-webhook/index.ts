@@ -216,7 +216,7 @@ async function hasActiveSession(chatId: string): Promise<{ active: boolean; prod
     `)
     .eq("telegram_chat_id", chatId)
     .eq("is_used", false)
-    .in("status", ["in_progress", "awaiting_otp", "chatgpt_awaiting_otp"])
+    .in("status", ["in_progress", "awaiting_otp", "chatgpt_awaiting_otp", "crunchyroll_choosing", "crunchyroll_awaiting_tv_code", "crunchyroll_phone_sent"])
     .gt("expires_at", new Date().toISOString())
     .limit(1)
     .maybeSingle();
@@ -395,10 +395,10 @@ interface UserSession {
   activationCodeId: string;
   productName: string;
   productId: string;
-  activationType: string; // "qr" | "otp" | "chatgpt"
+  activationType: string; // "qr" | "otp" | "chatgpt" | "crunchyroll"
   accountEmail: string;
   accountPassword?: string;
-  step: "choose_type" | "awaiting_login" | "awaiting_otp_request" | "chatgpt_awaiting_otp";
+  step: "choose_type" | "awaiting_login" | "awaiting_otp_request" | "chatgpt_awaiting_otp" | "crunchyroll_choose" | "crunchyroll_awaiting_tv_code" | "crunchyroll_phone_sent";
   retryCount: number;
   gmailAddress?: string;
   gmailAppPassword?: string;
@@ -418,7 +418,7 @@ async function reconstructSession(chatId: string): Promise<UserSession | null> {
       `)
       .eq("telegram_chat_id", chatId)
       .eq("is_used", false)
-      .in("status", ["in_progress", "awaiting_otp", "chatgpt_awaiting_otp"])
+      .in("status", ["in_progress", "awaiting_otp", "chatgpt_awaiting_otp", "crunchyroll_choosing", "crunchyroll_awaiting_tv_code", "crunchyroll_phone_sent"])
       .order("updated_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -439,6 +439,10 @@ async function reconstructSession(chatId: string): Promise<UserSession | null> {
     let step: UserSession["step"] = "awaiting_login";
     if (activationType === "chatgpt") {
       step = "chatgpt_awaiting_otp";
+    } else if (activationType === "crunchyroll") {
+      if (code.status === "crunchyroll_awaiting_tv_code") step = "crunchyroll_awaiting_tv_code";
+      else if (code.status === "crunchyroll_phone_sent") step = "crunchyroll_phone_sent";
+      else step = "crunchyroll_choose";
     } else if (code.status === "awaiting_otp") {
       step = "awaiting_otp_request";
     }
@@ -552,11 +556,15 @@ Deno.serve(async (req) => {
             
             await markCodeAsUsed(session.activationCodeId);
             const invoiceUrl = await getInvoiceUrl(session.activationCodeId);
+            const siteUrl = await getSetting("store_url") || await getSetting("site_url") || "";
             delete userSessions[chatId];
             
-            const successMsg = `🎉 تم التفعيل بنجاح! استمتع بالخدمة.\n\n⭐ <b>قيّم تجربتك:</b>\nساعدنا بتقييم المنتج في الموقع لنحسّن خدماتنا.`;
-            const successButtons = invoiceUrl ? [[{ text: "🧾 عرض الإيصال / View Receipt", url: invoiceUrl }]] : undefined;
-            await sendTelegramMessage(botToken, chatId, successMsg, successButtons as any);
+            const ratingButtons: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
+            if (siteUrl) ratingButtons.push([{ text: "⭐ قيّمنا في الموقع | Rate us", url: siteUrl }]);
+            if (invoiceUrl) ratingButtons.push([{ text: "🧾 عرض الإيصال / View Receipt", url: invoiceUrl }]);
+            
+            const successMsg = `🎉 تم التفعيل بنجاح! استمتع بالخدمة.\n\n⭐ <b>مرجو تقييمنا في موقعنا!</b>\nساعدنا بتقييم المنتج لنحسّن خدماتنا.`;
+            await sendTelegramMessage(botToken, chatId, successMsg, ratingButtons.length > 0 ? ratingButtons : undefined);
           } else {
             await editTelegramMessage(
               botToken, chatId, messageId,
@@ -647,11 +655,15 @@ Deno.serve(async (req) => {
           
           await markCodeAsUsed(session.activationCodeId);
           const invoiceUrl = await getInvoiceUrl(session.activationCodeId);
+          const siteUrl = await getSetting("store_url") || await getSetting("site_url") || "";
           delete userSessions[chatId];
           
-          const successMsg = `🎉 تم التفعيل بنجاح! استمتع بالخدمة.\n\n⭐ <b>قيّم تجربتك:</b>\nساعدنا بتقييم المنتج في الموقع لنحسّن خدماتنا.`;
-          const successButtons = invoiceUrl ? [[{ text: "🧾 عرض الإيصال / View Receipt", url: invoiceUrl }]] : undefined;
-          await sendTelegramMessage(botToken, chatId, successMsg, successButtons as any);
+          const ratingButtons: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
+          if (siteUrl) ratingButtons.push([{ text: "⭐ قيّمنا في الموقع | Rate us", url: siteUrl }]);
+          if (invoiceUrl) ratingButtons.push([{ text: "🧾 عرض الإيصال / View Receipt", url: invoiceUrl }]);
+          
+          const successMsg = `🎉 تم التفعيل بنجاح! استمتع بالخدمة.\n\n⭐ <b>مرجو تقييمنا في موقعنا!</b>\nساعدنا بتقييم المنتج لنحسّن خدماتنا.`;
+          await sendTelegramMessage(botToken, chatId, successMsg, ratingButtons.length > 0 ? ratingButtons : undefined);
         } else {
           const retryCallbackData = isChatGPT ? "chatgpt_get_otp" : "get_otp";
           const appName = isChatGPT ? "ChatGPT" : "OSN";
@@ -672,10 +684,140 @@ Deno.serve(async (req) => {
           );
         }
         
+      // === Crunchyroll: اختيار تلفزيون أو هاتف ===
+      if (data === "crunchyroll_tv" || data === "crunchyroll_phone") {
+        if (data === "crunchyroll_tv") {
+          session.step = "crunchyroll_awaiting_tv_code";
+          await updateActivationCode(session.activationCodeId, chatId, username, "crunchyroll_awaiting_tv_code");
+          
+          await editTelegramMessage(
+            botToken, chatId, messageId,
+            `📺 <b>تفعيل Crunchyroll على التلفزيون</b>\n\n` +
+            `📝 <b>التعليمات:</b>\n` +
+            `1️⃣ افتح تطبيق Crunchyroll على تلفزيونك\n` +
+            `2️⃣ اختر "تسجيل الدخول"\n` +
+            `3️⃣ سيظهر لك كود مكون من 6 أرقام\n` +
+            `4️⃣ أرسل الكود هنا في الرسالة\n\n` +
+            `⏳ أرسل الكود المكون من 6 أرقام:`
+          );
+        } else {
+          // Phone: إرسال البريد + الباسورد
+          session.step = "crunchyroll_phone_sent";
+          await updateActivationCode(session.activationCodeId, chatId, username, "crunchyroll_phone_sent", session.accountEmail, session.accountPassword);
+          
+          await editTelegramMessage(
+            botToken, chatId, messageId,
+            `📱 <b>تفعيل Crunchyroll على الهاتف</b>\n\n` +
+            `📧 البريد: <code>${session.accountEmail}</code>\n` +
+            `🔑 كلمة المرور: <code>${session.accountPassword || "غير محدد"}</code>\n\n` +
+            `📝 <b>التعليمات:</b>\n` +
+            `1️⃣ افتح تطبيق Crunchyroll\n` +
+            `2️⃣ سجل دخول بالبيانات أعلاه\n` +
+            `3️⃣ بعد الانتهاء، اضغط الزر أدناه\n\n` +
+            `⚠️ لا تقم بتغيير كلمة المرور!\n\n` +
+            `─────────\n\n` +
+            `📱 <b>Phone Activation</b>\n\n` +
+            `📧 Email: <code>${session.accountEmail}</code>\n` +
+            `🔑 Password: <code>${session.accountPassword || "N/A"}</code>\n\n` +
+            `Login with the credentials above, then press the button below.`,
+            [[{ text: "✅ سجلت دخول | Logged in", callback_data: "crunchyroll_phone_done" }]]
+          );
+        }
+        
         return new Response(JSON.stringify({ ok: true }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+
+      // === Crunchyroll Phone: تم تسجيل الدخول - تغيير الباسورد ===
+      if (data === "crunchyroll_phone_done") {
+        await editTelegramMessage(botToken, chatId, messageId, "⏳ جاري تغيير كلمة المرور...");
+        
+        // استدعاء السيرفر لتغيير الباسورد
+        const renderServerUrl = Deno.env.get("RENDER_SERVER_URL") || "https://angel-store.onrender.com";
+        const qrSecret = Deno.env.get("QR_AUTOMATION_SECRET") || "default-qr-secret-key";
+        
+        try {
+          const response = await fetch(`${renderServerUrl}/api/qr/crunchyroll-change-password`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              secret: qrSecret,
+              email: session.accountEmail,
+              gmailAddress: session.gmailAddress,
+              gmailAppPassword: session.gmailAppPassword,
+            }),
+          });
+          
+          const result = await response.json();
+          
+          if (result.success && result.newPassword) {
+            // حفظ الباسورد الجديد في الجلسة
+            const sessionData = await getSessionForProduct(session.productId);
+            if (sessionData) {
+              await supabase
+                .from("osn_sessions")
+                .update({ account_password: result.newPassword, last_activity: new Date().toISOString() })
+                .eq("variant_id", sessionData.variant_id);
+            }
+            
+            await markCodeAsUsed(session.activationCodeId);
+            const invoiceUrl = await getInvoiceUrl(session.activationCodeId);
+            const siteUrl = await getSetting("store_url") || await getSetting("site_url") || "";
+            delete userSessions[chatId];
+            
+            await editTelegramMessage(botToken, chatId, messageId,
+              `✅ <b>تم التفعيل بنجاح!</b>\n\n` +
+              `🔐 تم تغيير كلمة المرور تلقائياً.\n` +
+              `استمتع بالخدمة! 🎉`
+            );
+            
+            const ratingButtons: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
+            if (siteUrl) ratingButtons.push([{ text: "⭐ قيّمنا في الموقع | Rate us", url: siteUrl }]);
+            if (invoiceUrl) ratingButtons.push([{ text: "🧾 عرض الإيصال | View Receipt", url: invoiceUrl }]);
+            
+            await sendTelegramMessage(botToken, chatId,
+              `🎉 شكراً لك! استمتع بالخدمة.\n\n⭐ <b>مرجو تقييمنا في موقعنا!</b>\nساعدنا بتقييم المنتج لنحسّن خدماتنا.`,
+              ratingButtons.length > 0 ? ratingButtons : undefined
+            );
+          } else {
+            // فشل تغيير الباسورد - لكن التفعيل تم
+            await markCodeAsUsed(session.activationCodeId);
+            const invoiceUrl = await getInvoiceUrl(session.activationCodeId);
+            const siteUrl = await getSetting("store_url") || await getSetting("site_url") || "";
+            delete userSessions[chatId];
+            
+            await editTelegramMessage(botToken, chatId, messageId,
+              `✅ <b>تم التفعيل!</b>\n\n` +
+              `⚠️ لم نتمكن من تغيير كلمة المرور تلقائياً.\n` +
+              `${result.error || "خطأ غير معروف"}`
+            );
+            
+            const ratingButtons: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
+            if (siteUrl) ratingButtons.push([{ text: "⭐ قيّمنا في الموقع | Rate us", url: siteUrl }]);
+            if (invoiceUrl) ratingButtons.push([{ text: "🧾 عرض الإيصال | View Receipt", url: invoiceUrl }]);
+            
+            await sendTelegramMessage(botToken, chatId,
+              `🎉 شكراً لك!\n\n⭐ <b>مرجو تقييمنا في موقعنا!</b>`,
+              ratingButtons.length > 0 ? ratingButtons : undefined
+            );
+          }
+        } catch (error) {
+          await editTelegramMessage(botToken, chatId, messageId,
+            `❌ خطأ في الاتصال بالسيرفر: ${error.message}\n\nجرب مرة أخرى:`,
+            [[{ text: "🔄 إعادة المحاولة", callback_data: "crunchyroll_phone_done" }]]
+          );
+        }
+        
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -721,6 +863,67 @@ Deno.serve(async (req) => {
       
       await sendTelegramMessage(botToken, chatId, welcomeMessage);
       delete userSessions[chatId];
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // === Crunchyroll TV Code Handler ===
+    // إذا المستخدم في انتظار كود تلفزيون Crunchyroll وأرسل 6 أرقام
+    let textSession = userSessions[chatId];
+    if (!textSession) textSession = await reconstructSession(chatId) || undefined;
+    
+    if (textSession && textSession.step === "crunchyroll_awaiting_tv_code" && /^\d{6}$/.test(text)) {
+      await sendTelegramMessage(botToken, chatId, "⏳ جاري تفعيل الكود على التلفزيون...");
+      
+      const renderServerUrl = Deno.env.get("RENDER_SERVER_URL") || "https://angel-store.onrender.com";
+      const qrSecret = Deno.env.get("QR_AUTOMATION_SECRET") || "default-qr-secret-key";
+      
+      try {
+        const response = await fetch(`${renderServerUrl}/api/qr/crunchyroll-activate-tv`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            secret: qrSecret,
+            tvCode: text,
+            email: textSession.accountEmail,
+            password: textSession.accountPassword,
+          }),
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          await markCodeAsUsed(textSession.activationCodeId);
+          const invoiceUrl = await getInvoiceUrl(textSession.activationCodeId);
+          const siteUrl = await getSetting("store_url") || await getSetting("site_url") || "";
+          delete userSessions[chatId];
+          
+          await sendTelegramMessage(botToken, chatId,
+            `✅ <b>تم تفعيل Crunchyroll على التلفزيون بنجاح!</b>\n\n` +
+            `🎉 استمتع بالمشاهدة!`
+          );
+          
+          const ratingButtons: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
+          if (siteUrl) ratingButtons.push([{ text: "⭐ قيّمنا في الموقع | Rate us", url: siteUrl }]);
+          if (invoiceUrl) ratingButtons.push([{ text: "🧾 عرض الإيصال | View Receipt", url: invoiceUrl }]);
+          
+          await sendTelegramMessage(botToken, chatId,
+            `🎉 شكراً لك! استمتع بالخدمة.\n\n⭐ <b>مرجو تقييمنا في موقعنا!</b>\nساعدنا بتقييم المنتج لنحسّن خدماتنا.`,
+            ratingButtons.length > 0 ? ratingButtons : undefined
+          );
+        } else {
+          await sendTelegramMessage(botToken, chatId,
+            `❌ ${result.error || "فشل التفعيل"}\n\n` +
+            `تأكد من الكود وأرسله مرة أخرى (6 أرقام):`
+          );
+        }
+      } catch (error) {
+        await sendTelegramMessage(botToken, chatId,
+          `❌ خطأ في الاتصال بالسيرفر.\nجرب مرة أخرى وأرسل الكود:`
+        );
+      }
+      
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -838,6 +1041,53 @@ Deno.serve(async (req) => {
           `2️⃣ If it asks for a verification code, press the button below\n\n` +
           `⚠️ Login first, then request the code!`,
           [[{ text: "🔑 أحضر لي رمز التحقق | Get OTP", callback_data: "chatgpt_get_otp" }]]
+        );
+
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // ============================================
+      // 🔥 Crunchyroll Flow
+      // ============================================
+      if (productActivationType === "crunchyroll") {
+        const accountEmail = sessionData.email || sessionData.gmail_address || activationCode.account_email || "";
+        const accountPassword = sessionData.account_password || activationCode.account_password || "";
+
+        await updateActivationCode(
+          activationCode.id, chatId, username, "crunchyroll_choosing",
+          accountEmail, accountPassword
+        );
+
+        userSessions[chatId] = {
+          activationCodeId: activationCode.id,
+          productName: productName,
+          productId: productId,
+          activationType: "crunchyroll",
+          accountEmail: accountEmail,
+          accountPassword: accountPassword,
+          step: "crunchyroll_choose",
+          retryCount: 0,
+          gmailAddress: sessionData.gmail_address,
+          gmailAppPassword: sessionData.gmail_app_password || undefined,
+        };
+
+        await sendTelegramMessage(
+          botToken, chatId,
+          `✅ <b>كود صالح!</b>\n\n` +
+          `📦 المنتج: <b>${productName}</b>\n\n` +
+          `اختر طريقة التفعيل:\n\n` +
+          `─────────\n\n` +
+          `✅ <b>Valid code!</b>\n\n` +
+          `📦 Product: <b>${productName}</b>\n\n` +
+          `Choose activation method:`,
+          [
+            [
+              { text: "📺 تلفزيون | TV", callback_data: "crunchyroll_tv" },
+              { text: "📱 هاتف | Phone", callback_data: "crunchyroll_phone" }
+            ]
+          ]
         );
 
         return new Response(JSON.stringify({ ok: true }), {

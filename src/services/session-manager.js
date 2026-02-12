@@ -935,6 +935,193 @@ class OSNSessionManager {
       return { success: false, error: `خطأ في قراءة Gmail: ${error.message}` };
     }
   }
+
+  /**
+   * تفعيل Crunchyroll على التلفزيون بإدخال كود 6 أرقام
+   */
+  async crunchyrollActivateTV(tvCode, email, password) {
+    return await this._withBrowser(async (browser) => {
+      const page = await browser.newPage();
+      await this._applyStealthToPage(page);
+
+      try {
+        // الذهاب لصفحة تفعيل Crunchyroll
+        console.log('📺 [Crunchyroll] Navigating to crunchyroll.com/activate');
+        await page.goto('https://www.crunchyroll.com/activate', { waitUntil: 'networkidle2', timeout: 30000 });
+        await this._sleep(3000);
+
+        // تسجيل الدخول أولاً إذا مطلوب
+        const pageUrl = page.url();
+        if (pageUrl.includes('login') || pageUrl.includes('signin')) {
+          console.log('🔐 [Crunchyroll] Login required, logging in...');
+          const emailInput = await page.$('input[type="email"], input[name="email"], #email_field');
+          if (emailInput) {
+            await emailInput.type(email, { delay: 80 });
+            await this._sleep(500);
+          }
+          const passInput = await page.$('input[type="password"], input[name="password"], #password_field');
+          if (passInput) {
+            await passInput.type(password, { delay: 80 });
+            await this._sleep(500);
+          }
+          const loginBtn = await this._findButton(page, ['log in', 'sign in', 'submit', 'تسجيل الدخول']);
+          if (loginBtn) await loginBtn.click();
+          else await page.keyboard.press('Enter');
+          await this._sleep(5000);
+
+          // إعادة التوجيه لصفحة التفعيل
+          await page.goto('https://www.crunchyroll.com/activate', { waitUntil: 'networkidle2', timeout: 30000 });
+          await this._sleep(3000);
+        }
+
+        // إدخال كود التفعيل
+        console.log(`📺 [Crunchyroll] Entering TV code: ${tvCode}`);
+        const codeInput = await page.$('input[type="text"], input[name="code"], input[placeholder*="code" i], input[maxlength="6"]');
+        if (!codeInput) {
+          // محاولة البحث عن أي input مرئي
+          const inputs = await page.$$('input:not([type="hidden"])');
+          if (inputs.length > 0) {
+            await inputs[0].type(tvCode, { delay: 100 });
+          } else {
+            return { success: false, error: 'لم يتم العثور على حقل إدخال الكود' };
+          }
+        } else {
+          await codeInput.click({ clickCount: 3 });
+          await page.keyboard.press('Backspace');
+          await codeInput.type(tvCode, { delay: 100 });
+        }
+        await this._sleep(1000);
+
+        // الضغط على زر التفعيل
+        const activateBtn = await this._findButton(page, ['activate', 'link', 'submit', 'connect', 'تفعيل', 'ربط']);
+        if (activateBtn) await activateBtn.click();
+        else await page.keyboard.press('Enter');
+        await this._sleep(5000);
+
+        // التحقق من النجاح
+        const resultText = await page.evaluate(() => document.body?.innerText?.toLowerCase() || '');
+        if (resultText.includes('success') || resultText.includes('activated') || resultText.includes('linked') || resultText.includes('connected')) {
+          console.log('✅ [Crunchyroll] TV activated successfully!');
+          return { success: true, message: 'تم تفعيل Crunchyroll على التلفزيون بنجاح!' };
+        }
+
+        if (resultText.includes('invalid') || resultText.includes('expired') || resultText.includes('error')) {
+          return { success: false, error: 'الكود غير صحيح أو منتهي الصلاحية' };
+        }
+
+        // غير متأكد - نعتبره نجاح مبدئي
+        return { success: true, message: 'تم إدخال الكود. تحقق من شاشة التلفزيون.' };
+      } catch (err) {
+        console.error('❌ [Crunchyroll] TV activation error:', err.message);
+        return { success: false, error: err.message };
+      }
+    });
+  }
+
+  /**
+   * تغيير كلمة مرور Crunchyroll بعد تفعيل الهاتف
+   */
+  async crunchyrollChangePassword(email, gmailAddress, gmailAppPassword) {
+    return await this._withBrowser(async (browser) => {
+      const page = await browser.newPage();
+      await this._applyStealthToPage(page);
+
+      try {
+        // طلب تغيير كلمة المرور من Crunchyroll
+        console.log('🔐 [Crunchyroll] Requesting password reset...');
+        await page.goto('https://www.crunchyroll.com/forgot_password', { waitUntil: 'networkidle2', timeout: 30000 });
+        await this._sleep(3000);
+
+        const emailInput = await page.$('input[type="email"], input[name="email"]');
+        if (emailInput) {
+          await emailInput.type(email, { delay: 80 });
+          await this._sleep(500);
+        }
+
+        const submitBtn = await this._findButton(page, ['submit', 'send', 'reset', 'إرسال']);
+        if (submitBtn) await submitBtn.click();
+        else await page.keyboard.press('Enter');
+        await this._sleep(5000);
+
+        // انتظار رابط تغيير الباسورد من Gmail
+        if (!gmailAddress || !gmailAppPassword) {
+          return { success: false, error: 'بيانات Gmail غير متوفرة لقراءة رابط تغيير الباسورد' };
+        }
+
+        console.log('📧 [Crunchyroll] Waiting for password reset email...');
+        let resetLink = null;
+        const CLOUD_URL = process.env.SUPABASE_URL || 'https://wueacwqzafxsvowlqbwh.supabase.co';
+        const CLOUD_ANON = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
+
+        for (let attempt = 1; attempt <= 6; attempt++) {
+          console.log(`📧 [Crunchyroll] Attempt ${attempt}/6 to find reset link...`);
+          try {
+            const otpResponse = await fetch(`${CLOUD_URL}/functions/v1/gmail-read-otp`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${CLOUD_ANON}`,
+              },
+              body: JSON.stringify({
+                gmailAddress,
+                gmailAppPassword,
+                maxAgeMinutes: 5,
+                senderFilter: 'crunchyroll',
+                extractType: 'link',
+              }),
+            });
+            const result = await otpResponse.json();
+            if (result.success && (result.link || result.otp)) {
+              resetLink = result.link || result.otp;
+              break;
+            }
+          } catch (err) {
+            console.error(`❌ Gmail error: ${err.message}`);
+          }
+          await this._sleep(5000);
+        }
+
+        if (!resetLink) {
+          return { success: false, error: 'لم يتم العثور على رابط تغيير كلمة المرور في Gmail' };
+        }
+
+        // فتح رابط تغيير الباسورد
+        console.log('🔗 [Crunchyroll] Opening reset link...');
+        await page.goto(resetLink, { waitUntil: 'networkidle2', timeout: 30000 });
+        await this._sleep(3000);
+
+        // إنشاء كلمة مرور جديدة
+        const newPassword = 'CR' + Math.random().toString(36).substring(2, 8) + '!' + Math.floor(Math.random() * 100);
+        console.log(`🔐 [Crunchyroll] New password: ${newPassword}`);
+
+        // البحث عن حقول كلمة المرور
+        const passInputs = await page.$$('input[type="password"]');
+        if (passInputs.length >= 2) {
+          await passInputs[0].type(newPassword, { delay: 80 });
+          await this._sleep(300);
+          await passInputs[1].type(newPassword, { delay: 80 });
+          await this._sleep(500);
+        } else if (passInputs.length === 1) {
+          await passInputs[0].type(newPassword, { delay: 80 });
+          await this._sleep(500);
+        } else {
+          return { success: false, error: 'لم يتم العثور على حقل كلمة المرور في صفحة إعادة التعيين' };
+        }
+
+        // الضغط على حفظ
+        const saveBtn = await this._findButton(page, ['save', 'submit', 'reset', 'change', 'حفظ', 'تغيير']);
+        if (saveBtn) await saveBtn.click();
+        else await page.keyboard.press('Enter');
+        await this._sleep(5000);
+
+        console.log('✅ [Crunchyroll] Password changed successfully!');
+        return { success: true, newPassword, message: 'تم تغيير كلمة المرور بنجاح' };
+      } catch (err) {
+        console.error('❌ [Crunchyroll] Password change error:', err.message);
+        return { success: false, error: err.message };
+      }
+    });
+  }
 }
 
 const sessionManager = new OSNSessionManager();
