@@ -625,7 +625,14 @@ class OSNSessionManager {
    * استخراج Device ID من الكوكيز أو توليد واحد
    */
   _extractDeviceId(cookies) {
-    // أولاً: البحث في كوكيز auth عن UDID
+    // أولاً: البحث عن كوكيز udid مباشرة
+    const udidCookie = cookies.find(c => c.name === 'udid');
+    if (udidCookie?.value) {
+      console.log(`📱 Found UDID from 'udid' cookie: ${udidCookie.value}`);
+      return udidCookie.value;
+    }
+
+    // ثانياً: البحث في كوكيز auth عن UDID
     const authCookie = cookies.find(c => c.name === 'auth');
     if (authCookie?.value) {
       try {
@@ -639,21 +646,15 @@ class OSNSessionManager {
       } catch {}
     }
 
-    const deviceCookieNames = ['device_id', 'deviceId', 'X-Device-Id', 'udid', 'did'];
+    const deviceCookieNames = ['device_id', 'deviceId', 'X-Device-Id', 'did'];
     for (const name of deviceCookieNames) {
       const cookie = cookies.find(c => c.name?.toLowerCase() === name.toLowerCase());
       if (cookie?.value) return cookie.value;
     }
 
-    // توليد Device ID ثابت (يبقى نفسه لكل جلسة)
-    if (!this._generatedDeviceId) {
-      this._generatedDeviceId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-        const r = Math.random() * 16 | 0;
-        const v = c === 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-      });
-    }
-    return this._generatedDeviceId;
+    // Fallback: استخدام UDID ثابت معروف
+    console.log('⚠️ No UDID found in cookies, using default');
+    return '724b2fad-a96a-4582-ae59-b8e69ee7c75e';
   }
 
   /**
@@ -959,13 +960,14 @@ class OSNSessionManager {
       .filter(c => c.name && c.value !== undefined)
       .map(c => {
         const sameSite = mapSameSite(c.sameSite);
+        const domain = (c.domain && c.domain.startsWith('.')) ? c.domain : ('.' + (c.domain || 'osnplus.com'));
         const cookie = {
           name: c.name,
           value: c.value,
-          domain: (c.domain && c.domain.startsWith('.')) ? c.domain : ('.' + (c.domain || 'osnplus.com')),
-          path: c.path || '/',
-          secure: sameSite === 'None' ? true : (c.secure || false),
-          httpOnly: c.httpOnly || false,
+          domain,
+          path: '/',
+          secure: true,
+          httpOnly: c.name === 'auth' ? true : (c.httpOnly || false),
           ...(c.expirationDate ? { expires: c.expirationDate } : {}),
         };
         if (sameSite) cookie.sameSite = sameSite;
