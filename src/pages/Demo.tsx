@@ -71,50 +71,47 @@ const DemoProductCard = ({ product }: { product: typeof demoProducts[0] }) => {
         borderColor: "hsla(280, 100%, 60%, 0.3)",
       }}
     >
-      {/* Image Container - Box frame with product in center */}
-      <div className="relative w-full aspect-square overflow-hidden rounded-t-2xl sm:rounded-t-3xl">
+      {/* Image Container - Box + Product as ONE unit */}
+      <motion.div 
+        className="relative w-full aspect-square overflow-hidden rounded-t-2xl sm:rounded-t-3xl cursor-pointer"
+        animate={{ scale: isHovered ? 1.05 : 1 }}
+        transition={{ duration: 0.4 }}
+      >
         {/* The plastic box frame image as background */}
         <img
           src={productBoxFrame}
           alt=""
-          className="absolute inset-0 w-full h-full object-cover"
+          className="absolute inset-0 w-full h-full object-cover pointer-events-none"
         />
 
-        {/* Product image positioned exactly inside the black square */}
-        <div 
-          className="absolute z-10 flex items-center justify-center"
-          style={{
-            top: "22%",
-            left: "18%",
-            width: "64%",
-            height: "56%",
-          }}
-        >
-          {product.image ? (
-            <motion.img
-              src={product.image}
-              alt={product.name}
-              className="max-w-[65%] max-h-[65%] object-contain drop-shadow-[0_0_25px_hsla(280,100%,60%,0.6)]"
-              animate={{ scale: isHovered ? 1.1 : 1 }}
-              transition={{ duration: 0.5 }}
-            />
-          ) : (
+        {/* Product image - positioned exactly in the black square center */}
+        {product.image && (
+          <img
+            src={product.image}
+            alt={product.name}
+            className="absolute z-10 object-contain pointer-events-none"
+            style={{
+              top: "26%",
+              left: "24%",
+              width: "52%",
+              height: "48%",
+              filter: "drop-shadow(0 0 18px hsla(280,100%,60%,0.5))",
+            }}
+          />
+        )}
+        {!product.image && (
+          <div className="absolute inset-0 flex items-center justify-center">
             <Package className="h-16 w-16 text-muted-foreground/30" />
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Category Badge */}
         {product.category && (
-          <motion.span
-            className="absolute top-4 right-4 z-20 rounded-full bg-primary px-3 sm:px-4 py-1 sm:py-1.5 text-xs font-bold text-primary-foreground shadow-lg"
-            initial={{ x: 20, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            transition={{ delay: 0.1 }}
-          >
+          <span className="absolute top-4 right-4 z-20 rounded-full bg-primary px-3 sm:px-4 py-1 sm:py-1.5 text-xs font-bold text-primary-foreground shadow-lg">
             {product.category}
-          </motion.span>
+          </span>
         )}
-      </div>
+      </motion.div>
 
       {/* Content */}
       <div className="relative p-4 sm:p-6">
