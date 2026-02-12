@@ -175,6 +175,87 @@ class IMAPClient {
 }
 
 /**
+ * استخراج رابط من رسالة (مثل رابط تغيير كلمة المرور)
+ */
+function extractLink(text: string, linkFilter?: string): string | null {
+  if (!text) return null;
+
+  let cleaned = text;
+  
+  // فك quoted-printable
+  cleaned = cleaned.replace(/=([0-9A-F]{2})/gi, (_, hex) => {
+    return String.fromCharCode(parseInt(hex, 16));
+  });
+  cleaned = cleaned.replace(/=\r?\n/g, ''); // soft line breaks
+  
+  // فك base64
+  try {
+    const base64Chunks = text.match(/[A-Za-z0-9+/=]{50,}/g);
+    if (base64Chunks) {
+      for (const chunk of base64Chunks) {
+        try {
+          const decoded = atob(chunk);
+          if (decoded.includes('http')) {
+            cleaned += " " + decoded;
+          }
+        } catch {}
+      }
+    }
+  } catch {}
+
+  // إزالة HTML tags لكن مع الحفاظ على href
+  const hrefMatches = cleaned.match(/href=["']([^"']+)["']/gi);
+  const allLinks: string[] = [];
+  
+  if (hrefMatches) {
+    for (const href of hrefMatches) {
+      const urlMatch = href.match(/href=["']([^"']+)["']/i);
+      if (urlMatch && urlMatch[1]) {
+        allLinks.push(urlMatch[1]);
+      }
+    }
+  }
+  
+  // أيضاً ابحث عن روابط مباشرة في النص
+  const urlPattern = /https?:\/\/[^\s<>"']+/g;
+  const directLinks = cleaned.match(urlPattern);
+  if (directLinks) {
+    allLinks.push(...directLinks);
+  }
+  
+  console.log(`🔗 Found ${allLinks.length} links in message`);
+  
+  // فلترة الروابط حسب الفلتر المطلوب
+  for (const link of allLinks) {
+    const cleanLink = link.replace(/&amp;/g, '&');
+    
+    if (linkFilter) {
+      if (cleanLink.toLowerCase().includes(linkFilter.toLowerCase())) {
+        console.log(`✅ Link matched filter "${linkFilter}": ${cleanLink.substring(0, 100)}`);
+        return cleanLink;
+      }
+    } else {
+      // بدون فلتر - أرجع أول رابط يبدو كرابط تغيير باسورد
+      if (cleanLink.includes('reset') || cleanLink.includes('password') || cleanLink.includes('new-password') || cleanLink.includes('verify')) {
+        console.log(`✅ Found password/reset link: ${cleanLink.substring(0, 100)}`);
+        return cleanLink;
+      }
+    }
+  }
+  
+  // إذا لم نجد رابط مطابق، أرجع أول رابط (ليس unsubscribe أو tracking)
+  for (const link of allLinks) {
+    const cleanLink = link.replace(/&amp;/g, '&');
+    if (!cleanLink.includes('unsubscribe') && !cleanLink.includes('tracking') && !cleanLink.includes('list-manage')) {
+      console.log(`✅ Returning first valid link: ${cleanLink.substring(0, 100)}`);
+      return cleanLink;
+    }
+  }
+  
+  return null;
+}
+
+/**
  * استخراج OTP محسّن - يتعامل مع تنسيقات متعددة
  */
 function extractOTP(text: string): string | null {
@@ -272,7 +353,7 @@ serve(async (req) => {
   }
 
   try {
-    const { gmailAddress, gmailAppPassword, maxAgeMinutes = 5, senderFilter, notBefore } = await req.json();
+    const { gmailAddress, gmailAppPassword, maxAgeMinutes = 5, senderFilter, notBefore, extractType, linkFilter } = await req.json();
 
     if (!gmailAddress || !gmailAppPassword) {
       return new Response(
@@ -281,7 +362,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`📧 Reading OTP from Gmail: ${gmailAddress}, maxAge: ${maxAgeMinutes} min, senderFilter: ${senderFilter || 'none'}, notBefore: ${notBefore || 'none'}`);
+    console.log(`📧 Reading ${extractType || 'otp'} from Gmail: ${gmailAddress}, maxAge: ${maxAgeMinutes} min, senderFilter: ${senderFilter || 'none'}, notBefore: ${notBefore || 'none'}`);
 
     const imap = new IMAPClient();
     
@@ -319,7 +400,9 @@ serve(async (req) => {
 
       // البحث من الأحدث للأقدم
       let otp: string | null = null;
+      let link: string | null = null;
       let messagesChecked = 0;
+      const isLinkMode = extractType === 'link';
       
       for (let i = messageIds.length - 1; i >= 0; i--) {
         try {
@@ -332,7 +415,7 @@ serve(async (req) => {
             continue;
           }
           
-          // التحقق من notBefore - تجاهل الرسائل القديمة
+          // التحقق من notBefore
           if (notBefore) {
             const dateMatch = messageBody.match(/Date:\s*(.+?)(?:\r?\n)/i);
             if (dateMatch) {
@@ -345,7 +428,7 @@ serve(async (req) => {
             }
           }
 
-          // فلترة حسب المرسل إذا تم تحديده
+          // فلترة حسب المرسل
           if (senderFilter) {
             const fromMatch = messageBody.match(/From:\s*(.+?)(?:\r?\n)/i);
             const fromHeader = fromMatch ? fromMatch[1].toLowerCase() : '';
@@ -360,20 +443,32 @@ serve(async (req) => {
           
           console.log(`📄 Message ${messageIds[i]} (${messageBody.length} bytes), preview: ${messageBody.substring(0, 200)}`);
           
-          otp = extractOTP(messageBody);
-          if (otp) {
-            console.log(`✅ OTP found in message ${messageIds[i]}: ${otp}`);
-            break;
-          }
-          
-          // إذا لم نجد OTP بالطريقة العادية، جرب RFC822 الكامل
-          if (!otp && messageBody.length < 500) {
-            console.log(`🔄 Short message, trying full RFC822 fetch...`);
-            const fullMessage = await imap.fetchFullMessage(messageIds[i]);
-            otp = extractOTP(fullMessage);
-            if (otp) {
-              console.log(`✅ OTP found in full message ${messageIds[i]}: ${otp}`);
+          if (isLinkMode) {
+            // وضع استخراج الروابط
+            link = extractLink(messageBody, linkFilter);
+            if (!link && messageBody.length < 500) {
+              const fullMessage = await imap.fetchFullMessage(messageIds[i]);
+              link = extractLink(fullMessage, linkFilter);
+            }
+            if (link) {
+              console.log(`✅ Link found in message ${messageIds[i]}: ${link.substring(0, 100)}`);
               break;
+            }
+          } else {
+            // وضع استخراج OTP
+            otp = extractOTP(messageBody);
+            if (otp) {
+              console.log(`✅ OTP found in message ${messageIds[i]}: ${otp}`);
+              break;
+            }
+            if (!otp && messageBody.length < 500) {
+              console.log(`🔄 Short message, trying full RFC822 fetch...`);
+              const fullMessage = await imap.fetchFullMessage(messageIds[i]);
+              otp = extractOTP(fullMessage);
+              if (otp) {
+                console.log(`✅ OTP found in full message ${messageIds[i]}: ${otp}`);
+                break;
+              }
             }
           }
         } catch (fetchErr) {
@@ -383,20 +478,38 @@ serve(async (req) => {
       
       await imap.close();
 
-      if (otp) {
-        return new Response(
-          JSON.stringify({ success: true, otp, messagesChecked }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      if (isLinkMode) {
+        if (link) {
+          return new Response(
+            JSON.stringify({ success: true, link, messagesChecked }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        } else {
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: `تم فحص ${messagesChecked} رسالة ولم يُعثر على رابط. تأكد أن الخدمة أرسلت رابط تغيير كلمة المرور.`,
+              details: { messagesChecked, totalMessages: messageIds.length, maxAgeMinutes }
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
       } else {
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: `تم فحص ${messagesChecked} رسالة ولم يُعثر على رمز OTP. تأكد أن التطبيق أرسل الرمز فعلاً.`,
-            details: { messagesChecked, totalMessages: messageIds.length, maxAgeMinutes }
-          }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        if (otp) {
+          return new Response(
+            JSON.stringify({ success: true, otp, messagesChecked }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        } else {
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: `تم فحص ${messagesChecked} رسالة ولم يُعثر على رمز OTP. تأكد أن التطبيق أرسل الرمز فعلاً.`,
+              details: { messagesChecked, totalMessages: messageIds.length, maxAgeMinutes }
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
       }
 
     } catch (imapError) {
