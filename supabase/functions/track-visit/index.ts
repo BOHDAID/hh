@@ -119,6 +119,24 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // 🛡️ فلترة الدومين - فقط angel-store.xyz
+    const origin = req.headers.get("origin") || "";
+    const refererHeader = req.headers.get("referer") || "";
+    const allowedDomains = ["angel-store.xyz", "www.angel-store.xyz"];
+    
+    const isAllowedOrigin = allowedDomains.some(d => origin.includes(d));
+    const isAllowedReferer = allowedDomains.some(d => refererHeader.includes(d));
+    // Also allow Lovable preview for testing
+    const isLovablePreview = origin.includes("lovable.app") || refererHeader.includes("lovable.app");
+    
+    if (!isAllowedOrigin && !isAllowedReferer && !isLovablePreview) {
+      // Silently accept but don't track
+      return new Response(
+        JSON.stringify({ success: true }),
+        { headers: allHeaders }
+      );
+    }
+
     // Get client IP for rate limiting
     const clientIP = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
       req.headers.get("x-real-ip") ||
