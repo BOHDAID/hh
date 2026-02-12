@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Package, ShoppingCart, Eye, ArrowRight } from "lucide-react";
+import { Package, ShoppingCart, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import productBoxFrame from "@/assets/product-box-frame.png";
 
 // Demo products with sample images
 const demoProducts = [
@@ -70,50 +71,34 @@ const DemoProductCard = ({ product }: { product: typeof demoProducts[0] }) => {
         borderColor: "hsla(280, 100%, 60%, 0.3)",
       }}
     >
-      {/* Glow Effect */}
-      <motion.div
-        className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-secondary/20 opacity-0 pointer-events-none"
-        animate={{ opacity: isHovered ? 1 : 0 }}
-        transition={{ duration: 0.3 }}
-      />
+      {/* Image Container - Box frame with product in center */}
+      <div className="relative w-full aspect-square overflow-hidden rounded-t-2xl sm:rounded-t-3xl">
+        {/* The plastic box frame image as background */}
+        <img
+          src={productBoxFrame}
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover"
+        />
 
-      {/* Image Container - Black box with purple glow border */}
-      <div className="relative w-full aspect-square overflow-hidden rounded-t-2xl sm:rounded-t-3xl p-2 sm:p-4">
-        {/* Purple glow border */}
-        <motion.div
-          className="absolute inset-2 sm:inset-4 rounded-2xl sm:rounded-3xl"
-          style={{
-            background:
-              "linear-gradient(135deg, hsl(280, 100%, 60%), hsl(300, 100%, 50%), hsl(260, 100%, 55%))",
-            padding: "3px",
-          }}
-          animate={{
-            boxShadow: isHovered
-              ? "0 0 30px 8px hsla(280, 100%, 60%, 0.5), 0 0 60px 15px hsla(300, 100%, 50%, 0.2)"
-              : "0 0 15px 3px hsla(280, 100%, 60%, 0.3), 0 0 30px 8px hsla(300, 100%, 50%, 0.1)",
-          }}
-          transition={{ duration: 0.4 }}
-        >
-          {/* Inner black box */}
-          <div className="w-full h-full rounded-[14px] sm:rounded-[22px] bg-black flex items-center justify-center overflow-hidden">
-            {product.image ? (
-              <motion.img
-                src={product.image}
-                alt={product.name}
-                className="h-[55%] w-[55%] object-contain drop-shadow-[0_0_20px_hsla(280,100%,60%,0.4)]"
-                animate={{ scale: isHovered ? 1.15 : 1 }}
-                transition={{ duration: 0.5 }}
-              />
-            ) : (
-              <Package className="h-16 w-16 text-muted-foreground/30" />
-            )}
-          </div>
-        </motion.div>
+        {/* Product image centered in the black square area */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          {product.image ? (
+            <motion.img
+              src={product.image}
+              alt={product.name}
+              className="w-[35%] h-[35%] object-contain drop-shadow-[0_0_20px_hsla(280,100%,60%,0.5)] z-10"
+              animate={{ scale: isHovered ? 1.15 : 1 }}
+              transition={{ duration: 0.5 }}
+            />
+          ) : (
+            <Package className="h-16 w-16 text-muted-foreground/30" />
+          )}
+        </div>
 
         {/* Category Badge */}
         {product.category && (
           <motion.span
-            className="absolute top-5 right-5 sm:top-7 sm:right-7 z-10 rounded-full bg-primary px-3 sm:px-4 py-1 sm:py-1.5 text-xs font-bold text-primary-foreground shadow-lg"
+            className="absolute top-4 right-4 z-20 rounded-full bg-primary px-3 sm:px-4 py-1 sm:py-1.5 text-xs font-bold text-primary-foreground shadow-lg"
             initial={{ x: 20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             transition={{ delay: 0.1 }}
@@ -185,7 +170,7 @@ const Demo = () => {
             🎨 صفحة الديمو
           </h1>
           <p className="text-muted-foreground text-lg">
-            تصميم تجريبي لكروت المنتجات - المربع الأسود مع الإطار البنفسجي المتوهج
+            تصميم تجريبي - صورة العلبة الحقيقية مع المنتج في الوسط
           </p>
         </div>
 
