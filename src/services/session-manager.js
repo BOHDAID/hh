@@ -957,6 +957,7 @@ class OSNSessionManager {
         path: '/',
         secure: true,
       }));
+  }
 
   /**
    * بحث عن زر بالنص
