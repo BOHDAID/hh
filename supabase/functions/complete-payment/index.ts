@@ -224,11 +224,10 @@ serve(async (req: Request) => {
                 .eq("id", item.product_id)
                 .single();
               
-              console.log(`Generating code for product ${item.product_id} (${productData?.name || 'unknown'})`);
+              const qty = item.quantity || 1;
+              console.log(`Generating ${qty} code(s) for product ${item.product_id} (${productData?.name || 'unknown'})`);
 
-              const code = generateCode();
-              
-              // Get account email from OSN session via cloud
+              // Get account email from OSN session via cloud (once per item)
               let accountEmail: string | null = null;
               try {
                 if (cloudClient) {
@@ -251,26 +250,30 @@ serve(async (req: Request) => {
                 }
               } catch (e) { console.error("Error fetching OSN email:", e); }
 
-              const insertData: Record<string, unknown> = {
-                code,
-                user_id: order.user_id,
-                product_id: item.product_id,
-                order_id: order_id,
-                order_item_id: item.id,
-                status: 'pending',
-                expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-              };
-              if (accountEmail) insertData.account_email = accountEmail;
+              // توليد كود لكل وحدة من الكمية
+              for (let q = 0; q < qty; q++) {
+                const code = generateCode();
+                const insertData: Record<string, unknown> = {
+                  code,
+                  user_id: order.user_id,
+                  product_id: item.product_id,
+                  order_id: order_id,
+                  order_item_id: item.id,
+                  status: 'pending',
+                  expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                };
+                if (accountEmail) insertData.account_email = accountEmail;
 
-              const { error: codeErr } = await adminClient
-                .from("activation_codes")
-                .insert(insertData);
-              
-              if (!codeErr) {
-                console.log(`✅ Generated activation code ${code} for completed order`);
-                activationCodesForResponse.push({ code, product_id: item.product_id });
-              } else {
-                console.error("Failed to insert activation code:", codeErr.message);
+                const { error: codeErr } = await adminClient
+                  .from("activation_codes")
+                  .insert(insertData);
+                
+                if (!codeErr) {
+                  console.log(`✅ Generated activation code ${code} (${q+1}/${qty}) for completed order`);
+                  activationCodesForResponse.push({ code, product_id: item.product_id });
+                } else {
+                  console.error("Failed to insert activation code:", codeErr.message);
+                }
               }
             }
           }
@@ -731,7 +734,8 @@ serve(async (req: Request) => {
         .single();
       
       if (productData?.requires_activation) {
-        console.log(`Product ${item.product_id} requires activation, generating code...`);
+        const qty = item.quantity || 1;
+        console.log(`Product ${item.product_id} requires activation, generating ${qty} code(s)...`);
         
         // توليد كود تفعيل فريد
         const generateCode = (): string => {
@@ -743,12 +747,9 @@ serve(async (req: Request) => {
           return code;
         };
         
-        const activationCode = generateCode();
-        
-        // جلب البريد من osn_sessions (Cloud DB) للمنتجات غير المحدودة
+        // جلب البريد من osn_sessions (مرة واحدة لكل item)
         let accountEmail: string | null = null;
         try {
-          // Get the variant for this item from the delivered product_account
           const { data: deliveredItem } = await adminClient
             .from("order_items")
             .select("product_account_id")
@@ -773,12 +774,10 @@ serve(async (req: Request) => {
               
               if (osnSession?.email) {
                 accountEmail = osnSession.email;
-                console.log(`Found OSN email for variant ${pa.variant_id}: ${accountEmail}`);
               }
             }
           }
           
-          // Fallback: try finding unlimited variant for this product
           if (!accountEmail && cloudClient) {
             const { data: unlimitedVariants } = await adminClient
               .from("product_variants")
@@ -798,7 +797,6 @@ serve(async (req: Request) => {
                 
                 if (session?.email) {
                   accountEmail = session.email;
-                  console.log(`Found OSN email via unlimited variant ${v.id}: ${accountEmail}`);
                   break;
                 }
               }
@@ -808,36 +806,40 @@ serve(async (req: Request) => {
           console.error("Error fetching OSN session email:", emailErr);
         }
         
-        // إنشاء سجل كود التفعيل
-        const insertData: Record<string, unknown> = {
-          code: activationCode,
-          user_id: order.user_id,
-          product_id: item.product_id,
-          order_id: order_id,
-          order_item_id: item.id,
-          status: 'pending',
-          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        };
-        
-        if (accountEmail) {
-          insertData.account_email = accountEmail;
-        }
-        
-        const { data: codeData, error: codeError } = await adminClient
-          .from("activation_codes")
-          .insert(insertData)
-          .select()
-          .single();
-        
-        if (codeError) {
-          console.error(`Error creating activation code for product ${item.product_id}:`, codeError.message);
-        } else {
-          console.log(`✅ Created activation code ${activationCode} for product ${item.product_id} (email: ${accountEmail || 'none'})`);
-          activationCodes.push({
+        // توليد كود لكل وحدة من الكمية
+        for (let q = 0; q < qty; q++) {
+          const activationCode = generateCode();
+          
+          const insertData: Record<string, unknown> = {
             code: activationCode,
-            product_name: productData.name || 'منتج',
+            user_id: order.user_id,
             product_id: item.product_id,
-          });
+            order_id: order_id,
+            order_item_id: item.id,
+            status: 'pending',
+            expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          };
+          
+          if (accountEmail) {
+            insertData.account_email = accountEmail;
+          }
+          
+          const { data: codeData, error: codeError } = await adminClient
+            .from("activation_codes")
+            .insert(insertData)
+            .select()
+            .single();
+          
+          if (codeError) {
+            console.error(`Error creating activation code ${q+1}/${qty} for product ${item.product_id}:`, codeError.message);
+          } else {
+            console.log(`✅ Created activation code ${activationCode} (${q+1}/${qty}) for product ${item.product_id}`);
+            activationCodes.push({
+              code: activationCode,
+              product_name: productData.name || 'منتج',
+              product_id: item.product_id,
+            });
+          }
         }
       }
     }
