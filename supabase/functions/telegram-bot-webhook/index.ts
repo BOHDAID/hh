@@ -429,8 +429,14 @@ async function reconstructSession(chatId: string): Promise<UserSession | null> {
     }
 
     const productName = (code as any).products?.name || "المنتج";
-    const activationType = (code as any).products?.activation_type || "otp";
     const productId = code.product_id;
+    // كشف تلقائي من اسم المنتج (نفس المنطق في مرحلة إدخال الكود)
+    const dbType = (code as any).products?.activation_type || null;
+    const nameCheck = productName.toLowerCase();
+    const activationType = dbType || 
+      (nameCheck.includes("crunchyroll") ? "crunchyroll" : 
+       nameCheck.includes("chatgpt") || nameCheck.includes("openai") ? "chatgpt" : 
+       "otp");
 
     // جلب بيانات Gmail من الجلسة
     const sessionData = await getSessionForProduct(productId);
