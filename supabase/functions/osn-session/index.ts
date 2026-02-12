@@ -70,6 +70,12 @@ serve(async (req) => {
         endpoint = "/api/qr/get-otp";
         break;
 
+      case "enter-tv-code":
+        endpoint = "/api/qr/enter-tv-code";
+        body.tvCode = reqBody.tvCode;
+        body.email = email;
+        break;
+
       case "reset-counter":
         endpoint = "/api/qr/reset-counter";
         break;

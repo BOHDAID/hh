@@ -311,6 +311,49 @@ router.post('/import-cookies', express.json({ limit: '5mb' }), async (req, res) 
 });
 
 /**
+ * POST /api/qr/enter-tv-code
+ * إدخال كود التلفزيون وربطه بالحساب (للبوت الخارجي)
+ */
+router.post('/enter-tv-code', express.json(), async (req, res) => {
+  try {
+    const { secret, tvCode, email } = req.body;
+
+    const expectedSecret = process.env.QR_AUTOMATION_SECRET || 'default-qr-secret-key';
+    if (secret !== expectedSecret) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (!tvCode) {
+      return res.status(400).json({ success: false, error: 'tvCode is required' });
+    }
+
+    console.log(`📺 Enter TV Code request: ${tvCode} for ${email || sessionManager.currentEmail || 'current session'}`);
+
+    // التأكد من وجود كوكيز محملة
+    if (!sessionManager.storedCookies || sessionManager.storedCookies.length === 0) {
+      return res.status(503).json({
+        success: false,
+        error: 'لا توجد جلسة نشطة. يرجى استيراد الكوكيز أولاً عبر /import-cookies',
+      });
+    }
+
+    const result = await sessionManager.enterTVCode(tvCode, {
+      email: email || sessionManager.currentEmail,
+    });
+
+    console.log(`📺 TV Code result:`, JSON.stringify({ success: result.success, paired: result.paired, method: result.method }));
+
+    return res.json(result);
+  } catch (error) {
+    console.error('❌ Enter TV Code Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
  * GET /api/qr/health
  * التحقق من صحة الخدمة
  */
