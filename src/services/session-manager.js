@@ -947,7 +947,7 @@ class OSNSessionManager {
       try {
         // الذهاب لصفحة تفعيل Crunchyroll
         console.log('📺 [Crunchyroll] Navigating to crunchyroll.com/activate');
-        await page.goto('https://www.crunchyroll.com/activate', { waitUntil: 'networkidle2', timeout: 30000 });
+        await page.goto('https://www.crunchyroll.com/ar/activate', { waitUntil: 'networkidle2', timeout: 30000 });
         await this._sleep(3000);
 
         // تسجيل الدخول أولاً إذا مطلوب
@@ -970,7 +970,7 @@ class OSNSessionManager {
           await this._sleep(5000);
 
           // إعادة التوجيه لصفحة التفعيل
-          await page.goto('https://www.crunchyroll.com/activate', { waitUntil: 'networkidle2', timeout: 30000 });
+          await page.goto('https://www.crunchyroll.com/ar/activate', { waitUntil: 'networkidle2', timeout: 30000 });
           await this._sleep(3000);
         }
 
@@ -1029,7 +1029,7 @@ class OSNSessionManager {
       try {
         // طلب تغيير كلمة المرور من Crunchyroll
         console.log('🔐 [Crunchyroll] Requesting password reset...');
-        await page.goto('https://www.crunchyroll.com/forgot_password', { waitUntil: 'networkidle2', timeout: 30000 });
+        await page.goto('https://www.crunchyroll.com/ar/account/password', { waitUntil: 'networkidle2', timeout: 30000 });
         await this._sleep(3000);
 
         const emailInput = await page.$('input[type="email"], input[name="email"]');
