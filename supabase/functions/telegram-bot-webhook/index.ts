@@ -1138,7 +1138,7 @@ Deno.serve(async (req) => {
       const nameLower = productName.toLowerCase();
       const productActivationType = dbActivationType || detectActivationType(nameLower);
       
-      console.log(`🔍 Product: ${productName}, db_type: ${dbActivationType}, resolved_type: ${productActivationType}`);
+      console.log(`🔍 Product: "${productName}", nameLower: "${nameLower}", db_type: "${dbActivationType}", resolved_type: "${productActivationType}", includes_crunch: ${nameLower.includes("crunch")}`);
 
       // جلب الجلسة المناسبة لهذا المنتج
       const sessionData = await getSessionForProduct(productId);
