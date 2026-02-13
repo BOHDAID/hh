@@ -2,3 +2,15 @@ project_id = "wueacwqzafxsvowlqbwh"
 
 [functions.merge-product-image]
 verify_jwt = false
+
+[functions.telegram-bot-webhook]
+verify_jwt = false
+
+[functions.telegram-setup-webhook]
+verify_jwt = false
+
+[functions.telegram-send-otp]
+verify_jwt = false
+
+[functions.gmail-read-otp]
+verify_jwt = false
