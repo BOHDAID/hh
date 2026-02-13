@@ -8,7 +8,6 @@ const corsHeaders = {
 // استخدام قاعدة البيانات الخارجية
 const EXTERNAL_SUPABASE_URL = Deno.env.get("EXTERNAL_SUPABASE_URL")!;
 const EXTERNAL_SERVICE_ROLE_KEY = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY")!;
-const CLOUD_URL = Deno.env.get("SUPABASE_URL")!;
 
 const supabase = createClient(EXTERNAL_SUPABASE_URL, EXTERNAL_SERVICE_ROLE_KEY);
 
@@ -38,7 +37,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // التحقق من الصلاحيات - يقبل auth token أو QR_AUTOMATION_SECRET
+    // التحقق من الصلاحيات
     const authHeader = req.headers.get("Authorization");
     const url = new URL(req.url);
     const secretParam = url.searchParams.get("secret");
@@ -66,7 +65,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // جلب Bot Token - من الإعدادات أولاً ثم من المتغير البيئي
+    // جلب Bot Token
     const botToken = await getSetting("telegram_bot_token") || Deno.env.get("TELEGRAM_BOT_TOKEN");
     if (!botToken) {
       return new Response(JSON.stringify({ error: "Bot token not configured. Set TELEGRAM_BOT_TOKEN in Cloud Secrets." }), {
@@ -75,26 +74,25 @@ Deno.serve(async (req) => {
       });
     }
 
-    // رابط الـ Webhook
-    const webhookUrl = `${CLOUD_URL}/functions/v1/telegram-bot-webhook`;
-
-    // إعداد الـ Webhook
-    const setWebhookUrl = `https://api.telegram.org/bot${botToken}/setWebhook`;
-    const response = await fetch(setWebhookUrl, {
+    // ====== الفرق الرئيسي: البوت يعمل بوضع Polling على Render ======
+    // لذلك نحذف أي webhook موجود بدلاً من إنشاء واحد جديد
+    // هذا يضمن أن Render polling يعمل بدون تعارض
+    
+    const RENDER_SERVER_URL = Deno.env.get("RENDER_SERVER_URL");
+    
+    // حذف أي webhook قديم لتفعيل وضع Long Polling
+    const deleteWebhookUrl = `https://api.telegram.org/bot${botToken}/deleteWebhook`;
+    const deleteResponse = await fetch(deleteWebhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        url: webhookUrl,
-        allowed_updates: ["message", "callback_query"],
-      }),
+      body: JSON.stringify({ drop_pending_updates: false }),
     });
-
-    const result = await response.json();
-
-    if (!result.ok) {
+    const deleteResult = await deleteResponse.json();
+    
+    if (!deleteResult.ok) {
       return new Response(JSON.stringify({ 
-        error: "Failed to set webhook", 
-        details: result 
+        error: "Failed to clear webhook", 
+        details: deleteResult 
       }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -106,10 +104,25 @@ Deno.serve(async (req) => {
     const meResponse = await fetch(getMeUrl);
     const meResult = await meResponse.json();
 
+    // إيقاظ سيرفر Render إذا كان متوفراً
+    let renderStatus = "not configured";
+    if (RENDER_SERVER_URL) {
+      try {
+        const healthUrl = `${RENDER_SERVER_URL.replace(/\/$/, '')}/health`;
+        const healthRes = await fetch(healthUrl, { signal: AbortSignal.timeout(10000) });
+        const healthData = await healthRes.json();
+        renderStatus = healthData.telegramBot?.isRunning ? "running" : "starting...";
+      } catch {
+        renderStatus = "waking up (may take 30s)";
+      }
+    }
+
     return new Response(JSON.stringify({ 
       success: true,
-      message: "Webhook configured successfully",
-      webhook_url: webhookUrl,
+      message: "✅ تم تفعيل وضع Long Polling بنجاح! البوت يعمل على Render.",
+      mode: "long_polling",
+      render_url: RENDER_SERVER_URL || "not set",
+      render_status: renderStatus,
       bot_info: meResult.result,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

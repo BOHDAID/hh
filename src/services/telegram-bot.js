@@ -662,7 +662,7 @@ async function handleCallbackQuery(callbackQuery) {
       `⏳ Entering code <code>${tvCode}</code> on ${tvAppName} website...\n\n⌛ Please wait...`
     ));
 
-    const tvResult = await enterTVCodeFromSession(tvCode);
+    const tvResult = await enterTVCodeFromSession(tvCode, session.productId);
 
     if (tvResult.success && tvResult.paired) {
       if (tvResult.screenshot) {
@@ -800,17 +800,56 @@ async function sendSuccessMessage(chatId, session) {
 // ============================================================
 // Session Manager Integration
 // ============================================================
-async function enterTVCodeFromSession(tvCode) {
+async function enterTVCodeFromSession(tvCode, productId = null) {
   try {
-    // تحميل بيانات الجلسة من قاعدة البيانات (إيميل + كوكيز + بيانات Gmail)
-    console.log('🔄 Loading OSN session from database...');
-    const { data: session, error: dbError } = await supabase
-      .from('osn_sessions')
-      .select('cookies, email, gmail_address, gmail_app_password, account_password')
-      .eq('is_active', true)
-      .eq('is_connected', true)
-      .limit(1)
-      .maybeSingle();
+    // تحميل بيانات الجلسة من قاعدة البيانات - مع فلترة حسب variant_id للمنتج
+    console.log(`🔄 Loading OSN session from database... (productId: ${productId})`);
+    
+    let session = null;
+    let dbError = null;
+
+    // أولاً: محاولة الفلترة حسب variant_id المرتبط بالمنتج
+    if (productId) {
+      try {
+        const { data: variants } = await supabase
+          .from('product_variants')
+          .select('id')
+          .eq('product_id', productId)
+          .eq('is_active', true);
+
+        const variantIds = (variants || []).map(v => v.id);
+        console.log(`🔍 OSN variants for product ${productId}: ${variantIds.join(', ') || 'none'}`);
+
+        if (variantIds.length > 0) {
+          const { data: sessionData, error: err } = await supabase
+            .from('osn_sessions')
+            .select('cookies, email, gmail_address, gmail_app_password, account_password')
+            .in('variant_id', variantIds)
+            .eq('is_active', true)
+            .eq('is_connected', true)
+            .limit(1)
+            .maybeSingle();
+          session = sessionData;
+          dbError = err;
+        }
+      } catch (e) {
+        console.log(`⚠️ Variant lookup failed: ${e.message}`);
+      }
+    }
+
+    // Fallback: إذا لم نجد بالـ variant، ابحث عن أي جلسة OSN نشطة
+    if (!session && !dbError) {
+      console.log('🔄 Fallback: loading any active OSN session...');
+      const { data: fallbackSession, error: fallbackErr } = await supabase
+        .from('osn_sessions')
+        .select('cookies, email, gmail_address, gmail_app_password, account_password')
+        .eq('is_active', true)
+        .eq('is_connected', true)
+        .limit(1)
+        .maybeSingle();
+      session = fallbackSession;
+      dbError = fallbackErr;
+    }
 
     if (dbError) {
       console.error('❌ DB Error:', dbError.message);
