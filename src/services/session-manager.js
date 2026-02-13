@@ -1071,34 +1071,13 @@ class OSNSessionManager {
         const hasSessionId = crCookies.some(c => c.name === 'session_id');
         console.log(`🔑 [Crunchyroll] Key cookies: etp_rt=${hasEtpRt}, session_id=${hasSessionId}`);
         if (!hasEtpRt && !hasSessionId) {
-          console.log('⚠️ [Crunchyroll] WARNING: Missing critical cookies (etp_rt, session_id). Login may fail.');
+          console.log('⚠️ [Crunchyroll] WARNING: Missing critical cookies (etp_rt, session_id).');
+          return { success: false, error: 'الكوكيز لا تحتوي على etp_rt أو session_id. يرجى استخراج كوكيز جديدة شاملة.' };
         }
 
-        // الخطوة 2: زيارة الصفحة الرئيسية بالإنجليزية أولاً لتفعيل الكوكيز
-        console.log('🌐 [Crunchyroll] Visiting English homepage first to activate cookies...');
-        await page.goto('https://www.crunchyroll.com/en/', { 
-          waitUntil: 'networkidle2', 
-          timeout: 60000 
-        });
-        await this._sleep(3000);
-
-        // التحقق من تسجيل الدخول في الصفحة الرئيسية
-        const homePageText = await page.evaluate(() => document.body.innerText.substring(0, 2000));
-        const isLoggedIn = !homePageText.includes('Log In') && !homePageText.includes('Start a Free Trial') && !homePageText.includes('Create Account');
-        console.log(`🔍 [Crunchyroll] Homepage login check: ${isLoggedIn ? '✅ Logged in' : '❌ NOT logged in'}`);
-
-        if (!isLoggedIn) {
-          console.log('❌ [Crunchyroll] Cookies expired or invalid - not logged in on homepage');
-          return { 
-            success: false, 
-            error: 'الكوكيز منتهية الصلاحية أو غير صالحة. يرجى تحديث الكوكيز في لوحة الإدارة.',
-            missingCookies: { etp_rt: !hasEtpRt, session_id: !hasSessionId }
-          };
-        }
-
-        // الخطوة 3: الانتقال لصفحة التفعيل بالإنجليزية
-        console.log('📺 [Crunchyroll] Navigating to crunchyroll.com/en/activate');
-        await page.goto('https://www.crunchyroll.com/en/activate', { 
+        // الخطوة 2: التوجه مباشرة لصفحة التفعيل (بدون فحص الصفحة الرئيسية)
+        console.log('📺 [Crunchyroll] Navigating directly to crunchyroll.com/en-gb/activate');
+        await page.goto('https://www.crunchyroll.com/en-gb/activate', { 
           waitUntil: 'networkidle2', 
           timeout: 60000 
         });
@@ -1108,11 +1087,8 @@ class OSNSessionManager {
         console.log(`🔗 [Crunchyroll] Current URL: ${currentUrl}`);
 
         if (currentUrl.includes('login') || currentUrl.includes('signin')) {
-          console.log('❌ [Crunchyroll] Redirected to login page');
-          return { 
-            success: false, 
-            error: 'الكوكيز منتهية الصلاحية. يرجى تحديث الكوكيز في لوحة الإدارة.' 
-          };
+          console.log('❌ [Crunchyroll] Redirected to login - cookies invalid');
+          return { success: false, error: 'الكوكيز منتهية الصلاحية. تم التحويل لصفحة تسجيل الدخول.' };
         }
 
         // الخطوة 3: انتظار حقل الكود بالسيلكتورات المحددة
