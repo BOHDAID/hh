@@ -383,12 +383,94 @@ async function handleCallbackQuery(callbackQuery) {
         `✅ You chose: <b>TV 📺</b> | 🎬 <b>${appNameEn}</b>${emailLine}\n\n📝 <b>Instructions:</b>\n1️⃣ Open ${appNameEn} app on your TV\n2️⃣ You'll see <b>numbers/code</b> on the screen\n3️⃣ <b>Send me those numbers here</b>\n\n⌨️ Type the numbers shown on your TV screen:`
       ));
     } else {
-      session.step = 'awaiting_login';
+      // Crunchyroll Phone: إعطاء البريد + الباسورد مباشرة (بدون OTP)
+      if (isCrunchyroll) {
+        session.step = 'crunchyroll_phone_sent';
+        
+        await supabase
+          .from('activation_codes')
+          .update({ status: 'crunchyroll_phone_sent', updated_at: new Date().toISOString() })
+          .eq('id', session.activationCodeId);
 
-      await editMessage(chatId, messageId, bi(
-        `✅ اخترت: <b>هاتف (OTP) 📱</b> | 🎬 <b>${appNameAr}</b>${emailLine}\n\n📝 <b>التعليمات:</b>\n1️⃣ افتح تطبيق ${appNameAr}\n2️⃣ اختر "تسجيل الدخول"\n3️⃣ أدخل البريد أعلاه\n4️⃣ ⚠️ <b>يجب تسجيل الدخول أولاً قبل طلب الرمز</b>\n5️⃣ بعد الدخول، اضغط الزر أدناه`,
-        `✅ You chose: <b>Phone (OTP) 📱</b> | 🎬 <b>${appNameEn}</b>${emailLine}\n\n📝 <b>Instructions:</b>\n1️⃣ Open ${appNameEn} app\n2️⃣ Select "Login"\n3️⃣ Enter the email above\n4️⃣ ⚠️ <b>You must login first before requesting the code</b>\n5️⃣ After login, press the button below`
-      ), [[{ text: '✅ سجلت دخول / I logged in', callback_data: 'logged_in' }]]);
+        const passLine = session.accountPassword 
+          ? `\n🔑 <b>كلمة المرور:</b> <code>${session.accountPassword}</code>` 
+          : '';
+
+        await editMessage(chatId, messageId, bi(
+          `✅ <b>مسار Crunchyroll</b>\n📱 <b>تفعيل على الهاتف</b>\n\n📧 البريد: <code>${session.accountEmail}</code>${passLine}\n\n📝 <b>التعليمات:</b>\n1️⃣ افتح تطبيق Crunchyroll\n2️⃣ سجل دخول بالبيانات أعلاه\n3️⃣ بعد الانتهاء، اضغط الزر أدناه\n\n⚠️ <b>لا تقم بتغيير كلمة المرور!</b>`,
+          `✅ <b>Crunchyroll Path</b>\n📱 <b>Phone Activation</b>\n\n📧 Email: <code>${session.accountEmail}</code>${passLine}\n\n📝 <b>Instructions:</b>\n1️⃣ Open Crunchyroll app\n2️⃣ Login with the credentials above\n3️⃣ After done, press the button below\n\n⚠️ <b>Do NOT change the password!</b>`
+        ), [[{ text: '✅ سجلت دخول / Logged in', callback_data: 'crunchyroll_phone_done' }]]);
+      } else {
+        // OSN: المسار الأصلي مع OTP
+        session.step = 'awaiting_login';
+
+        await editMessage(chatId, messageId, bi(
+          `✅ اخترت: <b>هاتف (OTP) 📱</b> | 🎬 <b>${appNameAr}</b>${emailLine}\n\n📝 <b>التعليمات:</b>\n1️⃣ افتح تطبيق ${appNameAr}\n2️⃣ اختر "تسجيل الدخول"\n3️⃣ أدخل البريد أعلاه\n4️⃣ ⚠️ <b>يجب تسجيل الدخول أولاً قبل طلب الرمز</b>\n5️⃣ بعد الدخول، اضغط الزر أدناه`,
+          `✅ You chose: <b>Phone (OTP) 📱</b> | 🎬 <b>${appNameEn}</b>${emailLine}\n\n📝 <b>Instructions:</b>\n1️⃣ Open ${appNameEn} app\n2️⃣ Select "Login"\n3️⃣ Enter the email above\n4️⃣ ⚠️ <b>You must login first before requesting the code</b>\n5️⃣ After login, press the button below`
+        ), [[{ text: '✅ سجلت دخول / I logged in', callback_data: 'logged_in' }]]);
+      }
+    }
+    return;
+  }
+
+  // === Crunchyroll Phone Done: تم تسجيل الدخول - تغيير الباسورد في الخلفية ===
+  if (data === 'crunchyroll_phone_done') {
+    await markCodeAsUsed(session.activationCodeId);
+    
+    await editMessage(chatId, messageId, bi(
+      `✅ <b>تم التفعيل بنجاح!</b>\n\n🔐 جاري تغيير كلمة المرور في الخلفية...\nسنرسل لك رسالة عند الانتهاء.`,
+      `✅ <b>Activation complete!</b>\n\n🔐 Changing password in background...\nWe'll notify you when done.`
+    ));
+    
+    await sendSuccessMessage(chatId, session);
+    
+    const savedSession = { ...session };
+    delete userSessions[chatId];
+    
+    // تغيير الباسورد عبر Render (Puppeteer) في الخلفية
+    const renderServerUrl = process.env.RENDER_SERVER_URL || 'https://angel-store.onrender.com';
+    const qrSecret = process.env.QR_AUTOMATION_SECRET || 'default-qr-secret-key';
+    
+    try {
+      console.log(`🔐 [BG] Starting Crunchyroll password reset for: ${savedSession.accountEmail}`);
+      const response = await fetch(`${renderServerUrl}/api/qr/crunchyroll-change-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          secret: qrSecret,
+          email: savedSession.accountEmail,
+          gmailAddress: savedSession.gmailAddress,
+          gmailAppPassword: savedSession.gmailAppPassword,
+        }),
+      });
+      
+      const result = await response.json();
+      console.log(`🔐 [BG] Password change result:`, JSON.stringify(result));
+      
+      if (result.success && result.newPassword) {
+        // حفظ الباسورد الجديد
+        if (savedSession.variantId) {
+          await supabase
+            .from('osn_sessions')
+            .update({ account_password: result.newPassword, last_activity: new Date().toISOString() })
+            .eq('variant_id', savedSession.variantId);
+        }
+        await sendMessage(chatId, bi(
+          `🔐 <b>تم تغيير كلمة المرور بنجاح!</b>`,
+          `🔐 <b>Password changed successfully!</b>`
+        ));
+      } else {
+        await sendMessage(chatId, bi(
+          `⚠️ <b>لم نتمكن من تغيير كلمة المرور تلقائياً</b>\n\n${result.error || ''}\n\nيرجى تغييرها يدوياً من:\nhttps://sso.crunchyroll.com/reset-password`,
+          `⚠️ <b>Could not change password automatically</b>\n\n${result.error || ''}\n\nPlease change it manually:\nhttps://sso.crunchyroll.com/reset-password`
+        ));
+      }
+    } catch (bgErr) {
+      console.error(`❌ [BG] Crunchyroll password change error:`, bgErr.message);
+      await sendMessage(chatId, bi(
+        `⚠️ حدث خطأ أثناء تغيير كلمة المرور.\nيرجى تغييرها يدوياً من:\nhttps://sso.crunchyroll.com/reset-password`,
+        `⚠️ Error changing password.\nPlease change it manually:\nhttps://sso.crunchyroll.com/reset-password`
+      ));
     }
     return;
   }
