@@ -621,11 +621,9 @@ async function handleCallbackQuery(callbackQuery) {
         console.log(`📺 Crunchyroll TV result:`, JSON.stringify(tvResult));
 
         if (tvResult.success && tvResult.paired) {
-          await editMessage(chatId, messageId, bi(
-            `✅ <b>تم التفعيل بنجاح!</b> 🎉\n\n📺 تم ربط حسابك بالتلفاز.\n🎬 استمتع بالمشاهدة!`,
-            `✅ <b>Activation successful!</b> 🎉\n\n📺 Your account is linked to the TV.\n🎬 Enjoy watching!`
-          ));
           await markCodeAsUsed(session.activationCodeId);
+          // حذف رسالة الانتظار وإرسال رسالة النجاح النهائية مباشرة
+          try { await deleteMessage(chatId, messageId); } catch(e) {}
           await sendSuccessMessage(chatId, session);
           delete userSessions[chatId];
         } else {
@@ -665,13 +663,11 @@ async function handleCallbackQuery(callbackQuery) {
     const tvResult = await enterTVCodeFromSession(tvCode, session.productId);
 
     if (tvResult.success && tvResult.paired) {
-      if (tvResult.screenshot) {
-        await sendPhoto(chatId, tvResult.screenshot, bi(
-          '✅ <b>تم ربط التلفزيون بنجاح!</b>\n\n📺 يمكنك الآن مشاهدة المحتوى على تلفزيونك.',
-          '✅ <b>TV linked successfully!</b>\n\n📺 You can now watch content on your TV.'
-        ));
-      }
       await markCodeAsUsed(session.activationCodeId);
+      // إرسال السكرينشوت بدون نص نجاح مكرر
+      if (tvResult.screenshot) {
+        await sendPhoto(chatId, tvResult.screenshot, '📺');
+      }
       await sendSuccessMessage(chatId, session);
       delete userSessions[chatId];
     } else {
@@ -1079,6 +1075,18 @@ async function editMessage(chatId, messageId, text, inlineKeyboard = null) {
   });
 
   return response.json();
+}
+
+async function deleteMessage(chatId, messageId) {
+  try {
+    await fetch(`https://api.telegram.org/bot${botToken}/deleteMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId }),
+    });
+  } catch (e) {
+    console.log('⚠️ Could not delete message:', e.message);
+  }
 }
 
 async function answerCallbackQuery(callbackQueryId, text = null) {
