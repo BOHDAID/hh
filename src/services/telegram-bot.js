@@ -440,65 +440,17 @@ async function handleCallbackQuery(callbackQuery) {
     return;
   }
 
-  // === Crunchyroll Phone Done: تم تسجيل الدخول - تغيير الباسورد في الخلفية ===
+  // === Crunchyroll Phone Done: تم تسجيل الدخول - إنهاء التفعيل ===
   if (data === 'crunchyroll_phone_done') {
     await markCodeAsUsed(session.activationCodeId);
     
     await editMessage(chatId, messageId, bi(
-      `✅ <b>تم التفعيل بنجاح!</b>\n\n🔐 جاري تغيير كلمة المرور في الخلفية...\nسنرسل لك رسالة عند الانتهاء.`,
-      `✅ <b>Activation complete!</b>\n\n🔐 Changing password in background...\nWe'll notify you when done.`
+      `✅ <b>تم التفعيل بنجاح!</b>\n\n🎉 استمتع بمشاهدة Crunchyroll!`,
+      `✅ <b>Activation complete!</b>\n\n🎉 Enjoy watching Crunchyroll!`
     ));
     
     await sendSuccessMessage(chatId, session);
-    
-    const savedSession = { ...session };
     delete userSessions[chatId];
-    
-    // تغيير الباسورد عبر Render (Puppeteer) في الخلفية
-    const renderServerUrl = process.env.RENDER_SERVER_URL || 'https://angel-store.onrender.com';
-    const qrSecret = process.env.QR_AUTOMATION_SECRET || 'default-qr-secret-key';
-    
-    try {
-      console.log(`🔐 [BG] Starting Crunchyroll password reset for: ${savedSession.accountEmail}`);
-      const response = await fetch(`${renderServerUrl}/api/qr/crunchyroll-change-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          secret: qrSecret,
-          email: savedSession.accountEmail,
-          gmailAddress: savedSession.gmailAddress,
-          gmailAppPassword: savedSession.gmailAppPassword,
-        }),
-      });
-      
-      const result = await response.json();
-      console.log(`🔐 [BG] Password change result:`, JSON.stringify(result));
-      
-      if (result.success && result.newPassword) {
-        // حفظ الباسورد الجديد
-        if (savedSession.variantId) {
-          await supabase
-            .from('osn_sessions')
-            .update({ account_password: result.newPassword, last_activity: new Date().toISOString() })
-            .eq('variant_id', savedSession.variantId);
-        }
-        await sendMessage(chatId, bi(
-          `🔐 <b>تم تغيير كلمة المرور بنجاح!</b>`,
-          `🔐 <b>Password changed successfully!</b>`
-        ));
-      } else {
-        await sendMessage(chatId, bi(
-          `⚠️ <b>لم نتمكن من تغيير كلمة المرور تلقائياً</b>\n\n${result.error || ''}\n\nيرجى تغييرها يدوياً من:\nhttps://sso.crunchyroll.com/reset-password`,
-          `⚠️ <b>Could not change password automatically</b>\n\n${result.error || ''}\n\nPlease change it manually:\nhttps://sso.crunchyroll.com/reset-password`
-        ));
-      }
-    } catch (bgErr) {
-      console.error(`❌ [BG] Crunchyroll password change error:`, bgErr.message);
-      await sendMessage(chatId, bi(
-        `⚠️ حدث خطأ أثناء تغيير كلمة المرور.\nيرجى تغييرها يدوياً من:\nhttps://sso.crunchyroll.com/reset-password`,
-        `⚠️ Error changing password.\nPlease change it manually:\nhttps://sso.crunchyroll.com/reset-password`
-      ));
-    }
     return;
   }
 
@@ -538,7 +490,95 @@ async function handleCallbackQuery(callbackQuery) {
     const isCR = session.productCategory === 'crunchyroll' || 
       (session.productNameAr || '').toLowerCase().includes('crunchyroll') ||
       (session.productNameEn || '').toLowerCase().includes('crunchyroll');
-    const tvAppName = isCR ? 'Crunchyroll' : 'OSN';
+
+    if (isCR) {
+      // === Crunchyroll TV: استخدام الكوكيز عبر Render (Puppeteer) ===
+      await editMessage(chatId, messageId, bi(
+        `⏳ جاري الربط مع التلفاز... يرجى الانتظار ⌛\n\n📺 الكود: <code>${tvCode}</code>`,
+        `⏳ Linking with TV... Please wait ⌛\n\n📺 Code: <code>${tvCode}</code>`
+      ));
+
+      // جلب الكوكيز من قاعدة البيانات
+      let crCookies = null;
+      try {
+        const { data: crSession } = await supabase
+          .from('osn_sessions')
+          .select('cookies, email')
+          .eq('is_active', true)
+          .eq('is_connected', true)
+          .limit(1)
+          .maybeSingle();
+        
+        if (crSession?.cookies) {
+          crCookies = typeof crSession.cookies === 'string' ? JSON.parse(crSession.cookies) : crSession.cookies;
+        }
+      } catch (dbErr) {
+        console.error('❌ DB error loading Crunchyroll cookies:', dbErr.message);
+      }
+
+      if (!crCookies || !Array.isArray(crCookies) || crCookies.length === 0) {
+        await sendMessage(chatId, bi(
+          '❌ لا توجد كوكيز محفوظة لحساب Crunchyroll. يرجى التواصل مع الدعم.',
+          '❌ No saved cookies for Crunchyroll account. Please contact support.'
+        ));
+        session.step = 'awaiting_tv_code';
+        delete session.pendingTvCode;
+        return;
+      }
+
+      // إرسال الطلب لـ Render server
+      const renderServerUrl = process.env.RENDER_SERVER_URL || 'https://angel-store.onrender.com';
+      const qrSecret = process.env.QR_AUTOMATION_SECRET || 'default-qr-secret-key';
+
+      try {
+        const response = await fetch(`${renderServerUrl}/api/qr/crunchyroll-activate-tv`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            secret: qrSecret,
+            tvCode: tvCode,
+            cookies: crCookies,
+          }),
+        });
+
+        const tvResult = await response.json();
+        console.log(`📺 Crunchyroll TV result:`, JSON.stringify(tvResult));
+
+        if (tvResult.success && tvResult.paired) {
+          await editMessage(chatId, messageId, bi(
+            `✅ <b>تم التفعيل بنجاح!</b> 🎉\n\n📺 تم ربط حسابك بالتلفاز.\n🎬 استمتع بالمشاهدة!`,
+            `✅ <b>Activation successful!</b> 🎉\n\n📺 Your account is linked to the TV.\n🎬 Enjoy watching!`
+          ));
+          await markCodeAsUsed(session.activationCodeId);
+          await sendSuccessMessage(chatId, session);
+          delete userSessions[chatId];
+        } else {
+          const errorMsg = tvResult.error || tvResult.message || 'سبب غير معروف';
+          await editMessage(chatId, messageId, bi(
+            `❌ <b>فشل ربط التلفزيون</b>\n\n📋 السبب: ${errorMsg}`,
+            `❌ <b>TV linking failed</b>\n\n📋 Reason: ${errorMsg}`
+          ));
+          session.step = 'awaiting_tv_code';
+          delete session.pendingTvCode;
+          await sendMessage(chatId, bi(
+            '📝 أرسل الكود الصحيح المعروض على شاشة التلفزيون مرة أخرى:',
+            '📝 Send the correct code shown on your TV screen again:'
+          ));
+        }
+      } catch (fetchErr) {
+        console.error('❌ Crunchyroll TV fetch error:', fetchErr.message);
+        await sendMessage(chatId, bi(
+          `❌ حدث خطأ أثناء التفعيل: ${fetchErr.message}`,
+          `❌ Error during activation: ${fetchErr.message}`
+        ));
+        session.step = 'awaiting_tv_code';
+        delete session.pendingTvCode;
+      }
+      return;
+    }
+
+    // === OSN TV: المسار الأصلي ===
+    const tvAppName = 'OSN';
 
     await editMessage(chatId, messageId, bi(
       `⏳ جاري إدخال الكود <code>${tvCode}</code> في موقع ${tvAppName}...\n\n⌛ انتظر قليلاً...`,
@@ -558,19 +598,18 @@ async function handleCallbackQuery(callbackQuery) {
       await sendSuccessMessage(chatId, session);
       delete userSessions[chatId];
     } else {
-      // فشل - عرض النتيجة مع تفاصيل الخطأ
       const errorDetail = tvResult.error || tvResult.message || 'سبب غير معروف';
       console.log(`❌ TV code failed: ${errorDetail}, hasScreenshot: ${!!tvResult.screenshot}`);
       
       if (tvResult.screenshot) {
         await sendPhoto(chatId, tvResult.screenshot, bi(
-          `❌ <b>فشل ربط التلفزيون</b>\n\n📋 السبب: ${errorDetail}\n🔗 الرابط: ${tvResult.finalUrl || 'غير متوفر'}`,
-          `❌ <b>TV linking failed</b>\n\n📋 Reason: ${errorDetail}\n🔗 URL: ${tvResult.finalUrl || 'N/A'}`
+          `❌ <b>فشل ربط التلفزيون</b>\n\n📋 السبب: ${errorDetail}`,
+          `❌ <b>TV linking failed</b>\n\n📋 Reason: ${errorDetail}`
         ));
       } else {
         await sendMessage(chatId, bi(
-          `❌ <b>فشل ربط التلفزيون</b>\n\n📋 السبب: ${errorDetail}\n\n⚠️ لم يتم أخذ صورة من الموقع.`,
-          `❌ <b>TV linking failed</b>\n\n📋 Reason: ${errorDetail}\n\n⚠️ No screenshot was captured.`
+          `❌ <b>فشل ربط التلفزيون</b>\n\n📋 السبب: ${errorDetail}`,
+          `❌ <b>TV linking failed</b>\n\n📋 Reason: ${errorDetail}`
         ));
       }
       session.step = 'awaiting_tv_code';

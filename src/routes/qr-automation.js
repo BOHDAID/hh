@@ -377,54 +377,31 @@ router.post('/enter-tv-code', express.json(), async (req, res) => {
 
 /**
  * POST /api/qr/crunchyroll-activate-tv
- * تفعيل Crunchyroll على التلفزيون بإدخال كود 6 أرقام
+ * تفعيل Crunchyroll على التلفزيون باستخدام الكوكيز المخزنة
  */
 router.post('/crunchyroll-activate-tv', express.json(), async (req, res) => {
   try {
-    const { secret, tvCode, email, password } = req.body;
+    const { secret, tvCode, cookies } = req.body;
 
     const expectedSecret = await getExpectedSecret();
     if (secret !== expectedSecret) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    if (!tvCode || !email || !password) {
-      return res.status(400).json({ success: false, error: 'tvCode, email, and password are required' });
+    if (!tvCode) {
+      return res.status(400).json({ success: false, error: 'tvCode is required' });
     }
 
-    console.log(`📺 Crunchyroll TV activation: code=${tvCode}, email=${email}`);
+    if (!cookies || !Array.isArray(cookies) || cookies.length === 0) {
+      return res.status(400).json({ success: false, error: 'cookies array is required' });
+    }
 
-    const result = await sessionManager.crunchyrollActivateTV(tvCode, email, password, { supabase: supabaseBackend });
+    console.log(`📺 Crunchyroll TV activation: code=${tvCode}, cookies=${cookies.length}`);
+
+    const result = await sessionManager.crunchyrollActivateTV(tvCode, cookies, { supabase: supabaseBackend });
     return res.json(result);
   } catch (error) {
     console.error('❌ Crunchyroll TV Error:', error);
-    return res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * POST /api/qr/crunchyroll-change-password
- * تغيير كلمة مرور Crunchyroll بعد تفعيل الهاتف
- */
-router.post('/crunchyroll-change-password', express.json(), async (req, res) => {
-  try {
-    const { secret, email, gmailAddress, gmailAppPassword } = req.body;
-
-    const expectedSecret = await getExpectedSecret();
-    if (secret !== expectedSecret) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    if (!email) {
-      return res.status(400).json({ success: false, error: 'email is required' });
-    }
-
-    console.log(`🔐 Crunchyroll password change for: ${email}`);
-
-    const result = await sessionManager.crunchyrollChangePassword(email, gmailAddress, gmailAppPassword, { supabase: supabaseBackend });
-    return res.json(result);
-  } catch (error) {
-    console.error('❌ Crunchyroll Password Change Error:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
 });
