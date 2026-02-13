@@ -1198,23 +1198,35 @@ class OSNSessionManager {
             return { success: true, paired: true, message: '✅ تم تفعيل التلفاز بنجاح! استمتع بالمشاهدة 🎉📺' };
           }
 
-          // ❌ خطأ واضح
+          // ❌ خطأ واضح - بالإنجليزية والعربية
           if (resultText.includes('invalid') || resultText.includes('expired') || 
               resultText.includes('incorrect') || resultText.includes('wrong code') ||
-              resultText.includes('not found') || resultText.includes('error')) {
-            const errorMsg = resultText.includes('expired') 
+              resultText.includes('not found') || resultText.includes('غير صالح') ||
+              resultText.includes('غير صحيح') || resultText.includes('خاطئ') ||
+              resultText.includes('منتهي')) {
+            const errorMsg = (resultText.includes('expired') || resultText.includes('منتهي'))
               ? '❌ الرمز منتهي الصلاحية. أعد تشغيل التطبيق على التلفاز واحصل على رمز جديد.'
-              : '❌ الرمز غير صحيح. تأكد من إدخال الرمز الظاهر على شاشة التلفاز بالضبط.';
+              : '❌ الرمز غير صحيح. تأكد من إدخال الرمز الظاهر على شاشة التلفاز بالضبط وحاول مرة أخرى.';
+            console.log('❌ [Crunchyroll] Error detected on page');
             return { success: false, paired: false, error: errorMsg };
+          }
+
+          // تحقق: هل اختفى حقل الإدخال؟ (دليل قوي على النجاح)
+          const inputStillExists = await page.$('input#device_code, input[name="code"], input[type="text"], input.device-code-input');
+          if (!inputStillExists) {
+            console.log('✅ [Crunchyroll] Input field disappeared - activation likely succeeded');
+            return { success: true, paired: true, message: '✅ تم تفعيل التلفاز بنجاح! استمتع بالمشاهدة 🎉📺' };
           }
 
           // انتظر ثم أعد المحاولة
           if (attempt < 2) await this._sleep(3000);
         }
 
-        // غير متأكد بعد 3 محاولات
-        console.log('⚠️ [Crunchyroll] Uncertain result after retries');
-        return { success: true, paired: true, message: '⏳ تم إدخال الكود. تحقق من شاشة التلفزيون خلال ثوانٍ.' };
+        // بعد 3 محاولات: حقل الإدخال لا يزال موجوداً ولا رسالة نجاح = فشل
+        console.log('⚠️ [Crunchyroll] Input still present after retries - activation likely failed');
+        const screenshotPath2 = `/tmp/crunchyroll-uncertain-${Date.now()}.png`;
+        await page.screenshot({ path: screenshotPath2, fullPage: true }).catch(() => {});
+        return { success: false, paired: false, error: '❌ لم يتم التفعيل. الرمز قد يكون غير صحيح أو منتهي الصلاحية. تأكد من الرمز وحاول مرة أخرى.' };
       } catch (err) {
         console.error('❌ [Crunchyroll] TV activation error:', err.message);
         return { success: false, error: err.message };
