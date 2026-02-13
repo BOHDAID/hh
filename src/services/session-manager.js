@@ -73,7 +73,9 @@ class OSNSessionManager {
   async _withBrowser(fn, { supabase } = {}) {
     let browser = null;
     try {
-      const puppeteer = (await import('puppeteer')).default;
+      const puppeteerExtra = (await import('puppeteer-extra')).default;
+      const StealthPlugin = (await import('puppeteer-extra-plugin-stealth')).default;
+      puppeteerExtra.use(StealthPlugin());
       const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable';
       
       // Try to get proxy from database first, then env variable
@@ -146,7 +148,7 @@ class OSNSessionManager {
         launchArgs.push(`--proxy-server=${proxyServer}`);
       }
       
-      browser = await puppeteer.launch({
+      browser = await puppeteerExtra.launch({
         headless: 'new',
         executablePath,
         args: launchArgs,
@@ -175,18 +177,40 @@ class OSNSessionManager {
    * تطبيق التمويه على الصفحة لتبدو كجهاز حقيقي
    */
   async _applyStealthToPage(page) {
-    // User-Agent حقيقي من Chrome 132 على Windows
-    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36';
+    // قائمة User-Agents عشوائية لتغيير البصمة في كل محاولة
+    const userAgents = [
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15',
+    ];
+    const userAgent = userAgents[Math.floor(Math.random() * userAgents.length)];
     await page.setUserAgent(userAgent);
+    console.log(`🕵️ [Stealth] Using UA: ${userAgent.substring(0, 60)}...`);
 
-    // إعداد viewport واقعي
-    await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
+    // Viewports عشوائية واقعية
+    const viewports = [
+      { width: 1920, height: 1080 },
+      { width: 1366, height: 768 },
+      { width: 1536, height: 864 },
+      { width: 1440, height: 900 },
+      { width: 1280, height: 720 },
+      { width: 1600, height: 900 },
+    ];
+    const viewport = viewports[Math.floor(Math.random() * viewports.length)];
+    await page.setViewport({ ...viewport, deviceScaleFactor: 1 });
+    console.log(`🕵️ [Stealth] Using viewport: ${viewport.width}x${viewport.height}`);
 
-    // إضافة headers واقعية - إنجليزي فقط لتجنب مشاكل السلكتورات العربية
+    // Chrome version from UA
+    const chromeVersion = userAgent.match(/Chrome\/(\d+)/)?.[1] || '132';
+
+    // إضافة headers واقعية
     await page.setExtraHTTPHeaders({
       'Accept-Language': 'en-US,en;q=0.9',
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-      'sec-ch-ua': '"Google Chrome";v="132", "Chromium";v="132", "Not_A Brand";v="24"',
+      'sec-ch-ua': `"Google Chrome";v="${chromeVersion}", "Chromium";v="${chromeVersion}", "Not_A Brand";v="24"`,
       'sec-ch-ua-mobile': '?0',
       'sec-ch-ua-platform': '"Windows"',
       'Sec-Fetch-Dest': 'document',
@@ -1017,8 +1041,18 @@ class OSNSessionManager {
 
       try {
         // الذهاب لصفحة تفعيل Crunchyroll
+        // اختبار البروكسي أولاً
+        console.log('🌐 [Crunchyroll] Checking visible IP...');
+        try {
+          await page.goto('https://api.ipify.org?format=json', { waitUntil: 'networkidle2', timeout: 15000 });
+          const ipText = await page.evaluate(() => document.body?.innerText || '');
+          console.log(`🌐 [Crunchyroll] Visible IP: ${ipText}`);
+        } catch (ipErr) {
+          console.log(`⚠️ [Crunchyroll] IP check failed: ${ipErr.message}`);
+        }
+
         console.log('📺 [Crunchyroll] Navigating to crunchyroll.com/activate');
-        await page.goto('https://www.crunchyroll.com/ar/activate', { waitUntil: 'networkidle2', timeout: 30000 });
+        await page.goto('https://www.crunchyroll.com/ar/activate', { waitUntil: 'networkidle2', timeout: 60000 });
         await this._sleep(3000);
 
         // تسجيل الدخول أولاً إذا مطلوب
@@ -1099,26 +1133,36 @@ class OSNSessionManager {
       await this._applyStealthToPage(page);
 
       try {
+        // الخطوة 0: اختبار البروكسي - التحقق من IP الظاهر
+        console.log('🌐 [Crunchyroll] Checking visible IP via proxy...');
+        try {
+          await page.goto('https://api.ipify.org?format=json', { waitUntil: 'networkidle2', timeout: 15000 });
+          const ipText = await page.evaluate(() => document.body?.innerText || '');
+          console.log(`🌐 [Crunchyroll] Visible IP: ${ipText}`);
+        } catch (ipErr) {
+          console.log(`⚠️ [Crunchyroll] Could not check IP: ${ipErr.message}`);
+        }
+
         // الخطوة 1: فتح صفحة reset-password بالإنجليزية
         console.log('🔐 [Crunchyroll] Navigating to reset-password page (English)...');
         await page.goto('https://sso.crunchyroll.com/en/reset-password', { 
           waitUntil: 'domcontentloaded', 
-          timeout: 30000 
+          timeout: 60000 
         });
 
-        // الخطوة 2: انتظار hydration بشكل أطول (30 ثانية)
-        console.log('⏳ [Crunchyroll] Waiting for page hydration (up to 30s)...');
+        // الخطوة 2: انتظار hydration بشكل أطول (60 ثانية)
+        console.log('⏳ [Crunchyroll] Waiting for page hydration (up to 60s)...');
         let emailInput = null;
         
         try {
           await page.waitForSelector('input[name="email"], input[type="email"], input[id*="email"], input[placeholder*="email" i]', { 
-            timeout: 30000,
+            timeout: 60000,
             visible: true 
           });
           emailInput = await page.$('input[name="email"], input[type="email"], input[id*="email"], input[placeholder*="email" i]');
           console.log('✅ [Crunchyroll] Email input found after hydration!');
         } catch (waitErr) {
-          console.log('⚠️ [Crunchyroll] waitForSelector timed out after 30s');
+          console.log('⚠️ [Crunchyroll] waitForSelector timed out after 60s');
           
           // تشخيص: ماذا يرى المتصفح؟
           const diagnostics = await page.evaluate(() => {
