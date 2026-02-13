@@ -1028,7 +1028,17 @@ class OSNSessionManager {
         // طلب تغيير كلمة المرور من Crunchyroll - الرابط الصحيح
         console.log('🔐 [Crunchyroll] Requesting password reset via sso.crunchyroll.com...');
         await page.goto('https://sso.crunchyroll.com/reset-password', { waitUntil: 'networkidle2', timeout: 30000 });
-        await this._sleep(4000);
+        
+        // Wait for React/Next.js hydration - the page loads inputs dynamically
+        console.log('⏳ [Crunchyroll] Waiting for page hydration...');
+        try {
+          await page.waitForSelector('input', { timeout: 15000 });
+          console.log('✅ [Crunchyroll] Input element appeared after hydration');
+        } catch (e) {
+          console.log('⚠️ [Crunchyroll] No input found after 15s, trying to wait more...');
+          await this._sleep(5000);
+        }
+        await this._sleep(2000);
 
         // Debug: log page content to identify form structure
         const pageUrl = page.url();
