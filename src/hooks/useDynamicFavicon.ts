@@ -5,9 +5,8 @@ import { db } from "@/lib/supabaseClient";
 const FALLBACK_FAVICON = "/favicon.svg";
 
 /**
- * Dynamically updates the browser favicon based on the store logo URL
- * stored in site_settings (key: 'store_logo_url').
- * Falls back to /favicon.svg if no custom logo is set.
+ * Dynamically updates the browser favicon and tab title
+ * based on site_settings (store_logo_url, store_name).
  */
 const useDynamicFavicon = () => {
   useEffect(() => {
@@ -18,10 +17,11 @@ const useDynamicFavicon = () => {
       );
       existingLinks.forEach((el) => el.remove());
 
-      // Create a fresh favicon link
+      // Create a single 32x32 favicon link
       const link = document.createElement("link");
       link.rel = "icon";
       link.type = type;
+      link.sizes = "32x32";
       link.href = url;
       document.head.appendChild(link);
       
@@ -30,39 +30,47 @@ const useDynamicFavicon = () => {
 
     const fetchAndSetFavicon = async () => {
       try {
+        // جلب الشعار واسم المتجر معاً
         const { data, error } = await db
           .from("site_settings")
-          .select("value")
-          .eq("key", "store_logo_url")
-          .maybeSingle();
+          .select("key, value")
+          .in("key", ["store_logo_url", "store_name", "store_favicon_url"]);
 
         if (error) {
-          console.warn("Failed to fetch store logo, using fallback:", error.message);
+          console.warn("Failed to fetch site settings:", error.message);
           setFavicon(FALLBACK_FAVICON, "image/svg+xml");
           return;
         }
 
-        const logoUrl = data?.value;
+        const settings: Record<string, string> = {};
+        (data || []).forEach((s: { key: string; value: string | null }) => {
+          if (s.value) settings[s.key] = s.value;
+        });
+
+        // تحديث عنوان التاب
+        if (settings.store_name) {
+          document.title = settings.store_name;
+        }
+
+        // أولوية للفافيكون المخصص، ثم الشعار
+        const faviconUrl = settings.store_favicon_url || settings.store_logo_url;
         
-        if (!logoUrl) {
-          // No custom logo set, use fallback
-          console.log("No store_logo_url found, using fallback favicon");
+        if (!faviconUrl) {
+          console.log("No favicon/logo found, using fallback");
           setFavicon(FALLBACK_FAVICON, "image/svg+xml");
           return;
         }
 
-        // Detect type from URL
         let type = "image/png";
-        if (logoUrl.endsWith(".svg")) {
+        if (faviconUrl.endsWith(".svg")) {
           type = "image/svg+xml";
-        } else if (logoUrl.endsWith(".ico")) {
+        } else if (faviconUrl.endsWith(".ico")) {
           type = "image/x-icon";
         }
 
-        setFavicon(logoUrl, type);
+        setFavicon(faviconUrl, type);
       } catch (err) {
         console.error("Failed to set dynamic favicon:", err);
-        // Use fallback on error
         setFavicon(FALLBACK_FAVICON, "image/svg+xml");
       }
     };
