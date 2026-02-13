@@ -783,18 +783,44 @@ async function handleCallbackQuery(callbackQuery) {
 async function sendSuccessMessage(chatId, session) {
   const storeUrl = await getStoreUrl();
   const orderId = session.orderId;
+  const productId = session.productId;
 
-  // استخدام زر Inline Keyboard للرابط بدلاً من HTML link
-  let inlineButtons = null;
-  if (storeUrl && orderId) {
-    const receiptUrl = `${storeUrl}/order/${orderId}`;
-    inlineButtons = [[{ text: '🧾 عرض الإيصال / View Receipt', url: receiptUrl }]];
+  // جلب اسم المنتج لبناء رابط التقييم
+  let productName = '';
+  if (productId) {
+    try {
+      const { data: product } = await supabase
+        .from('products')
+        .select('name')
+        .eq('id', productId)
+        .single();
+      if (product) productName = product.name;
+    } catch (e) {
+      console.error('⚠️ Could not fetch product name:', e.message);
+    }
   }
 
+  // بناء الأزرار
+  let inlineButtons = [];
+
+  // زر الإيصال
+  if (storeUrl && orderId) {
+    const receiptUrl = `${storeUrl}/order/${orderId}`;
+    inlineButtons.push([{ text: '🧾 عرض الإيصال / View Receipt', url: receiptUrl }]);
+  }
+
+  // زر التقييم - رابط المنتج في الموقع
+  if (storeUrl && productId) {
+    const reviewUrl = `${storeUrl}/?review=${productId}`;
+    inlineButtons.push([{ text: '⭐ قيّم الخدمة / Rate Service', url: reviewUrl }]);
+  }
+
+  const productLabel = productName || 'الخدمة';
+
   await sendMessage(chatId, bi(
-    `🎉 <b>تم التفعيل بنجاح!</b>\n\nاستمتع بالخدمة! 🎬\n\n⭐ <b>قيّم تجربتك:</b>\nساعدنا بتقييم المنتج في الموقع لنحسّن خدماتنا.`,
-    `🎉 <b>Activation successful!</b>\n\nEnjoy the service! 🎬\n\n⭐ <b>Rate your experience:</b>\nHelp us by rating the product on our website.`
-  ), inlineButtons);
+    `✅ <b>تم تفعيل اشتراكك بنجاح!</b> 🎉\n\n📺 الحساب الآن مرتبط بجهازك، استمتع بالمشاهدة!\n\n⭐ نقدر لك ثقتك في Angel Store، يسعدنا جداً أن تشاركنا تقييمك لـ <b>${productLabel}</b> عبر الزر أدناه 👇`,
+    `✅ <b>Your subscription has been activated successfully!</b> 🎉\n\n📺 Your account is now linked to your device, enjoy watching!\n\n⭐ We appreciate your trust in Angel Store. We'd love for you to rate <b>${productLabel}</b> using the button below 👇`
+  ), inlineButtons.length > 0 ? inlineButtons : null);
 }
 
 // ============================================================
