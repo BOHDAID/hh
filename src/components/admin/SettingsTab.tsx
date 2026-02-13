@@ -529,7 +529,7 @@ const SettingsTab = () => {
                     value={settings.og_image || ""}
                     onChange={(url) => updateSetting("og_image", url)}
                     bucket="store-assets"
-                    removeBackground={true}
+                    removeBackground={false}
                   />
                   <p className="text-xs text-muted-foreground">يُفضل حجم 1200×630 بكسل للعرض الأمثل في التليجرام وغيره.</p>
                 </div>
