@@ -577,6 +577,7 @@ Deno.serve(async (req) => {
       const username = callbackQuery.from?.username || null;
 
       await answerCallbackQuery(botToken, callbackQuery.id);
+      console.log(`🔘 Callback received: data="${data}", chatId=${chatId}, session_exists=${!!userSessions[chatId]}, session_type=${userSessions[chatId]?.activationType || 'none'}, session_step=${userSessions[chatId]?.step || 'none'}`);
 
       // === إلغاء العملية عبر الزر ===
       if (data === "cancel_session") {
