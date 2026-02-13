@@ -1,6 +1,6 @@
 import express from 'express';
 import sessionManager from '../services/session-manager.js';
-import { getQrSecret } from '../services/supabase-backend.js';
+import { getQrSecret, supabaseBackend } from '../services/supabase-backend.js';
 
 const router = express.Router();
 
@@ -394,7 +394,7 @@ router.post('/crunchyroll-activate-tv', express.json(), async (req, res) => {
 
     console.log(`📺 Crunchyroll TV activation: code=${tvCode}, email=${email}`);
 
-    const result = await sessionManager.crunchyrollActivateTV(tvCode, email, password);
+    const result = await sessionManager.crunchyrollActivateTV(tvCode, email, password, { supabase: supabaseBackend });
     return res.json(result);
   } catch (error) {
     console.error('❌ Crunchyroll TV Error:', error);
@@ -421,7 +421,7 @@ router.post('/crunchyroll-change-password', express.json(), async (req, res) => 
 
     console.log(`🔐 Crunchyroll password change for: ${email}`);
 
-    const result = await sessionManager.crunchyrollChangePassword(email, gmailAddress, gmailAppPassword);
+    const result = await sessionManager.crunchyrollChangePassword(email, gmailAddress, gmailAppPassword, { supabase: supabaseBackend });
     return res.json(result);
   } catch (error) {
     console.error('❌ Crunchyroll Password Change Error:', error);
