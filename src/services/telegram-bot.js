@@ -368,19 +368,26 @@ async function handleCallbackQuery(callbackQuery) {
       ? `\n📧 <code>${session.accountEmail}</code>` 
       : '';
 
+    // تحديد اسم التطبيق بناءً على نوع المنتج
+    const isCrunchyroll = session.productCategory === 'crunchyroll' || 
+      (session.productNameAr || '').toLowerCase().includes('crunchyroll') ||
+      (session.productNameEn || '').toLowerCase().includes('crunchyroll');
+    const appNameAr = isCrunchyroll ? 'Crunchyroll' : 'OSN';
+    const appNameEn = isCrunchyroll ? 'Crunchyroll' : 'OSN';
+
     if (chosenType === 'tv') {
       session.step = 'awaiting_tv_code';
 
       await editMessage(chatId, messageId, bi(
-        `✅ اخترت: <b>تلفزيون 📺</b>${emailLine}\n\n📝 <b>التعليمات:</b>\n1️⃣ افتح تطبيق OSN على التلفزيون\n2️⃣ ستظهر لك <b>أرقام/كود</b> على الشاشة\n3️⃣ <b>أرسل لي هذه الأرقام هنا</b>\n\n⌨️ اكتب الأرقام الموجودة على شاشة التلفزيون:`,
-        `✅ You chose: <b>TV 📺</b>${emailLine}\n\n📝 <b>Instructions:</b>\n1️⃣ Open OSN app on your TV\n2️⃣ You'll see <b>numbers/code</b> on the screen\n3️⃣ <b>Send me those numbers here</b>\n\n⌨️ Type the numbers shown on your TV screen:`
+        `✅ اخترت: <b>تلفزيون 📺</b> | 🎬 <b>${appNameAr}</b>${emailLine}\n\n📝 <b>التعليمات:</b>\n1️⃣ افتح تطبيق ${appNameAr} على التلفزيون\n2️⃣ ستظهر لك <b>أرقام/كود</b> على الشاشة\n3️⃣ <b>أرسل لي هذه الأرقام هنا</b>\n\n⌨️ اكتب الأرقام الموجودة على شاشة التلفزيون:`,
+        `✅ You chose: <b>TV 📺</b> | 🎬 <b>${appNameEn}</b>${emailLine}\n\n📝 <b>Instructions:</b>\n1️⃣ Open ${appNameEn} app on your TV\n2️⃣ You'll see <b>numbers/code</b> on the screen\n3️⃣ <b>Send me those numbers here</b>\n\n⌨️ Type the numbers shown on your TV screen:`
       ));
     } else {
       session.step = 'awaiting_login';
 
       await editMessage(chatId, messageId, bi(
-        `✅ اخترت: <b>هاتف (OTP) 📱</b>${emailLine}\n\n📝 <b>التعليمات:</b>\n1️⃣ افتح تطبيق OSN\n2️⃣ اختر "تسجيل الدخول"\n3️⃣ أدخل البريد أعلاه\n4️⃣ ⚠️ <b>يجب تسجيل الدخول أولاً قبل طلب الرمز</b>\n5️⃣ بعد الدخول، اضغط الزر أدناه`,
-        `✅ You chose: <b>Phone (OTP) 📱</b>${emailLine}\n\n📝 <b>Instructions:</b>\n1️⃣ Open OSN app\n2️⃣ Select "Login"\n3️⃣ Enter the email above\n4️⃣ ⚠️ <b>You must login first before requesting the code</b>\n5️⃣ After login, press the button below`
+        `✅ اخترت: <b>هاتف (OTP) 📱</b> | 🎬 <b>${appNameAr}</b>${emailLine}\n\n📝 <b>التعليمات:</b>\n1️⃣ افتح تطبيق ${appNameAr}\n2️⃣ اختر "تسجيل الدخول"\n3️⃣ أدخل البريد أعلاه\n4️⃣ ⚠️ <b>يجب تسجيل الدخول أولاً قبل طلب الرمز</b>\n5️⃣ بعد الدخول، اضغط الزر أدناه`,
+        `✅ You chose: <b>Phone (OTP) 📱</b> | 🎬 <b>${appNameEn}</b>${emailLine}\n\n📝 <b>Instructions:</b>\n1️⃣ Open ${appNameEn} app\n2️⃣ Select "Login"\n3️⃣ Enter the email above\n4️⃣ ⚠️ <b>You must login first before requesting the code</b>\n5️⃣ After login, press the button below`
       ), [[{ text: '✅ سجلت دخول / I logged in', callback_data: 'logged_in' }]]);
     }
     return;
@@ -395,9 +402,14 @@ async function handleCallbackQuery(callbackQuery) {
       .update({ status: 'awaiting_otp', updated_at: new Date().toISOString() })
       .eq('id', session.activationCodeId);
 
+    const isCrunchyroll2 = session.productCategory === 'crunchyroll' || 
+      (session.productNameAr || '').toLowerCase().includes('crunchyroll') ||
+      (session.productNameEn || '').toLowerCase().includes('crunchyroll');
+    const appName2 = isCrunchyroll2 ? 'Crunchyroll' : 'OSN';
+
     await editMessage(chatId, messageId, bi(
-      `✅ ممتاز!\n\n📱 الآن في تطبيق OSN:\n1️⃣ سيطلب منك رمز تحقق\n2️⃣ بعد أن يُرسل الرمز، اضغط الزر أدناه\n\n⏰ <b>ملاحظة:</b> الرمز يصل خلال ثوانٍ`,
-      `✅ Great!\n\n📱 Now in OSN app:\n1️⃣ It will ask for a verification code\n2️⃣ After the code is sent, press the button below\n\n⏰ <b>Note:</b> The code arrives within seconds`
+      `✅ ممتاز!\n\n📱 الآن في تطبيق ${appName2}:\n1️⃣ سيطلب منك رمز تحقق\n2️⃣ بعد أن يُرسل الرمز، اضغط الزر أدناه\n\n⏰ <b>ملاحظة:</b> الرمز يصل خلال ثوانٍ`,
+      `✅ Great!\n\n📱 Now in ${appName2} app:\n1️⃣ It will ask for a verification code\n2️⃣ After the code is sent, press the button below\n\n⏰ <b>Note:</b> The code arrives within seconds`
     ), [[{ text: '🔑 أحضر لي الرمز / Get my code', callback_data: 'get_otp' }]]);
     return;
   }
@@ -414,9 +426,14 @@ async function handleCallbackQuery(callbackQuery) {
       return;
     }
 
+    const isCR = session.productCategory === 'crunchyroll' || 
+      (session.productNameAr || '').toLowerCase().includes('crunchyroll') ||
+      (session.productNameEn || '').toLowerCase().includes('crunchyroll');
+    const tvAppName = isCR ? 'Crunchyroll' : 'OSN';
+
     await editMessage(chatId, messageId, bi(
-      `⏳ جاري إدخال الكود <code>${tvCode}</code> في موقع OSN...\n\n⌛ انتظر قليلاً...`,
-      `⏳ Entering code <code>${tvCode}</code> on OSN website...\n\n⌛ Please wait...`
+      `⏳ جاري إدخال الكود <code>${tvCode}</code> في موقع ${tvAppName}...\n\n⌛ انتظر قليلاً...`,
+      `⏳ Entering code <code>${tvCode}</code> on ${tvAppName} website...\n\n⌛ Please wait...`
     ));
 
     const tvResult = await enterTVCodeFromSession(tvCode);

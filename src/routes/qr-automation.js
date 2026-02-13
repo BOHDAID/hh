@@ -1,7 +1,29 @@
 import express from 'express';
 import sessionManager from '../services/session-manager.js';
+import { getQrSecret } from '../services/supabase-backend.js';
 
 const router = express.Router();
+
+// كاش للسر من قاعدة البيانات (يتجدد كل 5 دقائق)
+let cachedSecret = null;
+let secretLastFetch = 0;
+const SECRET_CACHE_TTL = 5 * 60 * 1000; // 5 دقائق
+
+async function getExpectedSecret() {
+  const now = Date.now();
+  if (cachedSecret && (now - secretLastFetch) < SECRET_CACHE_TTL) {
+    return cachedSecret;
+  }
+  try {
+    cachedSecret = await getQrSecret();
+    secretLastFetch = now;
+    console.log('🔑 QR secret loaded from database');
+  } catch (err) {
+    console.error('❌ Failed to load secret from DB, using env fallback:', err.message);
+    cachedSecret = process.env.QR_AUTOMATION_SECRET || 'default-qr-secret-key';
+  }
+  return cachedSecret;
+}
 
 /**
  * POST /api/qr/generate
@@ -12,8 +34,8 @@ router.post('/generate', express.json(), async (req, res) => {
   try {
     const { email, password, secret } = req.body;
 
-    // التحقق من المفتاح السري
-    const expectedSecret = process.env.QR_AUTOMATION_SECRET || 'default-qr-secret-key';
+    // التحقق من المفتاح السري من قاعدة البيانات
+    const expectedSecret = await getExpectedSecret();
     if (secret !== expectedSecret) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
@@ -70,8 +92,8 @@ router.post('/get-qr', express.json(), async (req, res) => {
   try {
     const { secret } = req.body;
 
-    // التحقق من المفتاح السري
-    const expectedSecret = process.env.QR_AUTOMATION_SECRET || 'default-qr-secret-key';
+    // التحقق من المفتاح السري من قاعدة البيانات
+    const expectedSecret = await getExpectedSecret();
     if (secret !== expectedSecret) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
@@ -115,8 +137,8 @@ router.post('/get-otp', express.json(), async (req, res) => {
   try {
     const { secret, gmailAddress, gmailAppPassword } = req.body;
 
-    // التحقق من المفتاح السري
-    const expectedSecret = process.env.QR_AUTOMATION_SECRET || 'default-qr-secret-key';
+    // التحقق من المفتاح السري من قاعدة البيانات
+    const expectedSecret = await getExpectedSecret();
     if (secret !== expectedSecret) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
@@ -165,8 +187,8 @@ router.post('/session-init', express.json(), async (req, res) => {
   try {
     const { email, gmailAppPassword, secret } = req.body;
 
-    // التحقق من المفتاح السري
-    const expectedSecret = process.env.QR_AUTOMATION_SECRET || 'default-qr-secret-key';
+    // التحقق من المفتاح السري من قاعدة البيانات
+    const expectedSecret = await getExpectedSecret();
     if (secret !== expectedSecret) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
@@ -210,7 +232,7 @@ router.post('/session-logout', express.json(), async (req, res) => {
     const { secret } = req.body;
 
     // التحقق من المفتاح السري
-    const expectedSecret = process.env.QR_AUTOMATION_SECRET || 'default-qr-secret-key';
+    const expectedSecret = await getExpectedSecret();
     if (secret !== expectedSecret) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
@@ -242,7 +264,7 @@ router.post('/reset-counter', express.json(), async (req, res) => {
     const { secret } = req.body;
 
     // التحقق من المفتاح السري
-    const expectedSecret = process.env.QR_AUTOMATION_SECRET || 'default-qr-secret-key';
+    const expectedSecret = await getExpectedSecret();
     if (secret !== expectedSecret) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
@@ -274,7 +296,7 @@ router.post('/import-cookies', express.json({ limit: '5mb' }), async (req, res) 
   try {
     const { cookies, email, secret } = req.body;
 
-    const expectedSecret = process.env.QR_AUTOMATION_SECRET || 'default-qr-secret-key';
+    const expectedSecret = await getExpectedSecret();
     if (secret !== expectedSecret) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
@@ -318,7 +340,7 @@ router.post('/enter-tv-code', express.json(), async (req, res) => {
   try {
     const { secret, tvCode, email } = req.body;
 
-    const expectedSecret = process.env.QR_AUTOMATION_SECRET || 'default-qr-secret-key';
+    const expectedSecret = await getExpectedSecret();
     if (secret !== expectedSecret) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
@@ -361,7 +383,7 @@ router.post('/crunchyroll-activate-tv', express.json(), async (req, res) => {
   try {
     const { secret, tvCode, email, password } = req.body;
 
-    const expectedSecret = process.env.QR_AUTOMATION_SECRET || 'default-qr-secret-key';
+    const expectedSecret = await getExpectedSecret();
     if (secret !== expectedSecret) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
@@ -388,7 +410,7 @@ router.post('/crunchyroll-change-password', express.json(), async (req, res) => 
   try {
     const { secret, email, gmailAddress, gmailAppPassword } = req.body;
 
-    const expectedSecret = process.env.QR_AUTOMATION_SECRET || 'default-qr-secret-key';
+    const expectedSecret = await getExpectedSecret();
     if (secret !== expectedSecret) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
