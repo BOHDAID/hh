@@ -325,6 +325,10 @@ serve(async (req: Request) => {
                   activation_code: activationCodesForResponse[0]?.code,
                   activation_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
                   telegram_bot_username: telegramBotU,
+                  all_activation_codes: activationCodesForResponse.map((c: any) => ({
+                    code: c.code,
+                    product_name: c.product_name || "اشتراك",
+                  })),
                 };
 
                 console.log("Sending activation email for unlimited product to:", profileUnlimited.email);
@@ -879,9 +883,7 @@ serve(async (req: Request) => {
         
         const telegramBotUsername = (botUsernameSetting?.value || "").replace(/^@/, '');
         
-        // تحديد كود التفعيل الأول (إذا كان موجوداً)
-        const firstActivationCode = activationCodes.length > 0 ? activationCodes[0] : null;
-        const activationExpiresAt = firstActivationCode 
+        const activationExpiresAt = activationCodes.length > 0
           ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
           : undefined;
         
@@ -907,12 +909,18 @@ serve(async (req: Request) => {
             store_name: storeName,
           };
           
-          // إضافة بيانات كود التفعيل إذا كان موجوداً
-          if (firstActivationCode) {
-            emailPayload.activation_code = firstActivationCode.code;
+          // إضافة بيانات أكواد التفعيل (جميعها) إذا كانت موجودة
+          if (activationCodes.length > 0) {
+            // إرسال أول كود للتوافق مع القالب القديم
+            emailPayload.activation_code = activationCodes[0].code;
             emailPayload.activation_expires_at = activationExpiresAt;
             emailPayload.telegram_bot_username = telegramBotUsername;
-            console.log("Including activation code in email:", firstActivationCode.code);
+            // إرسال جميع الأكواد كمصفوفة
+            emailPayload.all_activation_codes = activationCodes.map(ac => ({
+              code: ac.code,
+              product_name: ac.product_name,
+            }));
+            console.log(`Including ${activationCodes.length} activation codes in email`);
           }
           
           const emailResponse = await fetch(`${cloudUrl}/functions/v1/send-delivery-email`, {
