@@ -276,6 +276,7 @@ async function handleActivationCode(chatId, code, username) {
   const productNameEn = activationCode.products?.name_en || productNameAr;
   const accountEmail = activationCode.account_email;
   const accountPassword = activationCode.account_password;
+  console.log(`🔍 DEBUG Code data: email=${accountEmail}, password=${accountPassword ? '***EXISTS(' + accountPassword.length + ')***' : 'NULL'}, activation_type=${activationCode.products?.activation_type}`);
   const activationType = activationCode.products?.activation_type || 'otp';
 
   // تحديد نوع المنتج: OSN أو ChatGPT أو غيره
@@ -392,9 +393,10 @@ async function handleCallbackQuery(callbackQuery) {
           .update({ status: 'crunchyroll_phone_sent', updated_at: new Date().toISOString() })
           .eq('id', session.activationCodeId);
 
+        console.log(`🔍 DEBUG Crunchyroll phone - session.accountPassword: ${session.accountPassword ? '***EXISTS(' + session.accountPassword.length + ')***' : 'NULL/EMPTY'}`);
         const passLine = session.accountPassword 
           ? `\n🔑 <b>كلمة المرور:</b> <code>${session.accountPassword}</code>` 
-          : '';
+          : `\n🔑 <b>كلمة المرور:</b> ⚠️ غير متوفرة`;
 
         await editMessage(chatId, messageId, bi(
           `✅ <b>مسار Crunchyroll</b>\n📱 <b>تفعيل على الهاتف</b>\n\n📧 البريد: <code>${session.accountEmail}</code>${passLine}\n\n📝 <b>التعليمات:</b>\n1️⃣ افتح تطبيق Crunchyroll\n2️⃣ سجل دخول بالبيانات أعلاه\n3️⃣ بعد الانتهاء، اضغط الزر أدناه\n\n⚠️ <b>لا تقم بتغيير كلمة المرور!</b>`,
