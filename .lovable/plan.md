@@ -1,66 +1,65 @@
 
 
-# خطة: فصل مسارات التفعيل بالكامل (Crunchyroll / OSN / ChatGPT)
+# خطة تحسين Puppeteer لتجاوز حظر Crunchyroll
 
 ## المشكلة الجذرية
 
-رغم إضافة كود الكشف التلقائي والتحويل، المستخدم لا يزال يرى تعليمات OSN عند اختيار "هاتف" لمنتج Crunchyroll. الأسباب المحتملة:
+Crunchyroll يكتشف أن الطلبات تأتي من سيرفر (Datacenter IP) ويحظر تنفيذ JavaScript، مما يعني أن الصفحة تحمل لكن بدون أي محتوى في body. الحلول البديلة (fetch مباشر) ترجع 200 لكن لا ترسل الإيميل فعلياً.
 
-1. الجلسة القديمة في قاعدة البيانات لا تزال في حالة `in_progress` (حالة OSN) ويتم إعادة بنائها بنوع خاطئ
-2. الدالة قد لا تكون منشورة بالنسخة الأخيرة
-3. منطق `reconstructSession` يعيد بناء الجلسة كـ OSN لأن الحالة في DB هي `in_progress`
+بالإضافة لذلك، خطأ "بيانات Gmail غير متوفرة" يشير إلى أن gmailAddress أو gmailAppPassword لا يصلان للدالة.
 
-## الحل المقترح
+## التعديلات المطلوبة
 
-### 1. إعادة نشر الدالة والتحقق من عملها
+### 1. تحسين إعدادات المتصفح (session-manager.js)
 
-- إعادة نشر `telegram-bot-webhook` بشكل صريح
-- اختبار الدالة مباشرة للتأكد أنها تعمل
+**في دالة `_applyStealthToPage`:**
+- إضافة `Accept-Language: en-US,en;q=0.9` كأولوية (بدون العربية) لضمان تحميل النسخة الإنجليزية
+- تحديث User-Agent لأحدث إصدار Chrome (132+)
 
-### 2. تنظيف الجلسات العالقة بالقوة
+**في دالة `_withBrowser`:**
+- تحديث executablePath ليستخدم `/usr/bin/google-chrome-stable` بشكل موحد
+- إضافة `--disable-features=IsolateOrigins,site-per-process` لتقليل الكشف
 
-- إضافة تنظيف شامل لجميع الجلسات القديمة المرتبطة بالمستخدم عند إدخال كود جديد
-- عدم الاعتماد على مهلة 30 دقيقة فقط - تنظيف فوري عند `/cancel`
+### 2. إعادة كتابة دالة `crunchyrollChangePassword` بالكامل
 
-### 3. تعزيز منطق إعادة بناء الجلسة
+**المنطق الجديد:**
 
-في دالة `reconstructSession`:
-- فحص اسم المنتج أولا قبل حالة الكود في DB
-- إذا المنتج "Crunchyroll" والحالة `in_progress` (حالة OSN)، تحويلها تلقائيا لـ `crunchyroll_choose`
+```text
+الخطوة 1: فتح صفحة reset-password بالإنجليزية
+         URL: https://sso.crunchyroll.com/en/reset-password
+         
+الخطوة 2: انتظار hydration بشكل أطول (30 ثانية)
+         - فحص كل 2 ثانية لوجود أي input
+         - استخدام waitForSelector بدلاً من polling يدوي
+         
+الخطوة 3: إذا وُجد input[name="email"] أو input[type="email"]
+         - استخدام page.type مع delay: 150 (محاكاة كتابة بشرية)
+         - انتظار 1 ثانية بعد الكتابة
+         - الضغط على زر Submit
+         - انتظار ظهور رسالة نجاح قبل المتابعة
+         
+الخطوة 4: إذا لم يُعثر على input (IP محظور)
+         - لا نستخدم fetch/form-post (لا تعمل فعلياً)
+         - نرجع رسالة خطأ واضحة تطلب من المستخدم إعداد Proxy
+```
 
-### 4. إضافة حماية ثلاثية في choose_otp/choose_qr
+### 3. إصلاح مشكلة بيانات Gmail المفقودة
 
-الحماية الموجودة تفحص `session.productName` - لكن يجب أيضا:
-- فحص `session.activationType` المخزن
-- إعادة جلب اسم المنتج من DB إذا لزم الأمر
+سأتتبع كيف يتم استدعاء `crunchyrollChangePassword` من البوت للتأكد من تمرير `gmailAddress` و `gmailAppPassword` بشكل صحيح. اللوقات تظهر أن هذه القيم لا تصل للدالة.
 
----
+### 4. إضافة دعم Proxy (اختياري)
+
+إضافة دعم لمتغير بيئة `PROXY_URL` في Render:
+- إذا كان موجوداً، يُستخدم كـ Residential Proxy في Puppeteer
+- هذا هو الحل الحقيقي لمشكلة حظر IP
 
 ## التفاصيل التقنية
 
-### ملف: `supabase/functions/telegram-bot-webhook/index.ts`
+### الملفات المتأثرة:
+- `src/services/session-manager.js` - تحسين المتصفح وإعادة كتابة دالة Crunchyroll
+- `src/services/telegram-bot.js` - التأكد من تمرير بيانات Gmail للدالة
+- `src/routes/qr-automation.js` - التأكد من تمرير البيانات من API endpoint
 
-**التعديل 1: تحسين `reconstructSession`**
-- عند إعادة بناء الجلسة، إذا الحالة في DB هي `in_progress` واسم المنتج يحتوي "crunch"، تعيين `activationType = "crunchyroll"` و `step = "crunchyroll_choose"` بدل `awaiting_login`
-
-**التعديل 2: تعزيز حماية choose_otp**
-- إضافة إعادة جلب بيانات المنتج من DB مباشرة في حالة عدم تطابق البيانات
-- سجل تفصيلي (log) لكل خطوة لتسهيل التصحيح
-
-**التعديل 3: تحديث حالة DB فورا**
-- عند اكتشاف أن المنتج Crunchyroll في أي مرحلة، تحديث حالة الكود في DB من `in_progress` إلى `crunchyroll_choosing` فورا
-
-### إعادة النشر
-- إعادة نشر الدالة `telegram-bot-webhook` بعد التعديلات
-- التحقق من السجلات بعد النشر
-
----
-
-## خطوات التنفيذ
-
-1. تعديل `reconstructSession` لتحويل الجلسات `in_progress` إلى `crunchyroll_choose` عند اكتشاف المنتج
-2. تعزيز حماية `choose_otp`/`choose_qr` بإعادة جلب بيانات المنتج من DB
-3. إضافة سجلات تفصيلية في كل مرحلة
-4. إعادة نشر الدالة
-5. اختبار التدفق
+### ملاحظة مهمة:
+إذا كان IP السيرفر (Render) محظوراً من Crunchyroll، فإن الحل الوحيد المضمون هو استخدام Residential Proxy. بدونه، حتى أفضل تقنيات التخفي لن تعمل لأن Crunchyroll يحظر بناءً على نطاق IP وليس فقط بصمة المتصفح.
 
