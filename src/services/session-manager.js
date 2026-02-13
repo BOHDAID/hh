@@ -75,26 +75,35 @@ class OSNSessionManager {
     try {
       const puppeteer = (await import('puppeteer')).default;
       const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable';
+      const proxyUrl = process.env.PROXY_URL;
       
       console.log(`🌐 [_withBrowser] Opening browser... (executablePath: ${executablePath})`);
       console.log(`🌐 [_withBrowser] Memory: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(1)} MB`);
+      if (proxyUrl) console.log(`🌐 [_withBrowser] Using proxy: ${proxyUrl.substring(0, 30)}...`);
+      
+      const launchArgs = [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-blink-features=AutomationControlled',
+        '--disable-infobars',
+        '--window-size=1920,1080',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--disable-gpu',
+        '--lang=en-US,en',
+        '--disable-features=IsolateOrigins,site-per-process,TranslateUI',
+      ];
+      
+      if (proxyUrl) {
+        launchArgs.push(`--proxy-server=${proxyUrl}`);
+      }
       
       browser = await puppeteer.launch({
         headless: 'new',
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome',
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-blink-features=AutomationControlled',
-          '--disable-infobars',
-          '--window-size=1920,1080',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--disable-gpu',
-          '--lang=en-US,en',
-        ],
+        executablePath,
+        args: launchArgs,
       });
 
       console.log('✅ [_withBrowser] Browser launched');
@@ -116,18 +125,18 @@ class OSNSessionManager {
    * تطبيق التمويه على الصفحة لتبدو كجهاز حقيقي
    */
   async _applyStealthToPage(page) {
-    // User-Agent حقيقي من Chrome على Windows
-    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+    // User-Agent حقيقي من Chrome 132 على Windows
+    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36';
     await page.setUserAgent(userAgent);
 
     // إعداد viewport واقعي
     await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
 
-    // إضافة headers واقعية
+    // إضافة headers واقعية - إنجليزي فقط لتجنب مشاكل السلكتورات العربية
     await page.setExtraHTTPHeaders({
-      'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-      'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+      'sec-ch-ua': '"Google Chrome";v="132", "Chromium";v="132", "Not_A Brand";v="24"',
       'sec-ch-ua-mobile': '?0',
       'sec-ch-ua-platform': '"Windows"',
       'Sec-Fetch-Dest': 'document',
@@ -156,7 +165,7 @@ class OSNSessionManager {
       });
 
       // إضافة languages
-      Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en', 'ar'] });
+      Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
       Object.defineProperty(navigator, 'language', { get: () => 'en-US' });
 
       // إضافة platform
@@ -175,8 +184,8 @@ class OSNSessionManager {
       Object.defineProperty(navigator, 'userAgentData', {
         get: () => ({
           brands: [
-            { brand: 'Google Chrome', version: '131' },
-            { brand: 'Chromium', version: '131' },
+            { brand: 'Google Chrome', version: '132' },
+            { brand: 'Chromium', version: '132' },
             { brand: 'Not_A Brand', version: '24' },
           ],
           mobile: false,
@@ -185,12 +194,12 @@ class OSNSessionManager {
             architecture: 'x86',
             bitness: '64',
             fullVersionList: [
-              { brand: 'Google Chrome', version: '131.0.6778.139' },
-              { brand: 'Chromium', version: '131.0.6778.139' },
+              { brand: 'Google Chrome', version: '132.0.6834.110' },
+              { brand: 'Chromium', version: '132.0.6834.110' },
             ],
             model: '',
             platformVersion: '15.0.0',
-            uaFullVersion: '131.0.6778.139',
+            uaFullVersion: '132.0.6834.110',
           }),
         }),
       });
@@ -1038,124 +1047,91 @@ class OSNSessionManager {
       await this._applyStealthToPage(page);
 
       try {
-        // محاولة 1: طلب مباشر عبر API (بدون متصفح) لتجاوز حجب Crunchyroll لعناوين IP الخوادم
-        console.log('🔐 [Crunchyroll] Trying direct API reset request first...');
-        let resetSubmitted = false;
+        // الخطوة 1: فتح صفحة reset-password بالإنجليزية
+        console.log('🔐 [Crunchyroll] Navigating to reset-password page (English)...');
+        await page.goto('https://sso.crunchyroll.com/en/reset-password', { 
+          waitUntil: 'domcontentloaded', 
+          timeout: 30000 
+        });
+
+        // الخطوة 2: انتظار hydration بشكل أطول (30 ثانية)
+        console.log('⏳ [Crunchyroll] Waiting for page hydration (up to 30s)...');
+        let emailInput = null;
         
         try {
-          // استخدام fetch من داخل المتصفح لتجاوز CORS
-          await page.goto('https://sso.crunchyroll.com/en/reset-password', { waitUntil: 'domcontentloaded', timeout: 30000 });
+          await page.waitForSelector('input[name="email"], input[type="email"], input[id*="email"], input[placeholder*="email" i]', { 
+            timeout: 30000,
+            visible: true 
+          });
+          emailInput = await page.$('input[name="email"], input[type="email"], input[id*="email"], input[placeholder*="email" i]');
+          console.log('✅ [Crunchyroll] Email input found after hydration!');
+        } catch (waitErr) {
+          console.log('⚠️ [Crunchyroll] waitForSelector timed out after 30s');
           
-          // انتظار تحميل الصفحة مع فحص متكرر للـ body
-          console.log('⏳ [Crunchyroll] Waiting for page body to render...');
-          let bodyRendered = false;
-          for (let i = 0; i < 6; i++) {
-            const hasContent = await page.evaluate(() => {
-              const body = document.body;
-              return body && body.innerHTML.length > 500 && document.querySelectorAll('input').length > 0;
-            });
-            if (hasContent) {
-              bodyRendered = true;
-              console.log('✅ [Crunchyroll] Page body rendered with inputs');
-              break;
-            }
-            console.log(`⏳ [Crunchyroll] Attempt ${i+1}/6 - body not ready yet...`);
-            await this._sleep(3000);
-          }
-          
-          if (bodyRendered) {
-            // الصفحة تحملت - استخدم الطريقة العادية
-            const emailInput = await page.$('input[type="email"], input[name="email"]');
-            if (emailInput) {
-              await emailInput.click();
-              await this._sleep(300);
-              await emailInput.type(email, { delay: 80 });
-              await this._sleep(500);
-              
-              const submitBtn = await this._findButton(page, ['submit', 'send', 'reset', 'إرسال', 'Request', 'request']);
-              if (submitBtn) await submitBtn.click();
-              else await page.keyboard.press('Enter');
-              await this._sleep(5000);
-              resetSubmitted = true;
-              console.log('✅ [Crunchyroll] Password reset submitted via browser form');
-            }
-          }
-          
-          if (!resetSubmitted) {
-            // Fallback: الصفحة لم تتحمل - نستخدم fetch مباشر من داخل المتصفح
-            console.log('⚠️ [Crunchyroll] Page body empty (datacenter IP blocked). Using direct fetch...');
-            
-            const fetchResult = await page.evaluate(async (userEmail) => {
-              try {
-                // محاولة 1: API endpoint مباشر
-                const response = await fetch('https://sso.crunchyroll.com/api/reset-password', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ email: userEmail }),
-                });
-                if (response.ok) {
-                  return { success: true, method: 'api-json' };
-                }
-                
-                // محاولة 2: form-data
-                const formResponse = await fetch('https://sso.crunchyroll.com/reset-password', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                  body: `email=${encodeURIComponent(userEmail)}`,
-                });
-                return { 
-                  success: formResponse.ok || formResponse.status < 500, 
-                  status: formResponse.status,
-                  method: 'form-post'
-                };
-              } catch (err) {
-                return { success: false, error: err.message };
-              }
-            }, email);
-            
-            console.log('📬 [Crunchyroll] Direct fetch result:', JSON.stringify(fetchResult));
-            
-            if (fetchResult.success) {
-              resetSubmitted = true;
-              console.log(`✅ [Crunchyroll] Password reset submitted via ${fetchResult.method}`);
-            }
-          }
-          
-          if (!resetSubmitted) {
-            // Fallback 2: استخدام Node.js fetch مباشرة (خارج المتصفح)
-            console.log('⚠️ [Crunchyroll] Browser fetch failed too. Trying Node.js fetch...');
-            const nodeFetch = await import('node-fetch').then(m => m.default).catch(() => globalThis.fetch);
-            
-            const resp = await nodeFetch('https://sso.crunchyroll.com/reset-password', {
-              method: 'POST',
-              headers: { 
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                'Origin': 'https://sso.crunchyroll.com',
-                'Referer': 'https://sso.crunchyroll.com/reset-password',
-              },
-              body: `email=${encodeURIComponent(email)}`,
-            });
-            console.log(`📬 [Crunchyroll] Node.js fetch status: ${resp.status}`);
-            const respText = await resp.text();
-            console.log(`📬 [Crunchyroll] Node.js fetch response: ${respText.substring(0, 300)}`);
-            
-            if (resp.ok || resp.status < 500) {
-              resetSubmitted = true;
-              console.log('✅ [Crunchyroll] Password reset submitted via Node.js fetch');
-            }
-          }
-        } catch (apiError) {
-          console.error('❌ [Crunchyroll] All reset methods failed:', apiError.message);
+          // تشخيص: ماذا يرى المتصفح؟
+          const diagnostics = await page.evaluate(() => {
+            const inputs = document.querySelectorAll('input');
+            const bodyLen = document.body?.innerHTML?.length || 0;
+            const bodyText = document.body?.innerText?.substring(0, 200) || '';
+            return {
+              inputCount: inputs.length,
+              inputDetails: Array.from(inputs).map(i => ({ type: i.type, name: i.name, id: i.id, placeholder: i.placeholder })),
+              bodyLength: bodyLen,
+              bodyText,
+              url: window.location.href,
+              title: document.title,
+            };
+          });
+          console.log('🔍 [Crunchyroll] Page diagnostics:', JSON.stringify(diagnostics));
         }
-        
-        if (!resetSubmitted) {
-          return { success: false, error: 'فشل إرسال طلب تغيير الباسورد - Crunchyroll يحجب الوصول من عنوان IP السيرفر' };
-        }
-        
-        console.log('✅ [Crunchyroll] Password reset request submitted');
 
-        // انتظار رابط تغيير الباسورد من Gmail
+        // الخطوة 3: إذا لم يُعثر على input (IP محظور)
+        if (!emailInput) {
+          console.log('❌ [Crunchyroll] No email input found - IP is likely blocked by Crunchyroll');
+          return { 
+            success: false, 
+            error: 'Crunchyroll يحجب الوصول من عنوان IP السيرفر. الحل: أضف PROXY_URL (Residential Proxy) في متغيرات بيئة Render.',
+            hint: 'Set PROXY_URL environment variable in Render to a residential proxy address (e.g., socks5://user:pass@proxy:port)'
+          };
+        }
+
+        // الخطوة 4: محاكاة كتابة بشرية
+        console.log(`📧 [Crunchyroll] Typing email with human emulation: ${email}`);
+        await emailInput.click();
+        await this._sleep(500);
+        await emailInput.click({ clickCount: 3 }); // select all
+        await page.keyboard.press('Backspace');
+        await this._sleep(300);
+        await page.type('input[name="email"], input[type="email"], input[id*="email"]', email, { delay: 150 });
+        await this._sleep(1000);
+
+        // الخطوة 5: الضغط على زر Submit
+        console.log('🔘 [Crunchyroll] Looking for submit button...');
+        const submitBtn = await this._findButton(page, ['submit', 'send', 'reset', 'request', 'إرسال']);
+        if (submitBtn) {
+          console.log('🔘 [Crunchyroll] Clicking submit button...');
+          await submitBtn.click();
+        } else {
+          console.log('⏎ [Crunchyroll] No button found, pressing Enter...');
+          await page.keyboard.press('Enter');
+        }
+
+        // الخطوة 6: انتظار ظهور رسالة نجاح
+        console.log('⏳ [Crunchyroll] Waiting for success confirmation...');
+        await this._sleep(5000);
+        
+        const pageText = await page.evaluate(() => document.body?.innerText?.toLowerCase() || '');
+        const isSuccess = pageText.includes('email') && (pageText.includes('sent') || pageText.includes('check') || pageText.includes('reset'));
+        const isError = pageText.includes('error') || pageText.includes('invalid') || pageText.includes('try again');
+        
+        if (isError && !isSuccess) {
+          console.log('⚠️ [Crunchyroll] Page shows error after submit');
+          console.log('📄 [Crunchyroll] Page text:', pageText.substring(0, 300));
+        } else {
+          console.log('✅ [Crunchyroll] Password reset request submitted successfully');
+        }
+
+        // الخطوة 7: انتظار رابط تغيير الباسورد من Gmail
         if (!gmailAddress || !gmailAppPassword) {
           return { success: false, error: 'بيانات Gmail غير متوفرة لقراءة رابط تغيير الباسورد' };
         }
@@ -1198,24 +1174,24 @@ class OSNSessionManager {
           return { success: false, error: 'لم يتم العثور على رابط تغيير كلمة المرور في Gmail' };
         }
 
-        // فتح رابط تغيير الباسورد (مثل https://sso.crunchyroll.com/new-password?token=xxx)
+        // الخطوة 8: فتح رابط تغيير الباسورد
         console.log(`🔗 [Crunchyroll] Opening reset link: ${resetLink.substring(0, 80)}...`);
         await page.goto(resetLink, { waitUntil: 'networkidle2', timeout: 30000 });
         await this._sleep(3000);
 
-        // إنشاء كلمة مرور جديدة
+        // الخطوة 9: إنشاء كلمة مرور جديدة
         const newPassword = 'CR' + Math.random().toString(36).substring(2, 8) + '!' + Math.floor(Math.random() * 100);
-        console.log(`🔐 [Crunchyroll] New password: ${newPassword}`);
+        console.log(`🔐 [Crunchyroll] New password generated`);
 
         // البحث عن حقول كلمة المرور
         const passInputs = await page.$$('input[type="password"]');
         if (passInputs.length >= 2) {
-          await passInputs[0].type(newPassword, { delay: 80 });
+          await passInputs[0].type(newPassword, { delay: 100 });
           await this._sleep(300);
-          await passInputs[1].type(newPassword, { delay: 80 });
+          await passInputs[1].type(newPassword, { delay: 100 });
           await this._sleep(500);
         } else if (passInputs.length === 1) {
-          await passInputs[0].type(newPassword, { delay: 80 });
+          await passInputs[0].type(newPassword, { delay: 100 });
           await this._sleep(500);
         } else {
           return { success: false, error: 'لم يتم العثور على حقل كلمة المرور في صفحة إعادة التعيين' };
