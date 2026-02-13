@@ -11,15 +11,22 @@ const FALLBACK_FAVICON = "/favicon.svg";
 const useDynamicFavicon = () => {
   useEffect(() => {
     const setFavicon = (url: string, type: string) => {
-      // Remove ALL existing favicon links to avoid conflicts
+      // Remove ALL existing favicon/apple-touch-icon links
       const existingLinks = document.querySelectorAll<HTMLLinkElement>(
-        "link[rel='icon'], link[rel='alternate icon'], link[rel='shortcut icon']"
+        "link[rel='icon'], link[rel='alternate icon'], link[rel='shortcut icon'], link[rel='apple-touch-icon']"
       );
       existingLinks.forEach((el) => el.remove());
 
-      // Create multiple sizes for better visibility
-      const sizes = ["48x48", "64x64", "128x128"];
-      sizes.forEach((size) => {
+      // Set primary favicon with largest size for maximum clarity
+      const primaryLink = document.createElement("link");
+      primaryLink.rel = "icon";
+      primaryLink.type = type;
+      primaryLink.sizes = "256x256";
+      primaryLink.href = url;
+      document.head.appendChild(primaryLink);
+
+      // Additional sizes for compatibility
+      ["32x32", "48x48", "96x96", "192x192"].forEach((size) => {
         const link = document.createElement("link");
         link.rel = "icon";
         link.type = type;
@@ -28,9 +35,10 @@ const useDynamicFavicon = () => {
         document.head.appendChild(link);
       });
 
-      // Also set apple-touch-icon for mobile
+      // Apple touch icon (180x180 recommended)
       const appleLink = document.createElement("link");
       appleLink.rel = "apple-touch-icon";
+      appleLink.sizes = "180x180";
       appleLink.href = url;
       document.head.appendChild(appleLink);
       
