@@ -1304,32 +1304,68 @@ class OSNSessionManager {
         console.log(`🔗 [Crunchyroll] URL: ${finalUrl}`);
         console.log(`📄 [Crunchyroll] Page text (first 400): ${resultText.substring(0, 400)}`);
 
-        // ❌ خطأ واضح - بالإنجليزية والعربية
-        if (resultText.includes('invalid') || resultText.includes('expired') || 
-            resultText.includes('incorrect') || resultText.includes('wrong code') ||
-            resultText.includes('not found') || resultText.includes('غير صالح') ||
-            resultText.includes('غير صحيح') || resultText.includes('خاطئ') ||
-            resultText.includes('منتهي')) {
-          const errorMsg = (resultText.includes('expired') || resultText.includes('منتهي'))
+        // تحقق أولاً: هل تغير الـ URL؟ (غالباً يعني نجاح)
+        const urlChanged = finalUrl !== activateUrl && !finalUrl.includes('/activate');
+        console.log(`🔗 [Crunchyroll] URL changed: ${urlChanged} (${activateUrl} → ${finalUrl})`);
+
+        // تحقق: هل اختفى حقل الإدخال؟ (أقوى مؤشر للنجاح)
+        const inputStillExists = await page.$('input#device_code, input[name="code"], input[name="device_code"], input.device-code-input');
+        const inputGone = !inputStillExists;
+        console.log(`📋 [Crunchyroll] Input field gone: ${inputGone}`);
+
+        // فحص نص الخطأ فقط في المنطقة القريبة من الحقل (وليس كامل الصفحة)
+        let errorAreaText = '';
+        try {
+          errorAreaText = await page.evaluate(() => {
+            // ابحث عن رسائل الخطأ في عناصر محددة
+            const errorSelectors = [
+              '.error', '.error-message', '[role="alert"]', '.alert',
+              '.form-error', '.field-error', '.validation-error',
+              '.notification--error', '.toast-error'
+            ];
+            let text = '';
+            for (const sel of errorSelectors) {
+              document.querySelectorAll(sel).forEach(el => {
+                text += ' ' + (el.innerText || '');
+              });
+            }
+            return text.toLowerCase().trim();
+          });
+        } catch { /* ignore */ }
+        console.log(`📄 [Crunchyroll] Error area text: "${errorAreaText.substring(0, 200)}"`);
+
+        // ❌ خطأ واضح - فقط إذا ظهر في منطقة الأخطاء أو حقل الإدخال لا يزال موجوداً
+        const errorInArea = errorAreaText.includes('invalid') || errorAreaText.includes('expired') || 
+            errorAreaText.includes('incorrect') || errorAreaText.includes('wrong') ||
+            errorAreaText.includes('not found') || errorAreaText.includes('غير صالح') ||
+            errorAreaText.includes('غير صحيح') || errorAreaText.includes('خاطئ') ||
+            errorAreaText.includes('منتهي');
+        
+        // أيضاً فحص النص الكامل لكن فقط لعبارات خطأ محددة جداً (وليس كلمات عامة)
+        const specificErrors = resultText.includes('invalid code') || resultText.includes('code is invalid') ||
+            resultText.includes('code expired') || resultText.includes('الرمز غير صالح') ||
+            resultText.includes('incorrect code') || resultText.includes('wrong code');
+
+        if ((errorInArea || specificErrors) && !inputGone) {
+          const errorMsg = (errorAreaText.includes('expired') || resultText.includes('expired') || resultText.includes('منتهي'))
             ? '❌ الرمز منتهي الصلاحية. أعد تشغيل التطبيق على التلفاز واحصل على رمز جديد.'
             : '❌ الرمز غير صحيح. تأكد من إدخال الرمز الظاهر على شاشة التلفاز بالضبط.';
-          console.log('❌ [Crunchyroll] Error detected on page');
+          console.log('❌ [Crunchyroll] Error detected in error area');
           return { success: false, paired: false, error: errorMsg };
         }
 
-        // ✅ نجاح
-        if (resultText.includes('success') || resultText.includes('link successful') ||
-            resultText.includes('activated') || resultText.includes('linked') || 
-            resultText.includes('connected') || resultText.includes('device has been linked') ||
-            (resultText.includes('device') && resultText.includes('added'))) {
-          console.log('✅ [Crunchyroll] TV activated successfully!');
+        // ✅ نجاح: حقل الإدخال اختفى أو URL تغير
+        if (inputGone || urlChanged) {
+          console.log('✅ [Crunchyroll] TV activated successfully! (input gone or URL changed)');
           return { success: true, paired: true, message: '✅ تم تفعيل التلفاز بنجاح! استمتع بالمشاهدة 🎉📺' };
         }
 
-        // تحقق: هل اختفى حقل الإدخال؟
-        const inputStillExists = await page.$('input#device_code, input[name="code"], input[type="text"], input.device-code-input');
-        if (!inputStillExists) {
-          console.log('✅ [Crunchyroll] Input field disappeared - activation succeeded');
+        // ✅ نجاح بناءً على نص الصفحة
+        if (resultText.includes('success') || resultText.includes('link successful') ||
+            resultText.includes('activated') || resultText.includes('linked') || 
+            resultText.includes('connected') || resultText.includes('device has been') ||
+            (resultText.includes('device') && resultText.includes('added'))) {
+          console.log('✅ [Crunchyroll] TV activated successfully! (success text found)');
           return { success: true, paired: true, message: '✅ تم تفعيل التلفاز بنجاح! استمتع بالمشاهدة 🎉📺' };
         }
 
