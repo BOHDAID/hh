@@ -41,22 +41,20 @@ const processImageForFavicon = (src: string): Promise<string> => {
         }
       }
 
-      // Fill with rounded colored background for better visibility
+      // Fill with rounded colored background
       ctx.fillStyle = "#1a1a2e";
       ctx.beginPath();
-      ctx.roundRect(0, 0, size, size, size * 0.2);
+      ctx.roundRect(0, 0, size, size, size * 0.15);
       ctx.fill();
 
       if (top >= bottom || left >= right) {
-        // No content detected, draw full image with padding
-        const pad = size * 0.1;
-        ctx.drawImage(img, pad, pad, size - pad * 2, size - pad * 2);
+        ctx.drawImage(img, 0, 0, size, size);
       } else {
         const contentW = right - left + 1;
         const contentH = bottom - top + 1;
 
-        // Draw logo large inside the rounded square (85% of space)
-        const maxDraw = size * 0.85;
+        // Draw logo filling 95% of space — no wasted padding
+        const maxDraw = size * 0.95;
         const scale = maxDraw / Math.max(contentW, contentH);
         const drawW = contentW * scale;
         const drawH = contentH * scale;
