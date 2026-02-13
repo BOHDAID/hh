@@ -498,6 +498,57 @@ const SettingsTab = () => {
                     </SelectContent>
                   </Select>
                 </div>
+               </CardContent>
+            </MotionCard>
+
+            {/* OG / Link Preview Panel */}
+            <MotionCard 
+              custom={1}
+              initial="hidden"
+              animate="visible"
+              variants={cardVariants}
+              className="border-border/50 bg-card/50 backdrop-blur-sm"
+            >
+              <CardHeader className="pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-blue-500/10">
+                    <Globe className="h-5 w-5 text-blue-500" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg">بطاقة المشاركة (Link Preview)</CardTitle>
+                    <CardDescription>ما يظهر عند مشاركة رابط الموقع في تليجرام أو واتساب</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {renderSettingInput("عنوان المعاينة", "og_title", "اسم متجرك", { description: "العنوان الذي يظهر في بطاقة الرابط" })}
+                {renderSettingInput("وصف المعاينة", "og_description", "وصف قصير لمتجرك", { description: "الوصف الذي يظهر تحت العنوان" })}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">صورة المعاينة</Label>
+                  <ImageUpload
+                    value={settings.og_image || ""}
+                    onChange={(url) => updateSetting("og_image", url)}
+                    bucket="store-assets"
+                    removeBackground={true}
+                  />
+                  <p className="text-xs text-muted-foreground">يُفضل حجم 1200×630 بكسل للعرض الأمثل في التليجرام وغيره.</p>
+                </div>
+                
+                {/* Live Preview */}
+                {(settings.og_title || settings.og_description || settings.og_image) && (
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">معاينة مباشرة</Label>
+                    <div className="rounded-xl border border-border/50 overflow-hidden bg-muted/30 max-w-sm">
+                      {settings.og_image && (
+                        <img src={settings.og_image} alt="OG Preview" className="w-full h-36 object-cover" />
+                      )}
+                      <div className="p-3 space-y-1">
+                        <p className="text-sm font-semibold truncate">{settings.og_title || settings.store_name || "عنوان الموقع"}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-2">{settings.og_description || "وصف الموقع"}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </MotionCard>
 

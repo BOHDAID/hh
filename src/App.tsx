@@ -30,11 +30,13 @@ import RefundPolicy from "./pages/RefundPolicy";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Demo from "./pages/Demo";
 import useDynamicFavicon from "./hooks/useDynamicFavicon";
+import useOpenGraphMeta from "./hooks/useOpenGraphMeta";
 
 const queryClient = new QueryClient();
 
 const AppContent = () => {
   useDynamicFavicon();
+  useOpenGraphMeta();
   return (
     <BrowserRouter>
       <Routes>
