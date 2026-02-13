@@ -164,8 +164,17 @@ async function handleMessage(message) {
     return;
   }
 
-  // === انتظار كود التلفزيون ===
+  // === جلسة مقفلة - تحتاج /cancel ===
   const session = userSessions[chatId];
+  if (session && session.step === 'locked_needs_cancel') {
+    await sendMessage(chatId, bi(
+      '🔒 الجلسة مقفلة. أرسل /cancel لإلغاء الجلسة الحالية وإعادة المحاولة من البداية.',
+      '🔒 Session is locked. Send /cancel to cancel and start over.'
+    ));
+    return;
+  }
+
+  // === انتظار كود التلفزيون ===
   if (session && session.step === 'awaiting_tv_code') {
     const tvCode = text.replace(/[\s\-]/g, '').toUpperCase();
     if (tvCode.length < 4 || tvCode.length > 8) {
@@ -585,11 +594,12 @@ async function handleCallbackQuery(callbackQuery) {
             `❌ <b>فشل ربط التلفزيون</b>\n\n📋 السبب: ${errorMsg}`,
             `❌ <b>TV linking failed</b>\n\n📋 Reason: ${errorMsg}`
           ));
-          session.step = 'awaiting_tv_code';
+          // قفل الجلسة - المستخدم لازم يرسل /cancel لإعادة المحاولة
+          session.step = 'locked_needs_cancel';
           delete session.pendingTvCode;
           await sendMessage(chatId, bi(
-            '📝 أرسل الكود الصحيح المعروض على شاشة التلفزيون مرة أخرى:',
-            '📝 Send the correct code shown on your TV screen again:'
+            '🔒 تم قفل الجلسة. لإعادة المحاولة أرسل /cancel ثم أعد إدخال الكود من البداية.',
+            '🔒 Session locked. To retry, send /cancel then re-enter your code.'
           ));
         }
       } catch (fetchErr) {
