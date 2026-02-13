@@ -201,17 +201,40 @@ async function verifyActivationCode(code: string) {
 }
 
 // 🛡️ التحقق من وجود جلسة نشطة للمستخدم (مضاد احتيال)
+// تنظيف الجلسات العالقة (أكثر من 30 دقيقة)
+async function cleanupStuckSessions(chatId: string): Promise<number> {
+  const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const { data } = await supabase
+    .from("activation_codes")
+    .update({ status: "available", telegram_chat_id: null, telegram_username: null })
+    .eq("telegram_chat_id", chatId)
+    .eq("is_used", false)
+    .in("status", ["in_progress", "awaiting_otp", "chatgpt_awaiting_otp", "crunchyroll_choosing", "crunchyroll_awaiting_tv_code", "crunchyroll_phone_sent"])
+    .lt("updated_at", thirtyMinAgo)
+    .select("id");
+  
+  const cleaned = data?.length || 0;
+  if (cleaned > 0) {
+    console.log(`🧹 Cleaned ${cleaned} stuck sessions for chat ${chatId}`);
+    delete userSessions[chatId];
+  }
+  return cleaned;
+}
+
 async function hasActiveSession(chatId: string): Promise<{ active: boolean; productName?: string }> {
-  // أولاً: التحقق من الذاكرة
+  // أولاً: تنظيف الجلسات العالقة تلقائياً
+  await cleanupStuckSessions(chatId);
+  
+  // ثانياً: التحقق من الذاكرة
   if (userSessions[chatId]) {
     return { active: true, productName: userSessions[chatId].productName };
   }
   
-  // ثانياً: التحقق من قاعدة البيانات
+  // ثالثاً: التحقق من قاعدة البيانات
   const { data } = await supabase
     .from("activation_codes")
     .select(`
-      id, status, product_id,
+      id, status, product_id, updated_at,
       products:product_id (name)
     `)
     .eq("telegram_chat_id", chatId)
@@ -947,54 +970,34 @@ Deno.serve(async (req) => {
     const text = message.text?.trim() || "";
     const username = message.from?.username || null;
 
-    // === أمر الإلغاء /cancel ===
+    // === أمر الإلغاء /cancel - يمسح كل الجلسات بدون شروط ===
     if (text === "/cancel" || text === "إلغاء" || text === "الغاء") {
-      const activeCheck = await hasActiveSession(chatId);
-      if (activeCheck.active) {
-        // إلغاء الجلسة من الذاكرة
-        const session = userSessions[chatId];
-        const activationCodeId = session?.activationCodeId;
-        delete userSessions[chatId];
+      // مسح من الذاكرة
+      delete userSessions[chatId];
+      
+      // مسح كل الأكواد المرتبطة بهذا المستخدم (بدون شروط حالة)
+      const { data: cleared } = await supabase
+        .from("activation_codes")
+        .update({ 
+          status: "available", 
+          telegram_chat_id: null, 
+          telegram_username: null 
+        })
+        .eq("telegram_chat_id", chatId)
+        .eq("is_used", false)
+        .select("id");
+      
+      const clearedCount = cleared?.length || 0;
+      console.log(`🧹 /cancel: Cleared ${clearedCount} codes for chat ${chatId}`);
         
-        // إعادة حالة الكود في قاعدة البيانات
-        if (activationCodeId) {
-          await supabase
-            .from("activation_codes")
-            .update({ 
-              status: "available", 
-              telegram_chat_id: null, 
-              telegram_username: null 
-            })
-            .eq("id", activationCodeId)
-            .eq("is_used", false);
-        } else {
-          // إذا لم يكن في الذاكرة، ابحث في قاعدة البيانات
-          await supabase
-            .from("activation_codes")
-            .update({ 
-              status: "available", 
-              telegram_chat_id: null, 
-              telegram_username: null 
-            })
-            .eq("telegram_chat_id", chatId)
-            .eq("is_used", false)
-            .in("status", ["in_progress", "awaiting_otp", "chatgpt_awaiting_otp", "crunchyroll_choosing", "crunchyroll_awaiting_tv_code", "crunchyroll_phone_sent"]);
-        }
-        
-        await sendTelegramMessage(
-          botToken, chatId,
-          `✅ <b>تم إلغاء العملية بنجاح!</b>\n\n` +
-          `يمكنك الآن إدخال كود تفعيل جديد أو كتابة /start للبدء.\n\n` +
-          `─────────\n\n` +
-          `✅ <b>Operation cancelled!</b>\n\n` +
-          `You can now enter a new activation code or type /start.`
-        );
-      } else {
-        await sendTelegramMessage(
-          botToken, chatId,
-          `ℹ️ لا توجد عملية جارية للإلغاء.\n\nℹ️ No active operation to cancel.`
-        );
-      }
+      await sendTelegramMessage(
+        botToken, chatId,
+        `✅ <b>تم إلغاء وتنظيف ${clearedCount} جلسة!</b>\n\n` +
+        `يمكنك الآن إدخال كود تفعيل جديد أو كتابة /start للبدء.\n\n` +
+        `─────────\n\n` +
+        `✅ <b>${clearedCount} session(s) cleared!</b>\n\n` +
+        `You can now enter a new activation code or type /start.`
+      );
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
