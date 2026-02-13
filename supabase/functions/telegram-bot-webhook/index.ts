@@ -487,7 +487,17 @@ async function reconstructSession(chatId: string): Promise<UserSession | null> {
       gmailAppPassword: sessionData?.gmail_app_password || undefined,
     };
 
-    console.log(`✅ Session reconstructed for chat ${chatId}: ${productName} (${activationType})`);
+    console.log(`✅ Session reconstructed for chat ${chatId}: ${productName} (${activationType}), step=${step}, dbStatus=${code.status}`);
+    
+    // 🔥 إذا المنتج Crunchyroll لكن الحالة في DB هي in_progress (حالة OSN)، حدّث فوراً
+    if (activationType === "crunchyroll" && code.status === "in_progress") {
+      console.log(`🔄 Force-updating DB status from in_progress to crunchyroll_choosing for code ${code.id}`);
+      await supabase
+        .from("activation_codes")
+        .update({ status: "crunchyroll_choosing", updated_at: new Date().toISOString() })
+        .eq("id", code.id);
+    }
+    
     userSessions[chatId] = reconstructed;
     return reconstructed;
   } catch (err) {
@@ -590,9 +600,37 @@ Deno.serve(async (req) => {
 
       // === اختيار نوع التفعيل ===
       if (data === "choose_qr" || data === "choose_otp") {
-        // 🛡️ حماية: إذا المنتج فعلياً Crunchyroll أو ChatGPT، حوّل للمسار الصحيح
-        const nameCheck = session.productName.toLowerCase();
-        const realType = detectActivationType(nameCheck);
+        // 🛡️ حماية ثلاثية: إعادة جلب اسم المنتج من DB مباشرة (لا نعتمد على الجلسة فقط)
+        let realType = detectActivationType(session.productName.toLowerCase());
+        console.log(`🔍 [choose] Session productName: "${session.productName}", initial detect: "${realType}"`);
+        
+        // إذا الكشف الأولي يقول OSN، أعد الجلب من DB للتأكد
+        if (realType === "otp") {
+          try {
+            const { data: freshCode } = await supabase
+              .from("activation_codes")
+              .select("product_id, products:product_id (name, activation_type)")
+              .eq("id", session.activationCodeId)
+              .maybeSingle();
+            
+            if (freshCode) {
+              const freshName = (freshCode as any).products?.name || "";
+              const freshDbType = (freshCode as any).products?.activation_type || null;
+              const freshDetect = detectActivationType(freshName.toLowerCase());
+              console.log(`🔍 [choose] DB re-fetch: name="${freshName}", db_type="${freshDbType}", detect="${freshDetect}"`);
+              
+              if (freshDetect !== "otp") {
+                realType = freshDetect;
+              } else if (freshDbType && freshDbType !== "otp" && freshDbType !== "qr") {
+                realType = freshDbType;
+              }
+            }
+          } catch (e) {
+            console.error("❌ [choose] DB re-fetch failed:", e);
+          }
+        }
+        
+        console.log(`🔍 [choose] FINAL realType: "${realType}" for callback "${data}"`);
         
         if (realType === "crunchyroll") {
           // تحويل تلقائي لمسار Crunchyroll
