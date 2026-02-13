@@ -70,7 +70,7 @@ class OSNSessionManager {
   /**
    * فتح متصفح مؤقت - يُغلق بعد كل عملية
    */
-  async _withBrowser(fn, { supabase } = {}) {
+  async _withBrowser(fn, { supabase, skipProxy = false } = {}) {
     let browser = null;
     try {
       const puppeteerExtra = (await import('puppeteer-extra')).default;
@@ -78,17 +78,22 @@ class OSNSessionManager {
       puppeteerExtra.use(StealthPlugin());
       const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable';
       
-      // Try to get proxy from database first, then env variable
-      let proxyUrl = process.env.PROXY_URL;
-      if (!proxyUrl && supabase) {
-        try {
-          const { data } = await supabase
-            .from('site_settings')
-            .select('value')
-            .eq('key', 'proxy_url')
-            .maybeSingle();
-          if (data?.value) proxyUrl = data.value;
-        } catch (e) { /* ignore */ }
+      // Try to get proxy from database first, then env variable (unless skipped)
+      let proxyUrl = null;
+      if (!skipProxy) {
+        proxyUrl = process.env.PROXY_URL;
+        if (!proxyUrl && supabase) {
+          try {
+            const { data } = await supabase
+              .from('site_settings')
+              .select('value')
+              .eq('key', 'proxy_url')
+              .maybeSingle();
+            if (data?.value) proxyUrl = data.value;
+          } catch (e) { /* ignore */ }
+        }
+      } else {
+        console.log('🌐 [_withBrowser] Proxy skipped (cookies-based auth)');
       }
       
       console.log(`🌐 [_withBrowser] Opening browser... (executablePath: ${executablePath})`);
@@ -1039,6 +1044,7 @@ class OSNSessionManager {
       return { success: false, error: 'لا توجد كوكيز محفوظة للحساب' };
     }
 
+    // Crunchyroll uses cookies — skip proxy to avoid ERR_INVALID_AUTH_CREDENTIALS
     return await this._withBrowser(async (browser) => {
       const page = await browser.newPage();
       await this._applyStealthToPage(page);
@@ -1188,7 +1194,7 @@ class OSNSessionManager {
         console.error('❌ [Crunchyroll] TV activation error:', err.message);
         return { success: false, error: err.message };
       }
-    }, { supabase });
+    }, { supabase, skipProxy: true });
   }
 
 }
