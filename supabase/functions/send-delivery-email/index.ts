@@ -29,10 +29,15 @@ interface DeliveryEmailRequest {
   }>;
   total_amount: number;
   warranty_expires_at: string;
-  // بيانات كود التفعيل (اختياري)
+  // بيانات كود التفعيل (اختياري - للتوافق القديم)
   activation_code?: string;
   activation_expires_at?: string;
   telegram_bot_username?: string;
+  // جميع أكواد التفعيل (جديد)
+  all_activation_codes?: Array<{
+    code: string;
+    product_name: string;
+  }>;
 }
 
 interface SiteSettings {
@@ -110,6 +115,7 @@ const handler = async (req: Request): Promise<Response> => {
       activation_code,
       activation_expires_at,
       telegram_bot_username,
+      all_activation_codes,
     }: DeliveryEmailRequest = body;
 
     if (!to_email || !order_number || !products || products.length === 0) {
@@ -165,9 +171,18 @@ const handler = async (req: Request): Promise<Response> => {
 </table>
     `).join("");
 
-    // بناء قسم كود التفعيل إذا كان موجوداً
+    // بناء قسم أكواد التفعيل - دعم كود واحد أو عدة أكواد
     let activationCodeHtml = "";
-    if (activation_code) {
+    
+    // تجميع كل الأكواد
+    const allCodes: Array<{ code: string; product_name?: string }> = [];
+    if (all_activation_codes && all_activation_codes.length > 0) {
+      allCodes.push(...all_activation_codes);
+    } else if (activation_code) {
+      allCodes.push({ code: activation_code });
+    }
+    
+    if (allCodes.length > 0) {
       const expiresAt = activation_expires_at 
         ? new Date(activation_expires_at).toLocaleString("ar-SA", {
             year: "numeric",
@@ -183,40 +198,44 @@ const handler = async (req: Request): Promise<Response> => {
         ? `https://t.me/${cleanBotUsername}` 
         : "#";
 
+      const codesListHtml = allCodes.map((c, i) => `
+<tr>
+<td align="center" style="padding-bottom:10px;">
+${c.product_name ? `<div style="color:#666666; font-size:12px; margin-bottom:4px; font-family:'Segoe UI',Tahoma,sans-serif;">${c.product_name} ${allCodes.length > 1 ? `(${i+1})` : ''}</div>` : ''}
+<div style="display:inline-block; background-color:#1a1a1a; padding:12px 25px; border-radius:8px; border:2px dashed #7C3AED;">
+<span style="font-family:Consolas,Monaco,monospace; font-size:${allCodes.length > 3 ? '20' : '28'}px; font-weight:bold; color:#22c55e; letter-spacing:4px;">${c.code}</span>
+</div>
+</td>
+</tr>`).join("");
+
       activationCodeHtml = `
 <!-- Activation Code Section -->
-<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#fef2f2; border-radius:10px; border:2px solid #ef4444; margin:20px 0; overflow:hidden;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f5f0ff; border-radius:10px; border:2px solid #7C3AED; margin:20px 0; overflow:hidden;">
 <tr>
-<td style="background-color:#ef4444; padding:12px 15px;">
+<td style="background-color:#7C3AED; padding:12px 15px;">
 <span style="font-size:18px;">🔐</span>
-<strong style="color:#ffffff; font-size:16px; margin-right:8px; font-family:'Segoe UI',Tahoma,sans-serif;">كود التفعيل</strong>
+<strong style="color:#ffffff; font-size:16px; margin-right:8px; font-family:'Segoe UI',Tahoma,sans-serif;">${allCodes.length > 1 ? `أكواد التفعيل (${allCodes.length})` : 'كود التفعيل'}</strong>
 </td>
 </tr>
 <tr>
 <td style="padding:20px; text-align:center;">
 <table width="100%" cellpadding="0" cellspacing="0" border="0">
+${codesListHtml}
 <tr>
-<td align="center" style="padding-bottom:15px;">
-<div style="display:inline-block; background-color:#1a1a1a; padding:15px 30px; border-radius:8px; border:2px dashed #ef4444;">
-<span style="font-family:Consolas,Monaco,monospace; font-size:28px; font-weight:bold; color:#22c55e; letter-spacing:4px;">${activation_code}</span>
-</div>
-</td>
-</tr>
-<tr>
-<td align="center" style="color:#dc2626; font-size:14px; font-weight:bold; padding:10px 0; font-family:'Segoe UI',Tahoma,sans-serif;">
+<td align="center" style="color:#7C3AED; font-size:14px; font-weight:bold; padding:10px 0; font-family:'Segoe UI',Tahoma,sans-serif;">
 ⏰ صالح حتى: ${expiresAt}
 </td>
 </tr>
 <tr>
 <td align="center" style="color:#666666; font-size:13px; padding:10px 0; line-height:1.6; font-family:'Segoe UI',Tahoma,sans-serif;">
-⚠️ <strong style="color:#dc2626;">تنبيه هام:</strong> هذا الكود صالح لمدة <strong>24 ساعة فقط!</strong><br/>
-أرسل هذا الكود للبوت للحصول على بيانات الدخول
+⚠️ <strong style="color:#7C3AED;">تنبيه هام:</strong> ${allCodes.length > 1 ? 'هذه الأكواد صالحة' : 'هذا الكود صالح'} لمدة <strong>24 ساعة فقط!</strong><br/>
+أرسل ${allCodes.length > 1 ? 'كل كود' : 'هذا الكود'} للبوت للحصول على بيانات الدخول
 </td>
 </tr>
 ${telegram_bot_username ? `
 <tr>
 <td align="center" style="padding-top:15px;">
-<a href="${botLink}" style="display:inline-block; background-color:#0088cc; color:#ffffff; padding:12px 30px; border-radius:8px; text-decoration:none; font-size:14px; font-weight:bold; font-family:'Segoe UI',Tahoma,sans-serif;">
+<a href="${botLink}" style="display:inline-block; background-color:#7C3AED; color:#ffffff; padding:12px 30px; border-radius:8px; text-decoration:none; font-size:14px; font-weight:bold; font-family:'Segoe UI',Tahoma,sans-serif;">
 📱 افتح البوت الآن
 </a>
 </td>
@@ -254,7 +273,7 @@ body{margin:0;padding:0;background-color:#f0f0f0;}
 
 <!-- HEADER -->
 <tr>
-<td style="background-color:#6366f1; padding:30px 20px; text-align:center;">
+<td style="background-color:#7C3AED; padding:30px 20px; text-align:center;">
 <table width="100%" cellpadding="0" cellspacing="0" border="0">
 ${storeLogoUrl ? `<tr>
 <td align="center" style="padding-bottom:15px;">
@@ -283,7 +302,7 @@ ${storeLogoUrl ? `<tr>
 <table width="100%" cellpadding="0" cellspacing="0" border="0">
 <tr>
 <td align="center" style="color:#333333; font-size:16px; padding-bottom:8px; font-family:'Segoe UI',Tahoma,sans-serif;">
-مرحباً <span style="color:#6366f1; font-weight:bold;">${customer_name || "عزيزي العميل"}</span> 👋
+مرحباً <span style="color:#7C3AED; font-weight:bold;">${customer_name || "عزيزي العميل"}</span> 👋
 </td>
 </tr>
 <tr>
@@ -298,7 +317,7 @@ ${storeLogoUrl ? `<tr>
 <tr>
 <td style="background-color:#f0f0f0; padding:15px; border-bottom:1px solid #e0e0e0;">
 <span style="font-size:16px;">🧾</span>
-<strong style="color:#6366f1; font-size:15px; margin-right:6px; font-family:'Segoe UI',Tahoma,sans-serif;">إيصال الدفع</strong>
+<strong style="color:#7C3AED; font-size:15px; margin-right:6px; font-family:'Segoe UI',Tahoma,sans-serif;">إيصال الدفع</strong>
 </td>
 </tr>
 <tr>
@@ -330,7 +349,7 @@ ${storeLogoUrl ? `<tr>
 <tr>
 <td style="padding-bottom:15px;">
 <span style="font-size:16px;">🔑</span>
-<strong style="color:#6366f1; font-size:15px; margin-right:6px; font-family:'Segoe UI',Tahoma,sans-serif;">تفاصيل الحسابات</strong>
+<strong style="color:#7C3AED; font-size:15px; margin-right:6px; font-family:'Segoe UI',Tahoma,sans-serif;">تفاصيل الحسابات</strong>
 </td>
 </tr>
 </table>
