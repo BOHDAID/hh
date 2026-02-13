@@ -588,8 +588,72 @@ Deno.serve(async (req) => {
         });
       }
 
-      // === اختيار نوع التفعيل (OSN فقط) ===
+      // === اختيار نوع التفعيل ===
       if (data === "choose_qr" || data === "choose_otp") {
+        // 🛡️ حماية: إذا المنتج فعلياً Crunchyroll أو ChatGPT، حوّل للمسار الصحيح
+        const nameCheck = session.productName.toLowerCase();
+        const realType = detectActivationType(nameCheck);
+        
+        if (realType === "crunchyroll") {
+          // تحويل تلقائي لمسار Crunchyroll
+          console.log(`🔄 Auto-redirect: ${session.productName} → Crunchyroll flow (was choose_otp/qr)`);
+          if (data === "choose_qr") {
+            // TV → Crunchyroll TV
+            session.step = "crunchyroll_awaiting_tv_code";
+            session.activationType = "crunchyroll";
+            await updateActivationCode(session.activationCodeId, chatId, username, "crunchyroll_awaiting_tv_code");
+            await editTelegramMessage(
+              botToken, chatId, messageId,
+              `📺 <b>تفعيل Crunchyroll على التلفزيون</b>\n\n` +
+              `📝 <b>التعليمات:</b>\n` +
+              `1️⃣ افتح تطبيق Crunchyroll على تلفزيونك\n` +
+              `2️⃣ اختر "تسجيل الدخول"\n` +
+              `3️⃣ سيظهر لك كود مكون من 6 أرقام\n` +
+              `4️⃣ أرسل الكود هنا في الرسالة\n\n` +
+              `⏳ أرسل الكود المكون من 6 أرقام:`
+            );
+          } else {
+            // Phone → Crunchyroll Phone
+            session.step = "crunchyroll_phone_sent";
+            session.activationType = "crunchyroll";
+            await updateActivationCode(session.activationCodeId, chatId, username, "crunchyroll_phone_sent", session.accountEmail, session.accountPassword);
+            await editTelegramMessage(
+              botToken, chatId, messageId,
+              `📱 <b>تفعيل Crunchyroll على الهاتف</b>\n\n` +
+              `📧 البريد: <code>${session.accountEmail}</code>\n` +
+              `🔑 كلمة المرور: <code>${session.accountPassword || "غير محدد"}</code>\n\n` +
+              `📝 <b>التعليمات:</b>\n` +
+              `1️⃣ افتح تطبيق Crunchyroll\n` +
+              `2️⃣ سجل دخول بالبيانات أعلاه\n` +
+              `3️⃣ بعد الانتهاء، اضغط الزر أدناه\n\n` +
+              `⚠️ لا تقم بتغيير كلمة المرور!`,
+              [[{ text: "✅ سجلت دخول | Logged in", callback_data: "crunchyroll_phone_done" }]]
+            );
+          }
+          return new Response(JSON.stringify({ ok: true }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        
+        if (realType === "chatgpt") {
+          console.log(`🔄 Auto-redirect: ${session.productName} → ChatGPT flow`);
+          session.activationType = "chatgpt";
+          session.step = "chatgpt_awaiting_otp";
+          await updateActivationCode(session.activationCodeId, chatId, username, "chatgpt_awaiting_otp");
+          await editTelegramMessage(
+            botToken, chatId, messageId,
+            `📱 <b>تفعيل ChatGPT</b>\n\n` +
+            `📧 البريد: <code>${session.accountEmail}</code>\n` +
+            `🔑 كلمة المرور: <code>${session.accountPassword || "غير محدد"}</code>\n\n` +
+            `سجّل دخول ثم اضغط الزر لجلب رمز التحقق:`,
+            [[{ text: "🔑 أحضر لي رمز التحقق | Get OTP", callback_data: "chatgpt_get_otp" }]]
+          );
+          return new Response(JSON.stringify({ ok: true }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        
+        // OSN: المسار الأصلي
         const chosenType = data === "choose_qr" ? "qr" : "otp";
         session.activationType = chosenType;
         session.step = "awaiting_login";
