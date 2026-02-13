@@ -108,8 +108,42 @@ class OSNSessionManager {
         '--disable-features=IsolateOrigins,site-per-process,TranslateUI',
       ];
       
+      // Parse proxy URL - supports multiple formats:
+      // socks5://user:pass@host:port
+      // http://user:pass@host:port  
+      // host:port:user:pass (common residential proxy format)
+      // host:port
+      let proxyServer = null;
+      let proxyAuth = null;
+      
       if (proxyUrl) {
-        launchArgs.push(`--proxy-server=${proxyUrl}`);
+        if (proxyUrl.includes('://')) {
+          // Standard URL format: protocol://user:pass@host:port
+          try {
+            const url = new URL(proxyUrl);
+            proxyServer = `${url.protocol}//${url.hostname}:${url.port}`;
+            if (url.username && url.password) {
+              proxyAuth = { username: url.username, password: url.password };
+            }
+          } catch {
+            proxyServer = proxyUrl;
+          }
+        } else {
+          const parts = proxyUrl.split(':');
+          if (parts.length === 4) {
+            // host:port:user:pass format
+            proxyServer = `http://${parts[0]}:${parts[1]}`;
+            proxyAuth = { username: parts[2], password: parts[3] };
+          } else if (parts.length === 2) {
+            // host:port format
+            proxyServer = `http://${parts[0]}:${parts[1]}`;
+          } else {
+            proxyServer = proxyUrl;
+          }
+        }
+        
+        console.log(`🌐 [_withBrowser] Proxy server: ${proxyServer}, auth: ${proxyAuth ? 'yes' : 'no'}`);
+        launchArgs.push(`--proxy-server=${proxyServer}`);
       }
       
       browser = await puppeteer.launch({
@@ -119,6 +153,10 @@ class OSNSessionManager {
       });
 
       console.log('✅ [_withBrowser] Browser launched');
+      
+      // Store proxy auth for page.authenticate() later
+      browser._proxyAuth = proxyAuth;
+      
       return await fn(browser);
     } catch (browserError) {
       console.error('❌ [_withBrowser] Error:', browserError.message);
@@ -974,6 +1012,7 @@ class OSNSessionManager {
   async crunchyrollActivateTV(tvCode, email, password, { supabase } = {}) {
     return await this._withBrowser(async (browser) => {
       const page = await browser.newPage();
+      if (browser._proxyAuth) await page.authenticate(browser._proxyAuth);
       await this._applyStealthToPage(page);
 
       try {
@@ -1056,6 +1095,7 @@ class OSNSessionManager {
   async crunchyrollChangePassword(email, gmailAddress, gmailAppPassword, { supabase } = {}) {
     return await this._withBrowser(async (browser) => {
       const page = await browser.newPage();
+      if (browser._proxyAuth) await page.authenticate(browser._proxyAuth);
       await this._applyStealthToPage(page);
 
       try {
