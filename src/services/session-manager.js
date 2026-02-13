@@ -1028,18 +1028,71 @@ class OSNSessionManager {
         // طلب تغيير كلمة المرور من Crunchyroll - الرابط الصحيح
         console.log('🔐 [Crunchyroll] Requesting password reset via sso.crunchyroll.com...');
         await page.goto('https://sso.crunchyroll.com/reset-password', { waitUntil: 'networkidle2', timeout: 30000 });
-        await this._sleep(3000);
+        await this._sleep(4000);
 
-        // البحث عن حقل الإيميل وإدخاله
-        const emailInput = await page.$('input[type="email"], input[name="email"], input[type="text"]');
+        // Debug: log page content to identify form structure
+        const pageUrl = page.url();
+        console.log(`🔍 [Crunchyroll] Current URL: ${pageUrl}`);
+        const pageTitle = await page.title();
+        console.log(`🔍 [Crunchyroll] Page title: ${pageTitle}`);
+        
+        // Log all input elements on page
+        const inputsInfo = await page.evaluate(() => {
+          const inputs = document.querySelectorAll('input');
+          return Array.from(inputs).map(i => ({
+            type: i.type, name: i.name, id: i.id, placeholder: i.placeholder, className: i.className?.substring(0, 50)
+          }));
+        });
+        console.log(`🔍 [Crunchyroll] Found ${inputsInfo.length} inputs:`, JSON.stringify(inputsInfo));
+
+        // البحث عن حقل الإيميل بسيلكتورات موسعة
+        const emailSelectors = [
+          'input[type="email"]',
+          'input[name="email"]', 
+          'input[name="username"]',
+          'input[type="text"]',
+          'input[placeholder*="email" i]',
+          'input[placeholder*="mail" i]',
+          'input[id*="email" i]',
+          'input[aria-label*="email" i]',
+          'input:not([type="hidden"]):not([type="submit"]):not([type="checkbox"])',
+        ];
+        
+        let emailInput = null;
+        for (const selector of emailSelectors) {
+          emailInput = await page.$(selector);
+          if (emailInput) {
+            console.log(`✅ [Crunchyroll] Found email input with selector: ${selector}`);
+            break;
+          }
+        }
+        
         if (emailInput) {
           await emailInput.click();
           await this._sleep(300);
           await emailInput.type(email, { delay: 80 });
           await this._sleep(500);
         } else {
-          console.error('❌ [Crunchyroll] Email input not found on reset page');
-          return { success: false, error: 'لم يتم العثور على حقل الإيميل في صفحة تغيير الباسورد' };
+          // Try iframe approach - some sites embed forms in iframes
+          const frames = page.frames();
+          console.log(`🔍 [Crunchyroll] Checking ${frames.length} frames...`);
+          for (const frame of frames) {
+            emailInput = await frame.$('input[type="email"], input[name="email"], input[type="text"]');
+            if (emailInput) {
+              console.log(`✅ [Crunchyroll] Found email input inside iframe: ${frame.url()}`);
+              await emailInput.click();
+              await this._sleep(300);
+              await emailInput.type(email, { delay: 80 });
+              await this._sleep(500);
+              break;
+            }
+          }
+          
+          if (!emailInput) {
+            const html = await page.content();
+            console.error(`❌ [Crunchyroll] Email input not found. Page HTML (first 2000 chars): ${html.substring(0, 2000)}`);
+            return { success: false, error: 'لم يتم العثور على حقل الإيميل في صفحة تغيير الباسورد' };
+          }
         }
 
         // الضغط على زر الإرسال
