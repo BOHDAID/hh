@@ -282,6 +282,29 @@ async function handleActivationCode(chatId, code, username) {
   // تحديد نوع المنتج: OSN أو ChatGPT أو غيره
   const isOSN = activationType === 'osn' || productNameAr.toLowerCase().includes('osn') || productNameEn.toLowerCase().includes('osn');
   const isChatGPT = activationType === 'chatgpt' || productNameAr.toLowerCase().includes('chatgpt') || productNameEn.toLowerCase().includes('chatgpt');
+  const isCrunchyroll = productNameAr.toLowerCase().includes('crunchyroll') || productNameEn.toLowerCase().includes('crunchyroll');
+
+  // جلب بيانات Gmail من otp_configurations للمنتج
+  let gmailAddress = null;
+  let gmailAppPassword = null;
+  try {
+    const { data: otpConfig } = await supabase
+      .from('otp_configurations')
+      .select('gmail_address, gmail_app_password')
+      .eq('product_id', activationCode.product_id)
+      .eq('is_active', true)
+      .maybeSingle();
+    
+    if (otpConfig) {
+      gmailAddress = otpConfig.gmail_address;
+      gmailAppPassword = otpConfig.gmail_app_password;
+      console.log(`📧 Gmail config found for product: ${gmailAddress}`);
+    } else {
+      console.log('⚠️ No active OTP config found for this product');
+    }
+  } catch (err) {
+    console.error('❌ Error fetching OTP config:', err.message);
+  }
 
   // Save session
   userSessions[chatId] = {
@@ -291,9 +314,11 @@ async function handleActivationCode(chatId, code, username) {
     productId: activationCode.product_id,
     orderId: activationCode.order_id,
     activationType: activationType,
-    productCategory: isOSN ? 'osn' : isChatGPT ? 'chatgpt' : 'other',
+    productCategory: isOSN ? 'osn' : isChatGPT ? 'chatgpt' : isCrunchyroll ? 'crunchyroll' : 'other',
     accountEmail: accountEmail,
     accountPassword: accountPassword,
+    gmailAddress,
+    gmailAppPassword,
     step: 'choose_type',
     retryCount: 0,
   };
