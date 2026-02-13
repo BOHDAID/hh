@@ -1090,7 +1090,7 @@ const SettingsTab = () => {
               <CardContent className="space-y-5">
                 {renderPasswordInput("Bot Token", "telegram_bot_token", "123456789:ABCdefGHI...", "احصل عليه من @BotFather في تيليجرام")}
                 {renderSettingInput("اسم البوت", "telegram_bot_username", "@your_store_bot", { dir: "ltr", description: "Username البوت بدون @" })}
-                
+                {renderPasswordInput("Residential Proxy", "proxy_url", "socks5://user:pass@proxy:port", "بروكسي سكني لتجاوز حظر IP من Crunchyroll وغيره")}
                 <InfoBox variant="info">
                   <div className="space-y-2 text-sm">
                     <p className="font-medium">كيفية إنشاء البوت:</p>

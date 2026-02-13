@@ -70,12 +70,24 @@ class OSNSessionManager {
   /**
    * فتح متصفح مؤقت - يُغلق بعد كل عملية
    */
-  async _withBrowser(fn) {
+  async _withBrowser(fn, { supabase } = {}) {
     let browser = null;
     try {
       const puppeteer = (await import('puppeteer')).default;
       const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable';
-      const proxyUrl = process.env.PROXY_URL;
+      
+      // Try to get proxy from database first, then env variable
+      let proxyUrl = process.env.PROXY_URL;
+      if (!proxyUrl && supabase) {
+        try {
+          const { data } = await supabase
+            .from('site_settings')
+            .select('value')
+            .eq('key', 'proxy_url')
+            .maybeSingle();
+          if (data?.value) proxyUrl = data.value;
+        } catch (e) { /* ignore */ }
+      }
       
       console.log(`🌐 [_withBrowser] Opening browser... (executablePath: ${executablePath})`);
       console.log(`🌐 [_withBrowser] Memory: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(1)} MB`);
@@ -959,7 +971,7 @@ class OSNSessionManager {
   /**
    * تفعيل Crunchyroll على التلفزيون بإدخال كود 6 أرقام
    */
-  async crunchyrollActivateTV(tvCode, email, password) {
+  async crunchyrollActivateTV(tvCode, email, password, { supabase } = {}) {
     return await this._withBrowser(async (browser) => {
       const page = await browser.newPage();
       await this._applyStealthToPage(page);
@@ -1035,13 +1047,13 @@ class OSNSessionManager {
         console.error('❌ [Crunchyroll] TV activation error:', err.message);
         return { success: false, error: err.message };
       }
-    });
+    }, { supabase });
   }
 
   /**
    * تغيير كلمة مرور Crunchyroll بعد تفعيل الهاتف
    */
-  async crunchyrollChangePassword(email, gmailAddress, gmailAppPassword) {
+  async crunchyrollChangePassword(email, gmailAddress, gmailAppPassword, { supabase } = {}) {
     return await this._withBrowser(async (browser) => {
       const page = await browser.newPage();
       await this._applyStealthToPage(page);
@@ -1090,8 +1102,8 @@ class OSNSessionManager {
           console.log('❌ [Crunchyroll] No email input found - IP is likely blocked by Crunchyroll');
           return { 
             success: false, 
-            error: 'Crunchyroll يحجب الوصول من عنوان IP السيرفر. الحل: أضف PROXY_URL (Residential Proxy) في متغيرات بيئة Render.',
-            hint: 'Set PROXY_URL environment variable in Render to a residential proxy address (e.g., socks5://user:pass@proxy:port)'
+            error: 'Crunchyroll يحجب الوصول من عنوان IP السيرفر. الحل: أضف Residential Proxy في لوحة التحكم (الإعدادات > بوت تيليجرام).',
+            hint: 'Add proxy_url in admin Settings > Telegram Bot section (e.g., socks5://user:pass@proxy:port)'
           };
         }
 
@@ -1209,7 +1221,7 @@ class OSNSessionManager {
         console.error('❌ [Crunchyroll] Password change error:', err.message);
         return { success: false, error: err.message };
       }
-    });
+    }, { supabase });
   }
 }
 
