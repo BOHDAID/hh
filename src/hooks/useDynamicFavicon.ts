@@ -12,13 +12,13 @@ const processImageForFavicon = (src: string): Promise<string> => {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
-      const size = 256;
+      const size = 128; // optimal favicon size
       const canvas = document.createElement("canvas");
       canvas.width = size;
       canvas.height = size;
       const ctx = canvas.getContext("2d")!;
 
-      // First draw to a temp canvas to detect content bounds
+      // Detect content bounds (trim transparent areas)
       const tempCanvas = document.createElement("canvas");
       tempCanvas.width = img.naturalWidth;
       tempCanvas.height = img.naturalHeight;
@@ -28,7 +28,6 @@ const processImageForFavicon = (src: string): Promise<string> => {
       const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
       const { data, width, height } = imageData;
 
-      // Find bounding box of non-transparent content
       let top = height, bottom = 0, left = width, right = 0;
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
@@ -42,32 +41,34 @@ const processImageForFavicon = (src: string): Promise<string> => {
         }
       }
 
-      // If no content found, just draw normally
+      // Fill with rounded colored background for better visibility
+      ctx.fillStyle = "#1a1a2e";
+      ctx.beginPath();
+      ctx.roundRect(0, 0, size, size, size * 0.2);
+      ctx.fill();
+
       if (top >= bottom || left >= right) {
-        ctx.drawImage(img, 0, 0, size, size);
+        // No content detected, draw full image with padding
+        const pad = size * 0.1;
+        ctx.drawImage(img, pad, pad, size - pad * 2, size - pad * 2);
       } else {
-        // Add small padding (5%)
         const contentW = right - left + 1;
         const contentH = bottom - top + 1;
-        const pad = Math.max(contentW, contentH) * 0.05;
-        const cropX = Math.max(0, left - pad);
-        const cropY = Math.max(0, top - pad);
-        const cropW = Math.min(width - cropX, contentW + pad * 2);
-        const cropH = Math.min(height - cropY, contentH + pad * 2);
 
-        // Draw cropped content centered in square
-        const scale = size / Math.max(cropW, cropH);
-        const drawW = cropW * scale;
-        const drawH = cropH * scale;
+        // Draw logo large inside the rounded square (85% of space)
+        const maxDraw = size * 0.85;
+        const scale = maxDraw / Math.max(contentW, contentH);
+        const drawW = contentW * scale;
+        const drawH = contentH * scale;
         const offsetX = (size - drawW) / 2;
         const offsetY = (size - drawH) / 2;
 
-        ctx.drawImage(img, cropX, cropY, cropW, cropH, offsetX, offsetY, drawW, drawH);
+        ctx.drawImage(img, left, top, contentW, contentH, offsetX, offsetY, drawW, drawH);
       }
 
       resolve(canvas.toDataURL("image/png"));
     };
-    img.onerror = () => resolve(src); // fallback to original
+    img.onerror = () => resolve(src);
     img.src = src;
   });
 };
