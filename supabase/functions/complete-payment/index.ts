@@ -755,8 +755,9 @@ serve(async (req: Request) => {
           return code;
         };
         
-        // جلب البريد من osn_sessions (مرة واحدة لكل item)
+        // جلب البريد والباسورد من osn_sessions (مرة واحدة لكل item)
         let accountEmail: string | null = null;
+        let accountPassword: string | null = null;
         try {
           const { data: deliveredItem } = await adminClient
             .from("order_items")
@@ -774,7 +775,7 @@ serve(async (req: Request) => {
             if (pa?.variant_id && cloudClient) {
               const { data: osnSession } = await cloudClient
                 .from("osn_sessions")
-                .select("email")
+                .select("email, account_password")
                 .eq("variant_id", pa.variant_id)
                 .eq("is_active", true)
                 .limit(1)
@@ -782,6 +783,9 @@ serve(async (req: Request) => {
               
               if (osnSession?.email) {
                 accountEmail = osnSession.email;
+              }
+              if (osnSession?.account_password) {
+                accountPassword = osnSession.account_password;
               }
             }
           }
@@ -797,7 +801,7 @@ serve(async (req: Request) => {
               for (const v of unlimitedVariants) {
                 const { data: session } = await cloudClient
                   .from("osn_sessions")
-                  .select("email")
+                  .select("email, account_password")
                   .eq("variant_id", v.id)
                   .eq("is_active", true)
                   .limit(1)
@@ -805,6 +809,9 @@ serve(async (req: Request) => {
                 
                 if (session?.email) {
                   accountEmail = session.email;
+                  if (session?.account_password) {
+                    accountPassword = session.account_password;
+                  }
                   break;
                 }
               }
@@ -830,6 +837,9 @@ serve(async (req: Request) => {
           
           if (accountEmail) {
             insertData.account_email = accountEmail;
+          }
+          if (accountPassword) {
+            insertData.account_password = accountPassword;
           }
           
           const { data: codeData, error: codeError } = await adminClient
