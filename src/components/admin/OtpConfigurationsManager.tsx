@@ -113,6 +113,14 @@ const OtpConfigurationsManager = () => {
   const [smtpAccountPassword, setSmtpAccountPassword] = useState("");
   const [sessionType, setSessionType] = useState<"osn" | "chatgpt" | "crunchyroll">("osn");
   const [chatgptPassword, setChatgptPassword] = useState("");
+  
+  // تعديل جلسة موجودة
+  const [editSessionDialogOpen, setEditSessionDialogOpen] = useState(false);
+  const [editingSession, setEditingSession] = useState<OsnSession | null>(null);
+  const [editSessionEmail, setEditSessionEmail] = useState("");
+  const [editSessionPassword, setEditSessionPassword] = useState("");
+  const [editSessionCookies, setEditSessionCookies] = useState("");
+  const [savingSession, setSavingSession] = useState(false);
 
   const [form, setForm] = useState({
     product_id: "",
@@ -451,6 +459,48 @@ const OtpConfigurationsManager = () => {
     setDeletingSessionId(null);
   };
 
+  const openEditSessionDialog = (session: OsnSession) => {
+    setEditingSession(session);
+    setEditSessionEmail(session.email || "");
+    setEditSessionPassword((session as any).account_password || "");
+    const cookies = session.cookies;
+    setEditSessionCookies(Array.isArray(cookies) && cookies.length > 0 ? JSON.stringify(cookies, null, 2) : "");
+    setEditSessionDialogOpen(true);
+  };
+
+  const handleSaveEditSession = async () => {
+    if (!editingSession) return;
+    setSavingSession(true);
+    try {
+      const updateData: any = {
+        email: editSessionEmail.trim() || null,
+        account_password: editSessionPassword.trim() || null,
+        updated_at: new Date().toISOString(),
+      };
+      
+      if (editSessionCookies.trim()) {
+        try {
+          updateData.cookies = JSON.parse(editSessionCookies.trim());
+        } catch {
+          toast({ title: "خطأ", description: "الكوكيز يجب أن تكون بتنسيق JSON صالح", variant: "destructive" });
+          setSavingSession(false);
+          return;
+        }
+      }
+
+      const { error } = await db.from("osn_sessions").update(updateData).eq("id", editingSession.id);
+      if (error) {
+        toast({ title: "❌ خطأ", description: error.message, variant: "destructive" });
+      } else {
+        toast({ title: "✅ تم تحديث الجلسة بنجاح" });
+        setEditSessionDialogOpen(false);
+        await fetchOsnSessions();
+      }
+    } catch (error: any) {
+      toast({ title: "❌ خطأ", description: error.message, variant: "destructive" });
+    } finally { setSavingSession(false); }
+  };
+
   // ==================== OTP Config CRUD ====================
 
   const parseActivationType = (type: string) => {
@@ -662,13 +712,22 @@ const OtpConfigurationsManager = () => {
                         variant="outline"
                         size="icon"
                         className="h-8 w-8"
+                        onClick={() => openEditSessionDialog(session)}
+                        title="تعديل الجلسة (إيميل، كلمة سر، كوكيز)"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
                         onClick={() => {
                           setSmtpEditSessionId(smtpEditSessionId === session.id ? null : session.id);
                           setSmtpGmailAddress(session.gmail_address || "");
                           setSmtpGmailAppPassword(session.gmail_app_password || "");
                           setSmtpAccountPassword((session as any).account_password || "");
                         }}
-                        title="إعدادات SMTP وكلمة المرور"
+                        title="إعدادات SMTP"
                       >
                         <Mail className="h-4 w-4" />
                       </Button>
@@ -1034,6 +1093,75 @@ const OtpConfigurationsManager = () => {
             <Button onClick={handleImportCookies} disabled={importingCookies}>
               {importingCookies && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
               {sessionType === "chatgpt" ? "إنشاء" : "استيراد"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== Dialog تعديل جلسة موجودة ===== */}
+      <Dialog open={editSessionDialogOpen} onOpenChange={(open) => { setEditSessionDialogOpen(open); if (!open) setEditingSession(null); }}>
+        <DialogContent className="max-w-lg" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit className="h-5 w-5" />
+              تعديل الجلسة
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {editingSession && (
+              <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 text-sm">
+                {editingSession.product_variants?.products?.image_url && (
+                  <img src={editingSession.product_variants.products.image_url} className="h-8 w-8 rounded object-cover" />
+                )}
+                <span className="font-medium">
+                  {editingSession.product_variants?.products?.name} — {editingSession.product_variants?.name}
+                </span>
+              </div>
+            )}
+
+            {/* إيميل الحساب */}
+            <div className="space-y-2">
+              <Label>إيميل الحساب</Label>
+              <Input
+                type="email"
+                placeholder="example@email.com"
+                value={editSessionEmail}
+                onChange={(e) => setEditSessionEmail(e.target.value)}
+                dir="ltr"
+              />
+            </div>
+
+            {/* كلمة مرور الحساب */}
+            <div className="space-y-2">
+              <Label>كلمة مرور الحساب</Label>
+              <Input
+                type="password"
+                placeholder="كلمة مرور الحساب"
+                value={editSessionPassword}
+                onChange={(e) => setEditSessionPassword(e.target.value)}
+                dir="ltr"
+              />
+              <p className="text-xs text-muted-foreground">تُرسل للعميل عند اختيار تفعيل الهاتف</p>
+            </div>
+
+            {/* كوكيز */}
+            <div className="space-y-2">
+              <Label>كوكيز (JSON)</Label>
+              <Textarea
+                placeholder={'[\n  {\n    "name": "cookie_name",\n    "value": "cookie_value",\n    "domain": ".example.com"\n  }\n]'}
+                value={editSessionCookies}
+                onChange={(e) => setEditSessionCookies(e.target.value)}
+                dir="ltr"
+                className="min-h-[150px] font-mono text-xs"
+              />
+              <p className="text-xs text-muted-foreground">تُستخدم لتفعيل التلفاز — اتركها فارغة إذا لا تحتاجها</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditSessionDialogOpen(false)}>إلغاء</Button>
+            <Button onClick={handleSaveEditSession} disabled={savingSession}>
+              {savingSession && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
+              حفظ التعديلات
             </Button>
           </DialogFooter>
         </DialogContent>
