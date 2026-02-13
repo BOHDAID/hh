@@ -618,13 +618,13 @@ class OSNSessionManager {
   }
 
   /**
-   * إدخال كود التلفزيون مع تسجيل دخول تلقائي
+   * إدخال كود التلفزيون عبر المتصفح (Puppeteer) - نفس أسلوب Crunchyroll
    * @param {string} tvCode - الكود المعروض على شاشة التلفزيون
    * @param {object} credentials - بيانات الجلسة {email}
    */
   async enterTVCode(tvCode, credentials = {}) {
     const { email } = credentials;
-    console.log(`📺 [enterTVCode] START - code: ${tvCode}, email: ${email}, hasCookies: ${!!(this.storedCookies?.length)}`);
+    console.log(`📺 [enterTVCode] START (Browser mode) - code: ${tvCode}, email: ${email}, hasCookies: ${!!(this.storedCookies?.length)}`);
 
     // التحقق من وجود كوكيز
     if (!this.storedCookies || !Array.isArray(this.storedCookies) || this.storedCookies.length === 0) {
@@ -634,73 +634,190 @@ class OSNSessionManager {
         paired: false,
         failed: true,
         message: '❌ لا توجد جلسة نشطة. يرجى استيراد الكوكيز أولاً.',
-        method: 'api',
       };
     }
 
-    console.log(`🚀 [enterTVCode] Using direct API method (cookies only, no browser)`);
-    
-    const authToken = this._extractAuthToken(this.storedCookies);
-    const deviceId = this._extractDeviceId(this.storedCookies);
-    
-    if (!authToken) {
-      console.log('❌ [enterTVCode] No auth token found in cookies');
-      return {
-        success: false,
-        paired: false,
-        failed: true,
-        message: '❌ التوكن غير موجود في الكوكيز. يرجى إعادة استيراد الكوكيز.',
-        method: 'api',
-      };
-    }
+    const cookies = this.storedCookies;
 
-    console.log(`🔑 [enterTVCode] Auth token found (${authToken.substring(0, 20)}...)`);
-    console.log(`📱 [enterTVCode] Device ID: ${deviceId}`);
-    
-    // محاولة أولى
-    const apiResult = await this._linkTVViaAPI(tvCode, authToken, deviceId);
-    
-    if (apiResult.success) {
-      this.lastActivity = new Date();
-      return apiResult;
-    }
-    
-    // إذا التوكن منتهي، نحاول تحديثه مرة واحدة
-    if (apiResult.tokenExpired) {
-      console.log('🔄 [enterTVCode] Token expired, trying to refresh...');
-      const refreshResult = await this._refreshToken(this.storedCookies);
-      if (refreshResult.newToken) {
-        console.log('✅ [enterTVCode] Token refreshed, retrying...');
-        const retryResult = await this._linkTVViaAPI(tvCode, refreshResult.newToken, deviceId);
-        if (retryResult.success) {
-          this.lastActivity = new Date();
-          return retryResult;
+    // فتح المتصفح بدون بروكسي (مثل Crunchyroll)
+    return await this._withBrowser(async (browser) => {
+      const page = await browser.newPage();
+      
+      const fixedUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
+      await page.setUserAgent(fixedUA);
+      await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
+      console.log(`🕵️ [OSN-Browser] Fixed UA: ${fixedUA.substring(0, 60)}...`);
+
+      try {
+        // الخطوة 1: تحميل الكوكيز
+        console.log(`🍪 [OSN-Browser] Loading ${cookies.length} cookies...`);
+        const osnCookies = cookies
+          .filter(c => c.name && c.value !== undefined)
+          .map(c => ({
+            name: c.name,
+            value: c.value,
+            domain: c.domain || '.osnplus.com',
+            path: c.path || '/',
+            secure: c.secure !== false,
+            httpOnly: c.httpOnly || false,
+          }));
+        
+        await page.setCookie(...osnCookies);
+        console.log(`✅ [OSN-Browser] ${osnCookies.length} cookies loaded`);
+
+        // التحقق من الكوكيز الأساسية
+        const hasAuth = osnCookies.some(c => c.name === 'auth');
+        const hasUdid = osnCookies.some(c => c.name === 'udid');
+        console.log(`🔑 [OSN-Browser] Key cookies: auth=${hasAuth}, udid=${hasUdid}`);
+
+        // الخطوة 2: التوجه لصفحة تفعيل التلفزيون
+        const activateUrl = 'https://www.osnplus.com/en-ma/login/tv';
+        console.log(`📺 [OSN-Browser] Navigating to ${activateUrl}`);
+        await page.goto(activateUrl, { 
+          waitUntil: 'networkidle2', 
+          timeout: 60000 
+        });
+        await this._sleep(3000);
+
+        const currentUrl = page.url();
+        console.log(`🔗 [OSN-Browser] Current URL: ${currentUrl}`);
+
+        // فحص الكوكيز بعد التحميل
+        const loadedCookies = await page.cookies();
+        console.log(`🍪 [OSN-Browser] Cookies after load: ${loadedCookies.length}`);
+
+        if (currentUrl.includes('login') && !currentUrl.includes('login/tv')) {
+          console.log('❌ [OSN-Browser] Redirected to login - cookies invalid');
+          return { success: false, paired: false, failed: true, message: '❌ الكوكيز منتهية الصلاحية. تم التحويل لصفحة تسجيل الدخول. يرجى إعادة استيراد الكوكيز.' };
         }
-        return {
-          success: false,
-          paired: false,
-          failed: true,
-          message: retryResult.message || '❌ الكود غير صحيح أو منتهي الصلاحية',
-          method: 'api',
-        };
+
+        // الخطوة 3: انتظار حقل الكود (30 ثانية)
+        console.log('⏳ [OSN-Browser] Waiting for code input field (30s timeout)...');
+        const codeSelectors = [
+          'input[name="code"]',
+          'input[name="tvCode"]',
+          'input[name="tv_code"]',
+          'input[name="pin"]',
+          'input[maxlength="6"]',
+          'input[maxlength="8"]',
+          'input[type="text"]',
+          'input[type="tel"]',
+          'input[inputmode="numeric"]',
+        ];
+
+        let codeInput = null;
+        try {
+          await page.waitForSelector(codeSelectors.join(', '), {
+            timeout: 30000,
+            visible: true,
+          });
+          for (const sel of codeSelectors) {
+            codeInput = await page.$(sel);
+            if (codeInput) {
+              console.log(`✅ [OSN-Browser] Found input with selector: ${sel}`);
+              break;
+            }
+          }
+        } catch {
+          const inputs = await page.$$('input:not([type="hidden"])');
+          if (inputs.length > 0) {
+            codeInput = inputs[0];
+            console.log('⚠️ [OSN-Browser] Using fallback input element');
+          }
+        }
+
+        if (!codeInput) {
+          const screenshotPath = `/tmp/osn-tv-fail-${Date.now()}.png`;
+          try {
+            await page.screenshot({ path: screenshotPath, fullPage: true });
+            console.log(`📸 [OSN-Browser] Screenshot saved: ${screenshotPath}`);
+          } catch (ssErr) {
+            console.log(`⚠️ [OSN-Browser] Screenshot failed: ${ssErr.message}`);
+          }
+          const diagnostics = await page.evaluate(() => ({
+            inputCount: document.querySelectorAll('input').length,
+            bodyText: document.body?.innerText?.substring(0, 500) || '',
+            url: window.location.href,
+            html: document.querySelector('form')?.innerHTML?.substring(0, 300) || 'no form',
+          }));
+          console.log('🔍 [OSN-Browser] Page diagnostics:', JSON.stringify(diagnostics));
+          return { success: false, paired: false, failed: true, message: `❌ لم يتم العثور على حقل إدخال الكود. الصفحة: ${diagnostics.url}` };
+        }
+
+        // الخطوة 4: إدخال الكود
+        console.log(`📺 [OSN-Browser] Typing TV code: ${tvCode}`);
+        await codeInput.click({ clickCount: 3 });
+        await page.keyboard.press('Backspace');
+        await this._sleep(300);
+        await codeInput.type(tvCode, { delay: 120 });
+        await this._sleep(1000);
+
+        // الخطوة 5: الضغط على زر التفعيل
+        console.log('🔘 [OSN-Browser] Looking for submit button...');
+        let activateBtn = await page.$('button[type="submit"]');
+        if (!activateBtn) {
+          activateBtn = await this._findButton(page, ['activate', 'link', 'submit', 'connect', 'تفعيل', 'ربط', 'إضافة', 'add', 'pair']);
+        }
+
+        if (activateBtn) {
+          console.log('🔘 [OSN-Browser] Clicking activate/submit button...');
+          await activateBtn.click();
+        } else {
+          console.log('⏎ [OSN-Browser] No button found, pressing Enter...');
+          await page.keyboard.press('Enter');
+        }
+        
+        // الخطوة 6: انتظار النتيجة
+        console.log('⏳ [OSN-Browser] Waiting for activation result...');
+        await this._sleep(5000);
+
+        const resultText = await page.evaluate(() => document.body?.innerText?.toLowerCase() || '');
+        const finalUrl = page.url();
+        console.log(`🔗 [OSN-Browser] URL: ${finalUrl}`);
+        console.log(`📄 [OSN-Browser] Page text (first 400): ${resultText.substring(0, 400)}`);
+
+        // ❌ خطأ واضح
+        if (resultText.includes('invalid') || resultText.includes('expired') || 
+            resultText.includes('incorrect') || resultText.includes('wrong') ||
+            resultText.includes('not found') || resultText.includes('غير صالح') ||
+            resultText.includes('غير صحيح') || resultText.includes('خاطئ') ||
+            resultText.includes('منتهي') || resultText.includes('error')) {
+          const errorMsg = (resultText.includes('expired') || resultText.includes('منتهي'))
+            ? '❌ الرمز منتهي الصلاحية. أعد تشغيل التطبيق على التلفاز واحصل على رمز جديد.'
+            : '❌ الرمز غير صحيح. تأكد من إدخال الرمز الظاهر على شاشة التلفاز بالضبط.';
+          console.log('❌ [OSN-Browser] Error detected on page');
+          return { success: false, paired: false, failed: true, message: errorMsg };
+        }
+
+        // ✅ نجاح
+        if (resultText.includes('success') || resultText.includes('activated') || 
+            resultText.includes('linked') || resultText.includes('connected') || 
+            resultText.includes('device has been') || resultText.includes('paired') ||
+            resultText.includes('تم الربط') || resultText.includes('تم التفعيل') ||
+            resultText.includes('تمت الإضافة')) {
+          console.log('✅ [OSN-Browser] TV activated successfully!');
+          this.lastActivity = new Date();
+          return { success: true, paired: true, message: '✅ تم تفعيل التلفاز بنجاح! استمتع بالمشاهدة 🎉📺' };
+        }
+
+        // تحقق: هل اختفى حقل الإدخال؟
+        const inputStillExists = await page.$(codeSelectors.join(', '));
+        if (!inputStillExists) {
+          console.log('✅ [OSN-Browser] Input field disappeared - activation succeeded');
+          this.lastActivity = new Date();
+          return { success: true, paired: true, message: '✅ تم تفعيل التلفاز بنجاح! استمتع بالمشاهدة 🎉📺' };
+        }
+
+        // حقل الإدخال لا يزال موجود = فشل
+        console.log('⚠️ [OSN-Browser] Input still present - activation failed');
+        const screenshotPath2 = `/tmp/osn-tv-uncertain-${Date.now()}.png`;
+        await page.screenshot({ path: screenshotPath2, fullPage: true }).catch(() => {});
+        return { success: false, paired: false, failed: true, message: '❌ لم يتم التفعيل. الرمز قد يكون غير صحيح أو منتهي الصلاحية.' };
+      } catch (err) {
+        console.error('❌ [OSN-Browser] TV activation error:', err.message);
+        return { success: false, paired: false, failed: true, message: err.message };
       }
-      return {
-        success: false,
-        paired: false,
-        failed: true,
-        message: '❌ انتهت صلاحية الجلسة. يرجى إعادة استيراد الكوكيز.',
-        method: 'api',
-      };
-    }
-    
-    // أي خطأ آخر - نرجع الرسالة مباشرة بدون fallback
-    return {
-      success: false,
-      paired: false,
-      failed: true,
-      message: apiResult.message || apiResult.error || '❌ الكود غير صحيح أو منتهي الصلاحية',
-      method: 'api',
-    };
+    }, { skipProxy: true });
   }
 
   /**
