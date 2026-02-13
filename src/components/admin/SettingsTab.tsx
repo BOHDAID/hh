@@ -476,6 +476,7 @@ const SettingsTab = () => {
                     value={settings.store_favicon_url || ""}
                     onChange={(url) => updateSetting("store_favicon_url", url)}
                     bucket="store-assets"
+                    removeBackground={true}
                   />
                   <p className="text-xs text-muted-foreground">أيقونة صغيرة تظهر في تبويب المتصفح. يُفضل حجم 32×32 أو 64×64 بكسل (PNG).</p>
                 </div>
