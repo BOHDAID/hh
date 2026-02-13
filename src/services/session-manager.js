@@ -82,7 +82,7 @@ class OSNSessionManager {
       browser = await puppeteer.launch({
         headless: 'new',
         executablePath,
-        args: this._getChromeArgs(),
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
         timeout: 30000,
       });
 
