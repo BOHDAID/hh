@@ -5,49 +5,104 @@ import { db } from "@/lib/supabaseClient";
 const FALLBACK_FAVICON = "/favicon.svg";
 
 /**
+ * Trim transparent/white padding from image and return a clean square favicon data URL
+ */
+const processImageForFavicon = (src: string): Promise<string> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const size = 256;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d")!;
+
+      // First draw to a temp canvas to detect content bounds
+      const tempCanvas = document.createElement("canvas");
+      tempCanvas.width = img.naturalWidth;
+      tempCanvas.height = img.naturalHeight;
+      const tempCtx = tempCanvas.getContext("2d")!;
+      tempCtx.drawImage(img, 0, 0);
+
+      const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+      const { data, width, height } = imageData;
+
+      // Find bounding box of non-transparent content
+      let top = height, bottom = 0, left = width, right = 0;
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const alpha = data[(y * width + x) * 4 + 3];
+          if (alpha > 20) {
+            if (y < top) top = y;
+            if (y > bottom) bottom = y;
+            if (x < left) left = x;
+            if (x > right) right = x;
+          }
+        }
+      }
+
+      // If no content found, just draw normally
+      if (top >= bottom || left >= right) {
+        ctx.drawImage(img, 0, 0, size, size);
+      } else {
+        // Add small padding (5%)
+        const contentW = right - left + 1;
+        const contentH = bottom - top + 1;
+        const pad = Math.max(contentW, contentH) * 0.05;
+        const cropX = Math.max(0, left - pad);
+        const cropY = Math.max(0, top - pad);
+        const cropW = Math.min(width - cropX, contentW + pad * 2);
+        const cropH = Math.min(height - cropY, contentH + pad * 2);
+
+        // Draw cropped content centered in square
+        const scale = size / Math.max(cropW, cropH);
+        const drawW = cropW * scale;
+        const drawH = cropH * scale;
+        const offsetX = (size - drawW) / 2;
+        const offsetY = (size - drawH) / 2;
+
+        ctx.drawImage(img, cropX, cropY, cropW, cropH, offsetX, offsetY, drawW, drawH);
+      }
+
+      resolve(canvas.toDataURL("image/png"));
+    };
+    img.onerror = () => resolve(src); // fallback to original
+    img.src = src;
+  });
+};
+
+/**
  * Dynamically updates the browser favicon and tab title
- * based on site_settings (store_logo_url, store_name).
  */
 const useDynamicFavicon = () => {
   useEffect(() => {
-    const setFavicon = (url: string, type: string) => {
-      // Remove ALL existing favicon/apple-touch-icon links
+    const setFavicon = (url: string) => {
       const existingLinks = document.querySelectorAll<HTMLLinkElement>(
         "link[rel='icon'], link[rel='alternate icon'], link[rel='shortcut icon'], link[rel='apple-touch-icon']"
       );
       existingLinks.forEach((el) => el.remove());
 
-      // Set primary favicon with largest size for maximum clarity
-      const primaryLink = document.createElement("link");
-      primaryLink.rel = "icon";
-      primaryLink.type = type;
-      primaryLink.sizes = "256x256";
-      primaryLink.href = url;
-      document.head.appendChild(primaryLink);
+      // Primary large favicon
+      const link = document.createElement("link");
+      link.rel = "icon";
+      link.type = "image/png";
+      link.sizes = "256x256";
+      link.href = url;
+      document.head.appendChild(link);
 
-      // Additional sizes for compatibility
-      ["32x32", "48x48", "96x96", "192x192"].forEach((size) => {
-        const link = document.createElement("link");
-        link.rel = "icon";
-        link.type = type;
-        link.sizes = size;
-        link.href = url;
-        document.head.appendChild(link);
-      });
-
-      // Apple touch icon (180x180 recommended)
+      // Apple touch icon
       const appleLink = document.createElement("link");
       appleLink.rel = "apple-touch-icon";
       appleLink.sizes = "180x180";
       appleLink.href = url;
       document.head.appendChild(appleLink);
-      
-      console.log("🎨 Favicon set to:", url);
+
+      console.log("🎨 Favicon set to processed image");
     };
 
     const fetchAndSetFavicon = async () => {
       try {
-        // جلب الشعار واسم المتجر معاً
         const { data, error } = await db
           .from("site_settings")
           .select("key, value")
@@ -55,7 +110,7 @@ const useDynamicFavicon = () => {
 
         if (error) {
           console.warn("Failed to fetch site settings:", error.message);
-          setFavicon(FALLBACK_FAVICON, "image/svg+xml");
+          setFavicon(FALLBACK_FAVICON);
           return;
         }
 
@@ -64,31 +119,23 @@ const useDynamicFavicon = () => {
           if (s.value) settings[s.key] = s.value;
         });
 
-        // تحديث عنوان التاب
         if (settings.store_name) {
           document.title = settings.store_name;
         }
 
-        // أولوية للفافيكون المخصص، ثم الشعار
         const faviconUrl = settings.store_favicon_url || settings.store_logo_url;
-        
+
         if (!faviconUrl) {
-          console.log("No favicon/logo found, using fallback");
-          setFavicon(FALLBACK_FAVICON, "image/svg+xml");
+          setFavicon(FALLBACK_FAVICON);
           return;
         }
 
-        let type = "image/png";
-        if (faviconUrl.endsWith(".svg")) {
-          type = "image/svg+xml";
-        } else if (faviconUrl.endsWith(".ico")) {
-          type = "image/x-icon";
-        }
-
-        setFavicon(faviconUrl, type);
+        // Process image: trim whitespace and maximize logo
+        const processedUrl = await processImageForFavicon(faviconUrl);
+        setFavicon(processedUrl);
       } catch (err) {
         console.error("Failed to set dynamic favicon:", err);
-        setFavicon(FALLBACK_FAVICON, "image/svg+xml");
+        setFavicon(FALLBACK_FAVICON);
       }
     };
 
