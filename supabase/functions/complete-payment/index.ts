@@ -94,10 +94,8 @@ serve(async (req: Request) => {
     // Admin client to bypass RLS for delivery operations
     const adminClient = createClient(externalUrl, externalServiceKey);
 
-    // Cloud client for accessing osn_sessions (stored in Lovable Cloud)
-    const cloudUrl = Deno.env.get("SUPABASE_URL") || "";
-    const cloudSvcKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-    const cloudClient = cloudUrl && cloudSvcKey ? createClient(cloudUrl, cloudSvcKey) : null;
+    // osn_sessions is in the External DB - use adminClient directly
+    const cloudClient = adminClient;
 
     if (!order_id) {
       return new Response(
