@@ -506,11 +506,12 @@ async function reconstructSession(chatId: string): Promise<UserSession | null> {
   }
 }
 
-// 🔍 كشف تلقائي لنوع التفعيل من اسم المنتج (مركزي)
+// 🔍 كشف تلقائي لنوع التفعيل من اسم المنتج (مركزي - المصدر الوحيد للحقيقة)
 function detectActivationType(name: string): string {
-  const n = name.toLowerCase();
-  // Crunchyroll - كل الاحتمالات (إنجليزي + عربي)
-  if (n.includes("crunch") || n.includes("كرنش") || n.includes("كرانش") || n.includes("كرنشي")) {
+  if (!name) return "otp";
+  const n = name.toLowerCase().trim();
+  // Crunchyroll - كل الاحتمالات (إنجليزي + عربي + أخطاء إملائية شائعة)
+  if (n.includes("crunch") || n.includes("crunchy") || n.includes("كرنش") || n.includes("كرانش") || n.includes("كرنشي") || n.includes("كرانشي") || n.includes("غراند شيرول") || n.includes("كرنشرول")) {
     return "crunchyroll";
   }
   // ChatGPT / OpenAI
@@ -519,6 +520,31 @@ function detectActivationType(name: string): string {
   }
   // Default: OSN/OTP
   return "otp";
+}
+
+// 🔥 جلب نوع التفعيل الحقيقي من DB مباشرة (لا نعتمد على الذاكرة أبداً)
+async function getActivationTypeFromDB(activationCodeId: string): Promise<{ type: string; productName: string }> {
+  try {
+    const { data } = await supabase
+      .from("activation_codes")
+      .select("product_id, products:product_id (name, activation_type)")
+      .eq("id", activationCodeId)
+      .maybeSingle();
+    
+    if (!data) return { type: "otp", productName: "" };
+    
+    const productName = (data as any).products?.name || "";
+    const dbType = (data as any).products?.activation_type || null;
+    const nameDetected = detectActivationType(productName);
+    
+    // اسم المنتج يأخذ الأولوية دائماً
+    const finalType = (nameDetected !== "otp") ? nameDetected : (dbType || "otp");
+    console.log(`🔍 [DB-detect] name="${productName}", nameDetect="${nameDetected}", dbType="${dbType}", FINAL="${finalType}"`);
+    return { type: finalType, productName };
+  } catch (e) {
+    console.error("❌ getActivationTypeFromDB failed:", e);
+    return { type: "otp", productName: "" };
+  }
 }
 
 Deno.serve(async (req) => {
@@ -600,45 +626,19 @@ Deno.serve(async (req) => {
 
       // === اختيار نوع التفعيل ===
       if (data === "choose_qr" || data === "choose_otp") {
-        // 🛡️ حماية ثلاثية: إعادة جلب اسم المنتج من DB مباشرة (لا نعتمد على الجلسة فقط)
-        let realType = detectActivationType(session.productName.toLowerCase());
-        console.log(`🔍 [choose] Session productName: "${session.productName}", initial detect: "${realType}"`);
-        
-        // إذا الكشف الأولي يقول OSN، أعد الجلب من DB للتأكد
-        if (realType === "otp") {
-          try {
-            const { data: freshCode } = await supabase
-              .from("activation_codes")
-              .select("product_id, products:product_id (name, activation_type)")
-              .eq("id", session.activationCodeId)
-              .maybeSingle();
-            
-            if (freshCode) {
-              const freshName = (freshCode as any).products?.name || "";
-              const freshDbType = (freshCode as any).products?.activation_type || null;
-              const freshDetect = detectActivationType(freshName.toLowerCase());
-              console.log(`🔍 [choose] DB re-fetch: name="${freshName}", db_type="${freshDbType}", detect="${freshDetect}"`);
-              
-              if (freshDetect !== "otp") {
-                realType = freshDetect;
-              } else if (freshDbType && freshDbType !== "otp" && freshDbType !== "qr") {
-                realType = freshDbType;
-              }
-            }
-          } catch (e) {
-            console.error("❌ [choose] DB re-fetch failed:", e);
-          }
-        }
-        
-        console.log(`🔍 [choose] FINAL realType: "${realType}" for callback "${data}"`);
+        // 🛡️ حماية مطلقة: جلب نوع المنتج من DB مباشرة (لا نعتمد على الذاكرة أبداً)
+        const dbCheck = await getActivationTypeFromDB(session.activationCodeId);
+        const realType = dbCheck.type;
+        console.log(`🛡️ [choose_${data === "choose_qr" ? "qr" : "otp"}] DB says: type="${realType}", name="${dbCheck.productName}", session says: "${session.activationType}"`);
         
         if (realType === "crunchyroll") {
-          // تحويل تلقائي لمسار Crunchyroll
-          console.log(`🔄 Auto-redirect: ${session.productName} → Crunchyroll flow (was choose_otp/qr)`);
+          // 🔥 تحويل مطلق لمسار Crunchyroll - لا يمر من هنا أبداً
+          console.log(`🔄 ABSOLUTE REDIRECT: ${dbCheck.productName} → Crunchyroll flow (was ${data})`);
+          session.activationType = "crunchyroll";
+          
           if (data === "choose_qr") {
             // TV → Crunchyroll TV
             session.step = "crunchyroll_awaiting_tv_code";
-            session.activationType = "crunchyroll";
             await updateActivationCode(session.activationCodeId, chatId, username, "crunchyroll_awaiting_tv_code");
             await editTelegramMessage(
               botToken, chatId, messageId,
@@ -653,7 +653,6 @@ Deno.serve(async (req) => {
           } else {
             // Phone → Crunchyroll Phone
             session.step = "crunchyroll_phone_sent";
-            session.activationType = "crunchyroll";
             await updateActivationCode(session.activationCodeId, chatId, username, "crunchyroll_phone_sent", session.accountEmail, session.accountPassword);
             await editTelegramMessage(
               botToken, chatId, messageId,
