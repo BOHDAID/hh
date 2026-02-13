@@ -431,12 +431,9 @@ async function reconstructSession(chatId: string): Promise<UserSession | null> {
     const productName = (code as any).products?.name || "المنتج";
     const productId = code.product_id;
     // كشف تلقائي من اسم المنتج (نفس المنطق في مرحلة إدخال الكود)
-    const dbType = (code as any).products?.activation_type || null;
+      const dbType = (code as any).products?.activation_type || null;
     const nameCheck = productName.toLowerCase();
-    const activationType = dbType || 
-      (nameCheck.includes("crunchyroll") ? "crunchyroll" : 
-       nameCheck.includes("chatgpt") || nameCheck.includes("openai") ? "chatgpt" : 
-       "otp");
+    const activationType = dbType || detectActivationType(nameCheck);
 
     // جلب بيانات Gmail من الجلسة
     const sessionData = await getSessionForProduct(productId);
@@ -473,6 +470,21 @@ async function reconstructSession(chatId: string): Promise<UserSession | null> {
     console.error("❌ Failed to reconstruct session:", err);
     return null;
   }
+}
+
+// 🔍 كشف تلقائي لنوع التفعيل من اسم المنتج (مركزي)
+function detectActivationType(name: string): string {
+  const n = name.toLowerCase();
+  // Crunchyroll - كل الاحتمالات (إنجليزي + عربي)
+  if (n.includes("crunch") || n.includes("كرنش") || n.includes("كرانش") || n.includes("كرنشي")) {
+    return "crunchyroll";
+  }
+  // ChatGPT / OpenAI
+  if (n.includes("chatgpt") || n.includes("openai") || n.includes("شات جي بي تي") || n.includes("شات")) {
+    return "chatgpt";
+  }
+  // Default: OSN/OTP
+  return "otp";
 }
 
 Deno.serve(async (req) => {
@@ -1124,10 +1136,7 @@ Deno.serve(async (req) => {
       // كشف تلقائي من اسم المنتج إذا activation_type غير مضبوط
       const dbActivationType = activationCode.products?.activation_type || null;
       const nameLower = productName.toLowerCase();
-      const productActivationType = dbActivationType || 
-        (nameLower.includes("crunchyroll") ? "crunchyroll" : 
-         nameLower.includes("chatgpt") || nameLower.includes("openai") ? "chatgpt" : 
-         null);
+      const productActivationType = dbActivationType || detectActivationType(nameLower);
       
       console.log(`🔍 Product: ${productName}, db_type: ${dbActivationType}, resolved_type: ${productActivationType}`);
 
