@@ -1080,75 +1080,110 @@ class OSNSessionManager {
           };
         }
 
-        // الخطوة 3: انتظار تحميل الصفحة وحقل الكود
-        console.log('⏳ [Crunchyroll] Waiting for activation input (up to 60s)...');
+        // الخطوة 3: انتظار حقل الكود بالسيلكتورات المحددة
+        console.log('⏳ [Crunchyroll] Waiting for code input field...');
+        const codeSelectors = [
+          'input#device_code',
+          'input[name="code"]',
+          'input[name="device_code"]',
+          'input[maxlength="6"]',
+          'input[type="text"]',
+        ];
+
         let codeInput = null;
-        
         try {
-          await page.waitForSelector('input[type="text"], input[name="code"], input[placeholder*="code" i], input[maxlength="6"], input[maxlength="7"]', {
-            timeout: 60000,
+          await page.waitForSelector(codeSelectors.join(', '), {
+            timeout: 30000,
             visible: true,
           });
-          codeInput = await page.$('input[type="text"], input[name="code"], input[placeholder*="code" i], input[maxlength="6"], input[maxlength="7"]');
+          // جرّب كل سيلكتور بالترتيب
+          for (const sel of codeSelectors) {
+            codeInput = await page.$(sel);
+            if (codeInput) {
+              console.log(`✅ [Crunchyroll] Found input with selector: ${sel}`);
+              break;
+            }
+          }
         } catch {
-          // fallback: أي input مرئي
+          // fallback
           const inputs = await page.$$('input:not([type="hidden"])');
-          if (inputs.length > 0) codeInput = inputs[0];
+          if (inputs.length > 0) {
+            codeInput = inputs[0];
+            console.log('⚠️ [Crunchyroll] Using fallback input element');
+          }
         }
 
         if (!codeInput) {
           const diagnostics = await page.evaluate(() => ({
             inputCount: document.querySelectorAll('input').length,
-            bodyText: document.body?.innerText?.substring(0, 300) || '',
+            bodyText: document.body?.innerText?.substring(0, 500) || '',
             url: window.location.href,
+            html: document.querySelector('form')?.innerHTML?.substring(0, 300) || 'no form',
           }));
           console.log('🔍 [Crunchyroll] Page diagnostics:', JSON.stringify(diagnostics));
-          return { success: false, error: 'لم يتم العثور على حقل إدخال الكود. قد تكون الصفحة محظورة.' };
+          return { success: false, error: 'لم يتم العثور على حقل إدخال الكود. قد تكون الصفحة محظورة أو الكوكيز منتهية.' };
         }
 
-        // الخطوة 4: إدخال كود التفعيل
-        console.log(`📺 [Crunchyroll] Entering TV code: ${tvCode}`);
+        // الخطوة 4: إدخال الرمز المكون من 6 أرقام
+        console.log(`📺 [Crunchyroll] Typing TV code: ${tvCode}`);
         await codeInput.click({ clickCount: 3 });
         await page.keyboard.press('Backspace');
         await this._sleep(300);
-        await codeInput.type(tvCode, { delay: 150 });
+        await codeInput.type(tvCode, { delay: 120 });
         await this._sleep(1000);
 
-        // الخطوة 5: الضغط على زر التفعيل
-        console.log('🔘 [Crunchyroll] Looking for activate button...');
-        const activateBtn = await this._findButton(page, ['activate', 'link', 'submit', 'connect', 'تفعيل', 'ربط']);
+        // الخطوة 5: الضغط على زر التفعيل - أولوية لـ button[type="submit"]
+        console.log('🔘 [Crunchyroll] Looking for submit button...');
+        let activateBtn = await page.$('button[type="submit"]');
+        if (!activateBtn) {
+          activateBtn = await this._findButton(page, ['activate', 'link', 'submit', 'connect', 'تفعيل', 'ربط']);
+        }
+
         if (activateBtn) {
-          console.log('🔘 [Crunchyroll] Clicking activate button...');
+          console.log('🔘 [Crunchyroll] Clicking activate/submit button...');
           await activateBtn.click();
         } else {
           console.log('⏎ [Crunchyroll] No button found, pressing Enter...');
           await page.keyboard.press('Enter');
         }
         
-        // الخطوة 6: انتظار النتيجة
-        console.log('⏳ [Crunchyroll] Waiting for result...');
-        await this._sleep(8000);
+        // الخطوة 6: انتظار النتيجة مع مراقبة تغيّر الصفحة
+        console.log('⏳ [Crunchyroll] Waiting for activation result...');
+        await this._sleep(5000);
 
-        const resultText = await page.evaluate(() => document.body?.innerText?.toLowerCase() || '');
-        const finalUrl = page.url();
-        console.log(`🔗 [Crunchyroll] Final URL: ${finalUrl}`);
-        console.log(`📄 [Crunchyroll] Result text: ${resultText.substring(0, 300)}`);
+        // فحص النتيجة عدة مرات (الصفحة قد تتأخر)
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const resultText = await page.evaluate(() => document.body?.innerText?.toLowerCase() || '');
+          const finalUrl = page.url();
+          console.log(`🔗 [Crunchyroll] Attempt ${attempt + 1} - URL: ${finalUrl}`);
+          console.log(`📄 [Crunchyroll] Page text (first 400): ${resultText.substring(0, 400)}`);
 
-        // التحقق من النجاح
-        if (resultText.includes('success') || resultText.includes('activated') || 
-            resultText.includes('linked') || resultText.includes('connected') ||
-            resultText.includes('device') && resultText.includes('added')) {
-          console.log('✅ [Crunchyroll] TV activated successfully!');
-          return { success: true, paired: true, message: 'تم تفعيل Crunchyroll على التلفزيون بنجاح! 🎉' };
+          // ✅ نجاح
+          if (resultText.includes('success') || resultText.includes('link successful') ||
+              resultText.includes('activated') || resultText.includes('linked') || 
+              resultText.includes('connected') || resultText.includes('device has been linked') ||
+              (resultText.includes('device') && resultText.includes('added'))) {
+            console.log('✅ [Crunchyroll] TV activated successfully!');
+            return { success: true, paired: true, message: '✅ تم تفعيل التلفاز بنجاح! استمتع بالمشاهدة 🎉📺' };
+          }
+
+          // ❌ خطأ واضح
+          if (resultText.includes('invalid') || resultText.includes('expired') || 
+              resultText.includes('incorrect') || resultText.includes('wrong code') ||
+              resultText.includes('not found') || resultText.includes('error')) {
+            const errorMsg = resultText.includes('expired') 
+              ? '❌ الرمز منتهي الصلاحية. أعد تشغيل التطبيق على التلفاز واحصل على رمز جديد.'
+              : '❌ الرمز غير صحيح. تأكد من إدخال الرمز الظاهر على شاشة التلفاز بالضبط.';
+            return { success: false, paired: false, error: errorMsg };
+          }
+
+          // انتظر ثم أعد المحاولة
+          if (attempt < 2) await this._sleep(3000);
         }
 
-        if (resultText.includes('invalid') || resultText.includes('expired') || resultText.includes('incorrect')) {
-          return { success: false, paired: false, error: 'الكود غير صحيح أو منتهي الصلاحية. تأكد من الكود على شاشة التلفزيون.' };
-        }
-
-        // غير متأكد - نعتبره نجاح مبدئي
-        console.log('⚠️ [Crunchyroll] Uncertain result, assuming success');
-        return { success: true, paired: true, message: 'تم إدخال الكود. تحقق من شاشة التلفزيون.' };
+        // غير متأكد بعد 3 محاولات
+        console.log('⚠️ [Crunchyroll] Uncertain result after retries');
+        return { success: true, paired: true, message: '⏳ تم إدخال الكود. تحقق من شاشة التلفزيون خلال ثوانٍ.' };
       } catch (err) {
         console.error('❌ [Crunchyroll] TV activation error:', err.message);
         return { success: false, error: err.message };
