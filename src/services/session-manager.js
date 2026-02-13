@@ -1075,9 +1075,14 @@ class OSNSessionManager {
           return { success: false, error: 'الكوكيز لا تحتوي على etp_rt أو session_id. يرجى استخراج كوكيز جديدة شاملة.' };
         }
 
-        // الخطوة 2: التوجه مباشرة لصفحة التفعيل (بدون فحص الصفحة الرئيسية)
-        console.log('📺 [Crunchyroll] Navigating directly to crunchyroll.com/en-gb/activate');
-        await page.goto('https://www.crunchyroll.com/en-gb/activate', { 
+        // الخطوة 2: إجبار اللغة الإنجليزية عبر HTTP Header لمنع redirect للعربية
+        await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
+        console.log('🌐 [Crunchyroll] Set Accept-Language: en-US,en;q=0.9');
+
+        // التوجه مباشرة لصفحة التفعيل مع lang=en لمنع إعادة التوجيه
+        const activateUrl = 'https://www.crunchyroll.com/activate?lang=en';
+        console.log(`📺 [Crunchyroll] Navigating to ${activateUrl}`);
+        await page.goto(activateUrl, { 
           waitUntil: 'networkidle2', 
           timeout: 60000 
         });
@@ -1086,15 +1091,27 @@ class OSNSessionManager {
         const currentUrl = page.url();
         console.log(`🔗 [Crunchyroll] Current URL: ${currentUrl}`);
 
+        // إذا تم التحويل للعربية، نعيد التوجيه بالقوة
+        if (currentUrl.includes('/ar/')) {
+          console.log('⚠️ [Crunchyroll] Redirected to Arabic! Forcing English...');
+          await page.goto('https://www.crunchyroll.com/en-gb/activate', { 
+            waitUntil: 'networkidle2', 
+            timeout: 60000 
+          });
+          await this._sleep(3000);
+          console.log(`🔗 [Crunchyroll] After redirect fix URL: ${page.url()}`);
+        }
+
         if (currentUrl.includes('login') || currentUrl.includes('signin')) {
           console.log('❌ [Crunchyroll] Redirected to login - cookies invalid');
           return { success: false, error: 'الكوكيز منتهية الصلاحية. تم التحويل لصفحة تسجيل الدخول.' };
         }
 
-        // الخطوة 3: انتظار حقل الكود بالسيلكتورات المحددة
-        console.log('⏳ [Crunchyroll] Waiting for code input field...');
+        // الخطوة 3: انتظار حقل الكود (30 ثانية + سلكتورات محسّنة)
+        console.log('⏳ [Crunchyroll] Waiting for code input field (30s timeout)...');
         const codeSelectors = [
           'input#device_code',
+          'input.device-code-input',
           'input[name="code"]',
           'input[name="device_code"]',
           'input[maxlength="6"]',
@@ -1104,10 +1121,9 @@ class OSNSessionManager {
         let codeInput = null;
         try {
           await page.waitForSelector(codeSelectors.join(', '), {
-            timeout: 20000,
+            timeout: 30000,
             visible: true,
           });
-          // جرّب كل سيلكتور بالترتيب
           for (const sel of codeSelectors) {
             codeInput = await page.$(sel);
             if (codeInput) {
@@ -1116,7 +1132,7 @@ class OSNSessionManager {
             }
           }
         } catch {
-          // fallback
+          // fallback: check for any visible input
           const inputs = await page.$$('input:not([type="hidden"])');
           if (inputs.length > 0) {
             codeInput = inputs[0];
@@ -1125,6 +1141,14 @@ class OSNSessionManager {
         }
 
         if (!codeInput) {
+          // حفظ screenshot للتشخيص
+          const screenshotPath = `/tmp/crunchyroll-fail-${Date.now()}.png`;
+          try {
+            await page.screenshot({ path: screenshotPath, fullPage: true });
+            console.log(`📸 [Crunchyroll] Screenshot saved: ${screenshotPath}`);
+          } catch (ssErr) {
+            console.log(`⚠️ [Crunchyroll] Screenshot failed: ${ssErr.message}`);
+          }
           const diagnostics = await page.evaluate(() => ({
             inputCount: document.querySelectorAll('input').length,
             bodyText: document.body?.innerText?.substring(0, 500) || '',
@@ -1132,7 +1156,7 @@ class OSNSessionManager {
             html: document.querySelector('form')?.innerHTML?.substring(0, 300) || 'no form',
           }));
           console.log('🔍 [Crunchyroll] Page diagnostics:', JSON.stringify(diagnostics));
-          return { success: false, error: 'لم يتم العثور على حقل إدخال الكود. قد تكون الصفحة محظورة أو الكوكيز منتهية.' };
+          return { success: false, error: `لم يتم العثور على حقل إدخال الكود. الصفحة: ${diagnostics.url} - Screenshot: ${screenshotPath}` };
         }
 
         // الخطوة 4: إدخال الرمز المكون من 6 أرقام
