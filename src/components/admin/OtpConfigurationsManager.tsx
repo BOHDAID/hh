@@ -15,7 +15,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Textarea } from "@/components/ui/textarea";
 import { 
   Mail, Plus, Loader2, Trash2, Edit, Eye, EyeOff, 
-  QrCode, Key, RefreshCw, AlertCircle, ChevronDown, ChevronUp, Package, Wifi, WifiOff, Cookie
+  QrCode, Key, RefreshCw, AlertCircle, ChevronDown, ChevronUp, Package, Wifi, WifiOff, Cookie, ShieldCheck
 } from "lucide-react";
 
 interface OsnSession {
@@ -121,6 +121,8 @@ const OtpConfigurationsManager = () => {
   const [editSessionPassword, setEditSessionPassword] = useState("");
   const [editSessionCookies, setEditSessionCookies] = useState("");
   const [savingSession, setSavingSession] = useState(false);
+  const [testingCookies, setTestingCookies] = useState<string | null>(null);
+  const [cookieTestResults, setCookieTestResults] = useState<Record<string, { valid: boolean | null; reason: string; platform?: string }>>({});
 
   const [form, setForm] = useState({
     product_id: "",
@@ -289,6 +291,33 @@ const OtpConfigurationsManager = () => {
   };
 
   // ==================== Cookie Sessions ====================
+
+  const testCookieValidity = async (sessionId: string) => {
+    setTestingCookies(sessionId);
+    try {
+      const CLOUD_URL = import.meta.env.VITE_SUPABASE_URL;
+      const CLOUD_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const response = await fetch(`${CLOUD_URL}/functions/v1/test-cookies`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${CLOUD_KEY}`,
+          'apikey': CLOUD_KEY,
+        },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+      const result = await response.json();
+      setCookieTestResults(prev => ({ ...prev, [sessionId]: result }));
+      toast({
+        title: result.valid ? "✅ كوكيز صالحة" : result.valid === false ? "❌ كوكيز منتهية" : "⚠️ غير معروف",
+        description: result.reason,
+        variant: result.valid === false ? "destructive" : "default",
+      });
+    } catch (error: any) {
+      toast({ title: "❌ خطأ", description: error.message, variant: "destructive" });
+    }
+    setTestingCookies(null);
+  };
 
   const extractInfoFromCookies = (cookies: any[]): string | null => {
     if (!Array.isArray(cookies)) return null;
@@ -708,6 +737,21 @@ const OtpConfigurationsManager = () => {
                       <Badge variant={session.is_connected ? "default" : "secondary"} className="text-xs">
                         {session.is_connected ? "متصل" : "غير متصل"}
                       </Badge>
+                      {cookieTestResults[session.id] && (
+                        <Badge variant={cookieTestResults[session.id].valid ? "default" : cookieTestResults[session.id].valid === false ? "destructive" : "secondary"} className="text-xs">
+                          {cookieTestResults[session.id].valid ? "✅ صالحة" : cookieTestResults[session.id].valid === false ? "❌ منتهية" : "⚠️"}
+                        </Badge>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        disabled={testingCookies === session.id}
+                        onClick={() => testCookieValidity(session.id)}
+                        title="اختبار صلاحية الكوكيز"
+                      >
+                        {testingCookies === session.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                      </Button>
                       <Button
                         variant="outline"
                         size="icon"

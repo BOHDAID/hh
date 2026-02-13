@@ -65,6 +65,9 @@ export const FUNCTION_SLUGS: Record<string, string> = {
   
   // === Gmail OTP ===
   'gmail-read-otp': 'gmail-read-otp',
+  
+  // === Cookie Testing ===
+  'test-cookies': 'test-cookies',
 };
 
 console.log('🔗 Cloud Functions Client:', CLOUD_URL);

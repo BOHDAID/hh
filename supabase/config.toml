@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.gmail-read-otp]
 verify_jwt = false
+
+[functions.test-cookies]
+verify_jwt = false
