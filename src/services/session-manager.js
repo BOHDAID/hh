@@ -1066,9 +1066,17 @@ class OSNSessionManager {
         await page.setCookie(...crCookies);
         console.log(`✅ [Crunchyroll] ${crCookies.length} cookies loaded`);
 
-        // الخطوة 2: زيارة الصفحة الرئيسية أولاً لتفعيل الكوكيز
-        console.log('🌐 [Crunchyroll] Visiting homepage first to activate cookies...');
-        await page.goto('https://www.crunchyroll.com/', { 
+        // التحقق من وجود الكوكيز الأساسية
+        const hasEtpRt = crCookies.some(c => c.name === 'etp_rt');
+        const hasSessionId = crCookies.some(c => c.name === 'session_id');
+        console.log(`🔑 [Crunchyroll] Key cookies: etp_rt=${hasEtpRt}, session_id=${hasSessionId}`);
+        if (!hasEtpRt && !hasSessionId) {
+          console.log('⚠️ [Crunchyroll] WARNING: Missing critical cookies (etp_rt, session_id). Login may fail.');
+        }
+
+        // الخطوة 2: زيارة الصفحة الرئيسية بالإنجليزية أولاً لتفعيل الكوكيز
+        console.log('🌐 [Crunchyroll] Visiting English homepage first to activate cookies...');
+        await page.goto('https://www.crunchyroll.com/en/', { 
           waitUntil: 'networkidle2', 
           timeout: 60000 
         });
@@ -1083,13 +1091,14 @@ class OSNSessionManager {
           console.log('❌ [Crunchyroll] Cookies expired or invalid - not logged in on homepage');
           return { 
             success: false, 
-            error: 'الكوكيز منتهية الصلاحية أو غير صالحة. يرجى تحديث الكوكيز في لوحة الإدارة.' 
+            error: 'الكوكيز منتهية الصلاحية أو غير صالحة. يرجى تحديث الكوكيز في لوحة الإدارة.',
+            missingCookies: { etp_rt: !hasEtpRt, session_id: !hasSessionId }
           };
         }
 
-        // الخطوة 3: الانتقال لصفحة التفعيل
-        console.log('📺 [Crunchyroll] Navigating to crunchyroll.com/activate');
-        await page.goto('https://www.crunchyroll.com/activate', { 
+        // الخطوة 3: الانتقال لصفحة التفعيل بالإنجليزية
+        console.log('📺 [Crunchyroll] Navigating to crunchyroll.com/en/activate');
+        await page.goto('https://www.crunchyroll.com/en/activate', { 
           waitUntil: 'networkidle2', 
           timeout: 60000 
         });
@@ -1119,7 +1128,7 @@ class OSNSessionManager {
         let codeInput = null;
         try {
           await page.waitForSelector(codeSelectors.join(', '), {
-            timeout: 30000,
+            timeout: 20000,
             visible: true,
           });
           // جرّب كل سيلكتور بالترتيب
