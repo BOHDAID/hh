@@ -454,9 +454,10 @@ async function reconstructSession(chatId: string): Promise<UserSession | null> {
     const productName = (code as any).products?.name || "المنتج";
     const productId = code.product_id;
     // كشف تلقائي من اسم المنتج (نفس المنطق في مرحلة إدخال الكود)
-      const dbType = (code as any).products?.activation_type || null;
+    const dbType = (code as any).products?.activation_type || null;
     const nameCheck = productName.toLowerCase();
-    const activationType = dbType || detectActivationType(nameCheck);
+    const nameDetected = detectActivationType(nameCheck);
+    const activationType = (nameDetected !== "otp") ? nameDetected : (dbType || "otp");
 
     // جلب بيانات Gmail من الجلسة
     const sessionData = await getSessionForProduct(productId);
@@ -1139,9 +1140,11 @@ Deno.serve(async (req) => {
       // كشف تلقائي من اسم المنتج إذا activation_type غير مضبوط
       const dbActivationType = activationCode.products?.activation_type || null;
       const nameLower = productName.toLowerCase();
-      const productActivationType = dbActivationType || detectActivationType(nameLower);
+      // الاسم يأخذ الأولوية على DB إذا DB عامة (otp/qr) واسم المنتج يدل على نوع محدد
+      const nameDetected = detectActivationType(nameLower);
+      const productActivationType = (nameDetected !== "otp") ? nameDetected : (dbActivationType || "otp");
       
-      console.log(`🔍 Product: "${productName}", nameLower: "${nameLower}", db_type: "${dbActivationType}", resolved_type: "${productActivationType}", includes_crunch: ${nameLower.includes("crunch")}`);
+      console.log(`🔍 Product: "${productName}", nameLower: "${nameLower}", db_type: "${dbActivationType}", name_detected: "${nameDetected}", FINAL: "${productActivationType}"`);
 
       // جلب الجلسة المناسبة لهذا المنتج
       const sessionData = await getSessionForProduct(productId);
