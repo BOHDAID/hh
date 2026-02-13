@@ -460,7 +460,7 @@ const SettingsTab = () => {
                 </div>
               </CardHeader>
               <CardContent className="space-y-5">
-                {renderSettingInput("اسم المتجر", "store_name", "متجر رقمي")}
+                {renderSettingInput("اسم المتجر", "store_name", "متجر رقمي", { description: "يظهر في تبويب المتصفح وعنوان الصفحة" })}
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">شعار المتجر</Label>
                   <ImageUpload
@@ -469,6 +469,15 @@ const SettingsTab = () => {
                     bucket="store-assets"
                     removeBackground={true}
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">أيقونة التبويب (Favicon)</Label>
+                  <ImageUpload
+                    value={settings.store_favicon_url || ""}
+                    onChange={(url) => updateSetting("store_favicon_url", url)}
+                    bucket="store-assets"
+                  />
+                  <p className="text-xs text-muted-foreground">أيقونة صغيرة تظهر في تبويب المتصفح. يُفضل حجم 32×32 أو 64×64 بكسل (PNG).</p>
                 </div>
                 {renderSettingInput("بريد الدعم الفني", "support_email", "support@yourstore.com", { dir: "ltr", description: "البريد الظاهر للعملاء للتواصل" })}
                 <div className="space-y-2">
