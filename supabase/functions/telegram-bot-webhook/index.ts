@@ -906,6 +906,7 @@ Deno.serve(async (req) => {
           
           await editTelegramMessage(
             botToken, chatId, messageId,
+            `✅ <b>مسار Crunchyroll</b>\n` +
             `📺 <b>تفعيل Crunchyroll على التلفزيون</b>\n\n` +
             `📝 <b>التعليمات:</b>\n` +
             `1️⃣ افتح تطبيق Crunchyroll على تلفزيونك\n` +
@@ -921,6 +922,7 @@ Deno.serve(async (req) => {
           
           await editTelegramMessage(
             botToken, chatId, messageId,
+            `✅ <b>مسار Crunchyroll</b>\n` +
             `📱 <b>تفعيل Crunchyroll على الهاتف</b>\n\n` +
             `📧 البريد: <code>${session.accountEmail}</code>\n` +
             `🔑 كلمة المرور: <code>${session.accountPassword || "غير محدد"}</code>\n\n` +
@@ -1350,11 +1352,13 @@ Deno.serve(async (req) => {
         await sendTelegramMessage(
           botToken, chatId,
           `✅ <b>كود صالح!</b>\n\n` +
-          `📦 المنتج: <b>${productName}</b>\n\n` +
+          `📦 المنتج: <b>${productName}</b>\n` +
+          `🎬 <b>مسار: Crunchyroll</b>\n\n` +
           `اختر طريقة التفعيل:\n\n` +
           `─────────\n\n` +
           `✅ <b>Valid code!</b>\n\n` +
-          `📦 Product: <b>${productName}</b>\n\n` +
+          `📦 Product: <b>${productName}</b>\n` +
+          `🎬 <b>Path: Crunchyroll</b>\n\n` +
           `Choose activation method:`,
           [
             [
