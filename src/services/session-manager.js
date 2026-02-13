@@ -1044,10 +1044,22 @@ class OSNSessionManager {
       return { success: false, error: 'لا توجد كوكيز محفوظة للحساب' };
     }
 
-    // Crunchyroll uses cookies — skip proxy to avoid ERR_INVALID_AUTH_CREDENTIALS
+    // استخدام البروكسي لتجنب كشف IP السيرفر + عدم تخطيه
     return await this._withBrowser(async (browser) => {
       const page = await browser.newPage();
-      await this._applyStealthToPage(page);
+      
+      // لا نستخدم _applyStealthToPage لأنها قد تمسح الكوكيز المشفرة
+      // نكتفي بتثبيت User-Agent ثابت يطابق المتصفح الذي استُخرجت منه الكوكيز
+      const fixedUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
+      await page.setUserAgent(fixedUA);
+      await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
+      console.log(`🕵️ [Crunchyroll] Fixed UA: ${fixedUA.substring(0, 60)}...`);
+
+      // تطبيق proxy auth إذا كان متاحاً
+      if (browser._proxyAuth) {
+        await page.authenticate(browser._proxyAuth);
+        console.log('🌐 [Crunchyroll] Proxy auth applied');
+      }
 
       try {
         // الخطوة 1: تحميل الكوكيز (تسجيل دخول مسبق)
@@ -1075,12 +1087,8 @@ class OSNSessionManager {
           return { success: false, error: 'الكوكيز لا تحتوي على etp_rt أو session_id. يرجى استخراج كوكيز جديدة شاملة.' };
         }
 
-        // الخطوة 2: إجبار اللغة الإنجليزية عبر HTTP Header لمنع redirect للعربية
-        await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
-        console.log('🌐 [Crunchyroll] Set Accept-Language: en-US,en;q=0.9');
-
-        // التوجه مباشرة لصفحة التفعيل مع lang=en لمنع إعادة التوجيه
-        const activateUrl = 'https://www.crunchyroll.com/activate?lang=en';
+        // الخطوة 2: التوجه مباشرة لصفحة التفعيل - بدون إضافة /en/ لتجنب redirect يمسح الجلسة
+        const activateUrl = 'https://www.crunchyroll.com/activate';
         console.log(`📺 [Crunchyroll] Navigating to ${activateUrl}`);
         await page.goto(activateUrl, { 
           waitUntil: 'networkidle2', 
@@ -1091,23 +1099,18 @@ class OSNSessionManager {
         const currentUrl = page.url();
         console.log(`🔗 [Crunchyroll] Current URL: ${currentUrl}`);
 
-        // إذا تم التحويل للعربية، نعيد التوجيه بالقوة
-        if (currentUrl.includes('/ar/')) {
-          console.log('⚠️ [Crunchyroll] Redirected to Arabic! Forcing English...');
-          await page.goto('https://www.crunchyroll.com/en-gb/activate', { 
-            waitUntil: 'networkidle2', 
-            timeout: 60000 
-          });
-          await this._sleep(3000);
-          console.log(`🔗 [Crunchyroll] After redirect fix URL: ${page.url()}`);
-        }
+        // فحص الكوكيز بعد التحميل
+        const loadedCookies = await page.cookies();
+        console.log(`🍪 [Crunchyroll] Cookies after load: ${loadedCookies.length}`);
+        const criticalCookies = loadedCookies.filter(c => ['etp_rt', 'session_id'].includes(c.name));
+        console.log(`🔑 [Crunchyroll] Critical cookies present: ${criticalCookies.map(c => c.name).join(', ') || 'NONE'}`);
 
         if (currentUrl.includes('login') || currentUrl.includes('signin')) {
           console.log('❌ [Crunchyroll] Redirected to login - cookies invalid');
           return { success: false, error: 'الكوكيز منتهية الصلاحية. تم التحويل لصفحة تسجيل الدخول.' };
         }
 
-        // الخطوة 3: انتظار حقل الكود (30 ثانية + سلكتورات محسّنة)
+        // الخطوة 3: انتظار حقل الكود (30 ثانية)
         console.log('⏳ [Crunchyroll] Waiting for code input field (30s timeout)...');
         const codeSelectors = [
           'input#device_code',
@@ -1223,7 +1226,7 @@ class OSNSessionManager {
         console.error('❌ [Crunchyroll] TV activation error:', err.message);
         return { success: false, error: err.message };
       }
-    }, { supabase, skipProxy: true });
+    }, { supabase, skipProxy: false });
   }
 
 }
