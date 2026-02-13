@@ -1066,7 +1066,28 @@ class OSNSessionManager {
         await page.setCookie(...crCookies);
         console.log(`✅ [Crunchyroll] ${crCookies.length} cookies loaded`);
 
-        // الخطوة 2: الذهاب لصفحة التفعيل
+        // الخطوة 2: زيارة الصفحة الرئيسية أولاً لتفعيل الكوكيز
+        console.log('🌐 [Crunchyroll] Visiting homepage first to activate cookies...');
+        await page.goto('https://www.crunchyroll.com/', { 
+          waitUntil: 'networkidle2', 
+          timeout: 60000 
+        });
+        await this._sleep(3000);
+
+        // التحقق من تسجيل الدخول في الصفحة الرئيسية
+        const homePageText = await page.evaluate(() => document.body.innerText.substring(0, 2000));
+        const isLoggedIn = !homePageText.includes('Log In') && !homePageText.includes('Start a Free Trial') && !homePageText.includes('Create Account');
+        console.log(`🔍 [Crunchyroll] Homepage login check: ${isLoggedIn ? '✅ Logged in' : '❌ NOT logged in'}`);
+
+        if (!isLoggedIn) {
+          console.log('❌ [Crunchyroll] Cookies expired or invalid - not logged in on homepage');
+          return { 
+            success: false, 
+            error: 'الكوكيز منتهية الصلاحية أو غير صالحة. يرجى تحديث الكوكيز في لوحة الإدارة.' 
+          };
+        }
+
+        // الخطوة 3: الانتقال لصفحة التفعيل
         console.log('📺 [Crunchyroll] Navigating to crunchyroll.com/activate');
         await page.goto('https://www.crunchyroll.com/activate', { 
           waitUntil: 'networkidle2', 
@@ -1074,12 +1095,11 @@ class OSNSessionManager {
         });
         await this._sleep(3000);
 
-        // التحقق: هل نحن مسجلين دخول أم لا؟
         const currentUrl = page.url();
         console.log(`🔗 [Crunchyroll] Current URL: ${currentUrl}`);
 
         if (currentUrl.includes('login') || currentUrl.includes('signin')) {
-          console.log('❌ [Crunchyroll] Cookies expired - redirected to login');
+          console.log('❌ [Crunchyroll] Redirected to login page');
           return { 
             success: false, 
             error: 'الكوكيز منتهية الصلاحية. يرجى تحديث الكوكيز في لوحة الإدارة.' 
