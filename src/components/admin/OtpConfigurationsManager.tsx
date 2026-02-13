@@ -333,8 +333,8 @@ const OtpConfigurationsManager = () => {
     if (!selectedVariantId) { toast({ title: "خطأ", description: "يرجى اختيار المنتج الفرعي", variant: "destructive" }); return; }
     if (!manualEmail.trim()) { toast({ title: "خطأ", description: "يرجى إدخال إيميل الحساب", variant: "destructive" }); return; }
 
-    // ChatGPT or Crunchyroll: email + password only, no cookies
-    if (sessionType === "chatgpt" || sessionType === "crunchyroll") {
+    // ChatGPT: email + password only, no cookies
+    if (sessionType === "chatgpt") {
       if (!chatgptPassword.trim()) { toast({ title: "خطأ", description: "يرجى إدخال كلمة مرور الحساب", variant: "destructive" }); return; }
       setImportingCookies(true);
       try {
@@ -351,8 +351,40 @@ const OtpConfigurationsManager = () => {
           toast({ title: "❌ خطأ", description: insertError.message, variant: "destructive" });
         } else {
           await db.from("product_variants").update({ is_unlimited: true }).eq("id", selectedVariantId);
-          const label = sessionType === "crunchyroll" ? "Crunchyroll" : "ChatGPT";
-          toast({ title: `✅ تم إنشاء جلسة ${label}`, description: `${manualEmail.trim()} — يمكنك إضافة Gmail SMTP لاحقاً` });
+          toast({ title: `✅ تم إنشاء جلسة ChatGPT`, description: `${manualEmail.trim()} — يمكنك إضافة Gmail SMTP لاحقاً` });
+        }
+        setCookieDialogOpen(false); setCookieText(""); setSelectedVariantId(""); setManualEmail(""); setChatgptPassword(""); setSessionType("osn");
+        await Promise.all([fetchOsnSessions(), fetchSessionStatus()]);
+      } catch (error: any) {
+        toast({ title: "❌ خطأ", description: error.message, variant: "destructive" });
+      } finally { setImportingCookies(false); }
+      return;
+    }
+
+    // Crunchyroll: cookies + email + password
+    if (sessionType === "crunchyroll") {
+      if (!chatgptPassword.trim()) { toast({ title: "خطأ", description: "يرجى إدخال كلمة مرور الحساب", variant: "destructive" }); return; }
+      if (!cookieText.trim()) { toast({ title: "خطأ", description: "يرجى لصق كوكيز Crunchyroll", variant: "destructive" }); return; }
+      setImportingCookies(true);
+      try {
+        let cookies;
+        try { cookies = JSON.parse(cookieText.trim()); }
+        catch { toast({ title: "خطأ في التنسيق", description: "الكوكيز يجب أن تكون بتنسيق JSON صالح", variant: "destructive" }); setImportingCookies(false); return; }
+
+        const { error: insertError } = await (db.from("osn_sessions") as any).insert({
+          variant_id: selectedVariantId,
+          email: manualEmail.trim(),
+          cookies: cookies,
+          is_active: true,
+          is_connected: true,
+          last_activity: new Date().toISOString(),
+          account_password: chatgptPassword.trim(),
+        });
+        if (insertError) {
+          toast({ title: "❌ خطأ", description: insertError.message, variant: "destructive" });
+        } else {
+          await db.from("product_variants").update({ is_unlimited: true }).eq("id", selectedVariantId);
+          toast({ title: `✅ تم إنشاء جلسة Crunchyroll`, description: `${manualEmail.trim()} — كوكيز للتلفاز + إيميل وباسورد للهاتف` });
         }
         setCookieDialogOpen(false); setCookieText(""); setSelectedVariantId(""); setManualEmail(""); setChatgptPassword(""); setSessionType("osn");
         await Promise.all([fetchOsnSessions(), fetchSessionStatus()]);
@@ -946,18 +978,24 @@ const OtpConfigurationsManager = () => {
               </div>
             )}
 
-            {/* OSN: كوكيز مطلوبة */}
-            {sessionType === "osn" && (
+            {/* OSN أو Crunchyroll: كوكيز مطلوبة */}
+            {(sessionType === "osn" || sessionType === "crunchyroll") && (
               <div className="space-y-2">
-                <Label>كوكيز OSN (JSON) <span className="text-destructive">*</span></Label>
+                <Label>كوكيز {sessionType === "crunchyroll" ? "Crunchyroll" : "OSN"} (JSON) <span className="text-destructive">*</span></Label>
                 <Textarea
-                  placeholder={'[\n  {\n    "name": "cookie_name",\n    "value": "cookie_value",\n    "domain": ".osnplus.com"\n  }\n]'}
+                  placeholder={sessionType === "crunchyroll" 
+                    ? '[\n  {\n    "name": "cookie_name",\n    "value": "cookie_value",\n    "domain": ".crunchyroll.com"\n  }\n]'
+                    : '[\n  {\n    "name": "cookie_name",\n    "value": "cookie_value",\n    "domain": ".osnplus.com"\n  }\n]'}
                   value={cookieText}
                   onChange={(e) => setCookieText(e.target.value)}
                   dir="ltr"
                   className="min-h-[150px] font-mono text-xs"
                 />
-                <p className="text-xs text-muted-foreground">استخدم إضافة "Cookie-Editor" لتصدير الكوكيز.</p>
+                <p className="text-xs text-muted-foreground">
+                  {sessionType === "crunchyroll" 
+                    ? "كوكيز تفعيل التلفاز — استخدم إضافة Cookie-Editor من crunchyroll.com"
+                    : "استخدم إضافة \"Cookie-Editor\" لتصدير الكوكيز."}
+                </p>
               </div>
             )}
 
@@ -967,10 +1005,10 @@ const OtpConfigurationsManager = () => {
                 {sessionType === "crunchyroll" ? (
                   <>
                     <p><strong>Crunchyroll:</strong></p>
-                    <p>1. أدخل إيميل وكلمة مرور حساب Crunchyroll</p>
-                    <p>2. بعد الإنشاء، أضف Gmail SMTP من زر ✉️ لقراءة رابط تغيير الباسورد</p>
-                    <p>3. البوت يعطي العميل خيار: تلفزيون (كود 6 أرقام) أو هاتف (إيميل + باسورد)</p>
-                    <p>4. بعد تفعيل الهاتف، يتم تغيير الباسورد تلقائياً عبر Gmail</p>
+                    <p>1. أدخل إيميل + كلمة مرور + كوكيز الحساب</p>
+                    <p>2. <strong>الكوكيز</strong> → تُستخدم لتفعيل التلفاز (TV Activation)</p>
+                    <p>3. <strong>الإيميل + الباسورد</strong> → تُرسل للعميل عند اختيار الهاتف</p>
+                    <p>4. البوت يعطي العميل خيار: تلفزيون أو هاتف</p>
                   </>
                 ) : sessionType === "chatgpt" ? (
                   <>
@@ -995,7 +1033,7 @@ const OtpConfigurationsManager = () => {
             <Button variant="outline" onClick={() => setCookieDialogOpen(false)}>إلغاء</Button>
             <Button onClick={handleImportCookies} disabled={importingCookies}>
               {importingCookies && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
-              {sessionType === "chatgpt" || sessionType === "crunchyroll" ? "إنشاء" : "استيراد"}
+              {sessionType === "chatgpt" ? "إنشاء" : "استيراد"}
             </Button>
           </DialogFooter>
         </DialogContent>
