@@ -498,20 +498,47 @@ async function handleCallbackQuery(callbackQuery) {
         `⏳ Linking with TV... Please wait ⌛\n\n📺 Code: <code>${tvCode}</code>`
       ));
 
-      // جلب الكوكيز من قاعدة البيانات
+      // جلب الكوكيز من قاعدة البيانات - فلترة حسب variant المرتبط بالمنتج
       let crCookies = null;
       try {
-        const { data: crSession } = await supabase
-          .from('osn_sessions')
-          .select('cookies, email')
-          .eq('is_active', true)
-          .eq('is_connected', true)
-          .limit(1)
-          .maybeSingle();
+        // أولاً: جلب الـ variants المرتبطة بمنتج Crunchyroll
+        const { data: variants } = await supabase
+          .from('product_variants')
+          .select('id')
+          .eq('product_id', session.productId)
+          .eq('is_active', true);
+
+        const variantIds = (variants || []).map(v => v.id);
+        
+        let crSession = null;
+        if (variantIds.length > 0) {
+          const { data: sessionData } = await supabase
+            .from('osn_sessions')
+            .select('cookies, email, account_password')
+            .in('variant_id', variantIds)
+            .eq('is_active', true)
+            .eq('is_connected', true)
+            .limit(1)
+            .maybeSingle();
+          crSession = sessionData;
+        }
+
+        // Fallback: إذا لم نجد بالـ variant، ابحث عن أي جلسة نشطة
+        if (!crSession) {
+          const { data: fallbackSession } = await supabase
+            .from('osn_sessions')
+            .select('cookies, email, account_password')
+            .eq('is_active', true)
+            .eq('is_connected', true)
+            .limit(1)
+            .maybeSingle();
+          crSession = fallbackSession;
+        }
         
         if (crSession?.cookies) {
           crCookies = typeof crSession.cookies === 'string' ? JSON.parse(crSession.cookies) : crSession.cookies;
         }
+        console.log(`🍪 Crunchyroll cookies loaded: ${crCookies ? crCookies.length + ' cookies' : 'NONE'}, product_id: ${session.productId}, variants: ${variantIds.join(',')}`);
       } catch (dbErr) {
         console.error('❌ DB error loading Crunchyroll cookies:', dbErr.message);
       }
