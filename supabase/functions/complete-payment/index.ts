@@ -225,8 +225,9 @@ serve(async (req: Request) => {
               const qty = item.quantity || 1;
               console.log(`Generating ${qty} code(s) for product ${item.product_id} (${productData?.name || 'unknown'})`);
 
-              // Get account email from OSN session via cloud (once per item)
+              // Get account email & password from OSN session via cloud (once per item)
               let accountEmail: string | null = null;
+              let accountPassword: string | null = null;
               try {
                 if (cloudClient) {
                   const { data: unlimitedVariants } = await adminClient
@@ -238,15 +239,19 @@ serve(async (req: Request) => {
                   for (const v of (unlimitedVariants || [])) {
                     const { data: session } = await cloudClient
                       .from("osn_sessions")
-                      .select("email")
+                      .select("email, account_password")
                       .eq("variant_id", v.id)
                       .eq("is_active", true)
                       .limit(1)
                       .maybeSingle();
-                    if (session?.email) { accountEmail = session.email; break; }
+                    if (session?.email) { 
+                      accountEmail = session.email;
+                      accountPassword = session.account_password || null;
+                      break; 
+                    }
                   }
                 }
-              } catch (e) { console.error("Error fetching OSN email:", e); }
+              } catch (e) { console.error("Error fetching OSN email/password:", e); }
 
               // توليد كود لكل وحدة من الكمية
               for (let q = 0; q < qty; q++) {
@@ -261,6 +266,7 @@ serve(async (req: Request) => {
                   expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
                 };
                 if (accountEmail) insertData.account_email = accountEmail;
+                if (accountPassword) insertData.account_password = accountPassword;
 
                 const { error: codeErr } = await adminClient
                   .from("activation_codes")
