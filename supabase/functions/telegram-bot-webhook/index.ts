@@ -1152,11 +1152,47 @@ Deno.serve(async (req) => {
       const qrSecret = Deno.env.get("QR_AUTOMATION_SECRET") || "default-qr-secret-key";
       
       try {
+        // جلب الكوكيز من osn_sessions
+        const sessionData = await getSessionForProduct(textSession.productId);
+        let cookies: any[] = [];
+        
+        if (sessionData?.variant_id) {
+          const { data: osnSession } = await supabase
+            .from("osn_sessions")
+            .select("cookies")
+            .eq("variant_id", sessionData.variant_id)
+            .eq("is_active", true)
+            .maybeSingle();
+          
+          if (osnSession?.cookies) {
+            cookies = Array.isArray(osnSession.cookies) ? osnSession.cookies : [];
+          }
+        }
+        
+        if (cookies.length === 0) {
+          // Fallback: جلب أي جلسة Crunchyroll نشطة
+          const { data: anyCrSession } = await supabase
+            .from("osn_sessions")
+            .select("cookies")
+            .eq("is_active", true)
+            .limit(1)
+            .maybeSingle();
+          
+          if (anyCrSession?.cookies && Array.isArray(anyCrSession.cookies)) {
+            cookies = anyCrSession.cookies;
+          }
+        }
+        
         console.log(`📺 [Crunchyroll TV] Calling Render: ${renderServerUrl}/api/qr/crunchyroll-activate-tv`);
-        console.log(`📺 [Crunchyroll TV] Code: ${text}, Email: ${textSession.accountEmail}`);
+        console.log(`📺 [Crunchyroll TV] Code: ${text}, Email: ${textSession.accountEmail}, Cookies: ${cookies.length}`);
+        
+        if (cookies.length === 0) {
+          await sendTelegramMessage(botToken, chatId, "❌ لا توجد كوكيز مخزنة لـ Crunchyroll.\n\nيرجى التواصل مع الدعم.\n\n❌ No Crunchyroll cookies found. Please contact support.");
+          return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
         
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes timeout
+        const timeoutId = setTimeout(() => controller.abort(), 120000);
         
         const response = await fetch(`${renderServerUrl}/api/qr/crunchyroll-activate-tv`, {
           method: "POST",
@@ -1165,8 +1201,7 @@ Deno.serve(async (req) => {
           body: JSON.stringify({ 
             secret: qrSecret,
             tvCode: text,
-            email: textSession.accountEmail,
-            password: textSession.accountPassword,
+            cookies: cookies,
           }),
         });
         
