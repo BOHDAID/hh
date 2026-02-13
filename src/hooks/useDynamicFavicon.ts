@@ -12,12 +12,6 @@ const processImageForFavicon = (src: string): Promise<string> => {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
-      const size = 128; // optimal favicon size
-      const canvas = document.createElement("canvas");
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext("2d")!;
-
       // Detect content bounds (trim transparent areas)
       const tempCanvas = document.createElement("canvas");
       tempCanvas.width = img.naturalWidth;
@@ -41,28 +35,29 @@ const processImageForFavicon = (src: string): Promise<string> => {
         }
       }
 
-      // Fill with rounded colored background
-      ctx.fillStyle = "#1a1a2e";
-      ctx.beginPath();
-      ctx.roundRect(0, 0, size, size, size * 0.15);
-      ctx.fill();
-
+      // If no content, use original
       if (top >= bottom || left >= right) {
-        ctx.drawImage(img, 0, 0, size, size);
-      } else {
-        const contentW = right - left + 1;
-        const contentH = bottom - top + 1;
-
-        // Draw logo filling 95% of space — no wasted padding
-        const maxDraw = size * 0.95;
-        const scale = maxDraw / Math.max(contentW, contentH);
-        const drawW = contentW * scale;
-        const drawH = contentH * scale;
-        const offsetX = (size - drawW) / 2;
-        const offsetY = (size - drawH) / 2;
-
-        ctx.drawImage(img, left, top, contentW, contentH, offsetX, offsetY, drawW, drawH);
+        resolve(src);
+        return;
       }
+
+      const contentW = right - left + 1;
+      const contentH = bottom - top + 1;
+
+      // Make square canvas exactly fitting the content + tiny padding
+      const maxSide = Math.max(contentW, contentH);
+      const padding = Math.round(maxSide * 0.08);
+      const size = maxSide + padding * 2;
+
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d")!;
+
+      // Draw the logo centered — NO background, just the logo itself
+      const drawX = padding + (maxSide - contentW) / 2;
+      const drawY = padding + (maxSide - contentH) / 2;
+      ctx.drawImage(img, left, top, contentW, contentH, drawX, drawY, contentW, contentH);
 
       resolve(canvas.toDataURL("image/png"));
     };
