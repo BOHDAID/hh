@@ -5,9 +5,9 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 // قاعدة البيانات الخارجية الخاصة بالمستخدم
 // ============================================================
 
-// Hardcoded External Supabase Credentials (Anon Key is publishable/safe)
-const EXTERNAL_SUPABASE_URL = 'https://vepwoilxujuyeuutybjp.supabase.co';
-const EXTERNAL_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlcHdvaWx4dWp1eWV1dXR5YmpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3MTk3MTYsImV4cCI6MjA4NTI5NTcxNn0.bzqiWihFNR73aPRTOSQoiTRmJVvpSrSGgVCaPCM1hZk';
+// External Supabase Credentials from environment variables
+const EXTERNAL_SUPABASE_URL = import.meta.env.VITE_EXTERNAL_SUPABASE_URL || 'https://vepwoilxujuyeuutybjp.supabase.co';
+const EXTERNAL_SUPABASE_ANON_KEY = import.meta.env.VITE_EXTERNAL_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlcHdvaWx4dWp1eWV1dXR5YmpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3MTk3MTYsImV4cCI6MjA4NTI5NTcxNn0.bzqiWihFNR73aPRTOSQoiTRmJVvpSrSGgVCaPCM1hZk';
 
 // دائماً مهيأ لأن القيم موجودة مباشرة
 export const isExternalConfigured = true;

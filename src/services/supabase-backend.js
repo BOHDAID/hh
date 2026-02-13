@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js';
  * يستخدم Service Role Key للوصول الكامل لقاعدة البيانات
  */
 
-const supabaseUrl = process.env.EXTERNAL_SUPABASE_URL || process.env.VITE_EXTERNAL_SUPABASE_URL;
+const supabaseUrl = process.env.EXTERNAL_SUPABASE_URL;
 const supabaseServiceKey = process.env.EXTERNAL_SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseUrl || !supabaseServiceKey) {

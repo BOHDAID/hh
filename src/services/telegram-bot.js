@@ -8,7 +8,7 @@ import { createClient } from '@supabase/supabase-js';
 import sessionManager from './session-manager.js';
 
 // إعدادات قاعدة البيانات الخارجية
-const EXTERNAL_SUPABASE_URL = process.env.EXTERNAL_SUPABASE_URL || 'https://vepwoilxujuyeuutybjp.supabase.co';
+const EXTERNAL_SUPABASE_URL = process.env.EXTERNAL_SUPABASE_URL;
 const EXTERNAL_SERVICE_ROLE_KEY = process.env.EXTERNAL_SUPABASE_SERVICE_ROLE_KEY;
 
 let supabase = null;
