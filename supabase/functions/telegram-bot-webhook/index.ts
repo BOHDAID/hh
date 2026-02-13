@@ -1146,15 +1146,22 @@ Deno.serve(async (req) => {
     if (!textSession) textSession = await reconstructSession(chatId) || undefined;
     
     if (textSession && textSession.step === "crunchyroll_awaiting_tv_code" && /^\d{6}$/.test(text)) {
-      await sendTelegramMessage(botToken, chatId, "⏳ جاري تفعيل الكود على التلفزيون...");
+      await sendTelegramMessage(botToken, chatId, "⏳ جاري تفعيل الكود على التلفزيون...\n\n⏳ Activating code on TV...");
       
       const renderServerUrl = Deno.env.get("RENDER_SERVER_URL") || "https://angel-store.onrender.com";
       const qrSecret = Deno.env.get("QR_AUTOMATION_SECRET") || "default-qr-secret-key";
       
       try {
+        console.log(`📺 [Crunchyroll TV] Calling Render: ${renderServerUrl}/api/qr/crunchyroll-activate-tv`);
+        console.log(`📺 [Crunchyroll TV] Code: ${text}, Email: ${textSession.accountEmail}`);
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes timeout
+        
         const response = await fetch(`${renderServerUrl}/api/qr/crunchyroll-activate-tv`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
           body: JSON.stringify({ 
             secret: qrSecret,
             tvCode: text,
@@ -1163,7 +1170,11 @@ Deno.serve(async (req) => {
           }),
         });
         
+        clearTimeout(timeoutId);
+        console.log(`📺 [Crunchyroll TV] Response status: ${response.status}`);
+        
         const result = await response.json();
+        console.log(`📺 [Crunchyroll TV] Result:`, JSON.stringify(result));
         
         if (result.success) {
           await markCodeAsUsed(textSession.activationCodeId);
@@ -1191,8 +1202,12 @@ Deno.serve(async (req) => {
           );
         }
       } catch (error) {
+        console.error(`❌ [Crunchyroll TV] Error:`, error.message || error);
+        const isTimeout = error.name === "AbortError";
         await sendTelegramMessage(botToken, chatId,
-          `❌ خطأ في الاتصال بالسيرفر.\nجرب مرة أخرى وأرسل الكود:`
+          isTimeout
+            ? `⏱️ انتهى وقت الانتظار - السيرفر يحتاج وقت.\n\n🔄 جرب مرة أخرى بعد دقيقة وأرسل الكود:\n\n⏱️ Server timed out. Try again in a minute.`
+            : `❌ خطأ في الاتصال بالسيرفر: ${error.message || "unknown"}\n\nجرب مرة أخرى وأرسل الكود:`
         );
       }
       
