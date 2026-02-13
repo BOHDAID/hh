@@ -80,10 +80,8 @@ class OSNSessionManager {
       console.log(`🌐 [_withBrowser] Memory: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(1)} MB`);
       
       browser = await puppeteer.launch({
-        headless: 'new',
-        executablePath,
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome',
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        timeout: 30000,
       });
 
       console.log('✅ [_withBrowser] Browser launched');
