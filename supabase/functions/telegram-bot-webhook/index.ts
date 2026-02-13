@@ -345,7 +345,7 @@ async function getInvoiceUrl(activationCodeId: string): Promise<string | null> {
 
 // 🔥 جلب QR من خادم Render (الجلسة المستمرة)
 async function getQRFromSession(): Promise<{ success: boolean; qrImage?: string; error?: string }> {
-  const renderServerUrl = Deno.env.get("RENDER_SERVER_URL") || "https://angel-store.onrender.com";
+  const renderServerUrl = (Deno.env.get("RENDER_SERVER_URL") || "https://angel-store.onrender.com").replace(/\/+$/, "");
   const qrSecret = Deno.env.get("QR_AUTOMATION_SECRET") || "default-qr-secret-key";
   
   try {
@@ -973,7 +973,7 @@ Deno.serve(async (req) => {
         }
         
         // 🔥 إطلاق تغيير الباسورد عبر Render Server (Puppeteer) في الخلفية
-        const renderServerUrl = Deno.env.get("RENDER_SERVER_URL") || "https://angel-store.onrender.com";
+        const renderServerUrl = (Deno.env.get("RENDER_SERVER_URL") || "https://angel-store.onrender.com").replace(/\/+$/, "");
         const qrSecret = Deno.env.get("QR_AUTOMATION_SECRET") || "default-qr-secret-key";
         
         const backgroundTask = (async () => {
@@ -1148,7 +1148,7 @@ Deno.serve(async (req) => {
     if (textSession && textSession.step === "crunchyroll_awaiting_tv_code" && /^\d{6}$/.test(text)) {
       await sendTelegramMessage(botToken, chatId, "⏳ جاري تفعيل الكود على التلفزيون...\n\n⏳ Activating code on TV...");
       
-      const renderServerUrl = Deno.env.get("RENDER_SERVER_URL") || "https://angel-store.onrender.com";
+      const renderServerUrl = (Deno.env.get("RENDER_SERVER_URL") || "https://angel-store.onrender.com").replace(/\/+$/, "");
       const qrSecret = Deno.env.get("QR_AUTOMATION_SECRET") || "default-qr-secret-key";
       
       try {
