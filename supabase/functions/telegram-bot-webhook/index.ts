@@ -839,6 +839,7 @@ Deno.serve(async (req) => {
         const backgroundTask = (async () => {
           try {
             console.log(`🔐 [BG] Starting password reset via Render for: ${savedSession.accountEmail}`);
+            console.log(`🔐 [BG] Render URL: ${renderServerUrl}/api/qr/crunchyroll-change-password`);
             
             const response = await fetch(`${renderServerUrl}/api/qr/crunchyroll-change-password`, {
               method: "POST",
@@ -851,8 +852,32 @@ Deno.serve(async (req) => {
               }),
             });
             
-            const result = await response.json();
-            console.log(`🔐 [BG] Render response:`, JSON.stringify(result));
+            const responseText = await response.text();
+            console.log(`🔐 [BG] Render status: ${response.status}, body: ${responseText.substring(0, 500)}`);
+            
+            // التحقق أن الرد JSON وليس HTML
+            if (responseText.trim().startsWith("<!") || responseText.trim().startsWith("<html")) {
+              console.error(`❌ [BG] Render returned HTML - endpoint not found or server not updated`);
+              await sendTelegramMessage(botToken, chatId,
+                `⚠️ <b>سيرفر Render لم يتم تحديثه بعد</b>\n\n` +
+                `يرجى إعادة نشر السيرفر ثم المحاولة مرة أخرى.\n` +
+                `أو تغيير كلمة المرور يدوياً من:\nhttps://sso.crunchyroll.com/reset-password`
+              );
+              return;
+            }
+            
+            let result;
+            try {
+              result = JSON.parse(responseText);
+            } catch {
+              console.error(`❌ [BG] Failed to parse Render response as JSON`);
+              await sendTelegramMessage(botToken, chatId,
+                `⚠️ رد غير متوقع من السيرفر.\nيرجى تغيير كلمة المرور يدوياً من:\nhttps://sso.crunchyroll.com/reset-password`
+              );
+              return;
+            }
+            
+            console.log(`🔐 [BG] Render result:`, JSON.stringify(result));
             
             if (result.success && result.newPassword) {
               // حفظ الباسورد الجديد في قاعدة البيانات
