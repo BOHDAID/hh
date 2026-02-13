@@ -17,13 +17,22 @@ const useDynamicFavicon = () => {
       );
       existingLinks.forEach((el) => el.remove());
 
-      // Create a single 32x32 favicon link
-      const link = document.createElement("link");
-      link.rel = "icon";
-      link.type = type;
-      link.sizes = "32x32";
-      link.href = url;
-      document.head.appendChild(link);
+      // Create multiple sizes for better visibility
+      const sizes = ["48x48", "64x64", "128x128"];
+      sizes.forEach((size) => {
+        const link = document.createElement("link");
+        link.rel = "icon";
+        link.type = type;
+        link.sizes = size;
+        link.href = url;
+        document.head.appendChild(link);
+      });
+
+      // Also set apple-touch-icon for mobile
+      const appleLink = document.createElement("link");
+      appleLink.rel = "apple-touch-icon";
+      appleLink.href = url;
+      document.head.appendChild(appleLink);
       
       console.log("🎨 Favicon set to:", url);
     };
