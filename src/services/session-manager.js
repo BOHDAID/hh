@@ -1044,22 +1044,15 @@ class OSNSessionManager {
       return { success: false, error: 'لا توجد كوكيز محفوظة للحساب' };
     }
 
-    // استخدام البروكسي لتجنب كشف IP السيرفر + عدم تخطيه
+    // بدون بروكسي - اتصال مباشر فقط
     return await this._withBrowser(async (browser) => {
       const page = await browser.newPage();
       
-      // لا نستخدم _applyStealthToPage لأنها قد تمسح الكوكيز المشفرة
-      // نكتفي بتثبيت User-Agent ثابت يطابق المتصفح الذي استُخرجت منه الكوكيز
+      // User-Agent ثابت يطابق المتصفح الأصلي - بدون stealth أو proxy
       const fixedUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
       await page.setUserAgent(fixedUA);
       await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
-      console.log(`🕵️ [Crunchyroll] Fixed UA: ${fixedUA.substring(0, 60)}...`);
-
-      // تطبيق proxy auth إذا كان متاحاً
-      if (browser._proxyAuth) {
-        await page.authenticate(browser._proxyAuth);
-        console.log('🌐 [Crunchyroll] Proxy auth applied');
-      }
+      console.log(`🕵️ [Crunchyroll] Fixed UA (no proxy): ${fixedUA.substring(0, 60)}...`);
 
       try {
         // الخطوة 1: تحميل الكوكيز (تسجيل دخول مسبق)
@@ -1226,7 +1219,7 @@ class OSNSessionManager {
         console.error('❌ [Crunchyroll] TV activation error:', err.message);
         return { success: false, error: err.message };
       }
-    }, { supabase, skipProxy: false });
+    }, { supabase, skipProxy: true });
   }
 
 }
