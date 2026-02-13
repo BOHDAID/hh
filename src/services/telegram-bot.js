@@ -147,6 +147,56 @@ async function handleMessage(message) {
 
   console.log(`📩 Message from @${username || chatId}: ${text}`);
 
+  // === /cancel - يعمل دائماً حتى لو الجلسة مقفلة ===
+  if (text === '/cancel') {
+    const cancelSession = userSessions[chatId];
+    if (cancelSession) {
+      // تحديث حالة الكود في قاعدة البيانات
+      if (cancelSession.activationCodeId) {
+        try {
+          await supabase
+            .from('activation_codes')
+            .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+            .eq('id', cancelSession.activationCodeId);
+        } catch (err) {
+          console.error('❌ Error updating activation code on cancel:', err.message);
+        }
+      }
+      delete userSessions[chatId];
+      await sendMessage(chatId, bi(
+        '✅ تم إلغاء العملية الحالية. يمكنك إرسال كود تفعيل جديد.',
+        '✅ Current operation cancelled. You can send a new activation code.'
+      ));
+    } else {
+      await sendMessage(chatId, bi(
+        '❓ لا توجد عملية نشطة لإلغائها.',
+        '❓ No active operation to cancel.'
+      ));
+    }
+    return;
+  }
+
+  // === جلسة مقفلة - تحتاج /cancel (قبل أي أمر آخر!) ===
+  const session = userSessions[chatId];
+  if (session && session.step === 'locked_needs_cancel') {
+    await sendMessage(chatId, bi(
+      '🔒 الجلسة مقفلة. أرسل /cancel لإلغاء الجلسة الحالية وإعادة المحاولة من البداية.',
+      '🔒 Session is locked. Send /cancel to cancel and start over.'
+    ));
+    return;
+  }
+
+  // === فحص الجلسات النشطة - منع /start من مسح جلسة قائمة ===
+  if (session && ['awaiting_tv_code', 'confirm_tv_code', 'awaiting_otp_request', 'in_progress', 'choose_type'].includes(session.step)) {
+    if (text === '/start') {
+      await sendMessage(chatId, bi(
+        '⚠️ لديك عملية تفعيل جارية بالفعل! أكمل العملية الحالية أو أرسل /cancel للإلغاء أولاً.',
+        '⚠️ You have an ongoing activation! Complete it or send /cancel to cancel first.'
+      ));
+      return;
+    }
+  }
+
   if (text === '/start') {
     await sendMessage(chatId, bi(
       `🎉 <b>مرحباً بك في بوت التفعيل!</b>\n\n📝 أرسل لي <b>كود التفعيل</b> الذي استلمته بعد الشراء.\n\n⏰ الكود صالح لمدة 24 ساعة فقط.`,
@@ -160,16 +210,6 @@ async function handleMessage(message) {
     await sendMessage(chatId, bi(
       `📖 <b>كيفية الاستخدام:</b>\n\n1️⃣ اشترِ المنتج من الموقع\n2️⃣ ستستلم كود تفعيل (8 أحرف)\n3️⃣ أرسل الكود هنا\n4️⃣ اتبع التعليمات للتفعيل\n\n❓ للمساعدة: تواصل مع الدعم`,
       `📖 <b>How to use:</b>\n\n1️⃣ Buy the product from the website\n2️⃣ You'll receive an activation code (8 characters)\n3️⃣ Send the code here\n4️⃣ Follow the instructions\n\n❓ Need help? Contact support`
-    ));
-    return;
-  }
-
-  // === جلسة مقفلة - تحتاج /cancel ===
-  const session = userSessions[chatId];
-  if (session && session.step === 'locked_needs_cancel') {
-    await sendMessage(chatId, bi(
-      '🔒 الجلسة مقفلة. أرسل /cancel لإلغاء الجلسة الحالية وإعادة المحاولة من البداية.',
-      '🔒 Session is locked. Send /cancel to cancel and start over.'
     ));
     return;
   }
