@@ -208,24 +208,6 @@ const Hero = () => {
             ))}
           </motion.div>
 
-          {/* Animated Elements Below Features */}
-          <div className="flex justify-center gap-8 mt-12">
-            <motion.div
-              className="h-16 w-16 rounded-full bg-primary/40 blur-sm"
-              animate={{ y: [-5, 5, -5], scale: [1, 1.2, 1] }}
-              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-            />
-            <motion.div
-              className="h-20 w-20 rounded-full bg-secondary/40 blur-sm"
-              animate={{ y: [5, -5, 5], scale: [1, 1.2, 1] }}
-              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
-            />
-            <motion.div
-              className="h-16 w-16 rounded-full bg-accent/40 blur-sm"
-              animate={{ y: [-5, 5, -5], scale: [1, 1.2, 1] }}
-              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-            />
-          </div>
         </motion.div>
       </div>
     </section>
