@@ -54,7 +54,7 @@ const DashboardTab = () => {
       // جلب الخيارات الدائمة (unlimited) لإضافتها للمخزون
       const { count: unlimitedCount } = await db
         .from("product_variants")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .eq("is_unlimited", true)
         .eq("is_active", true);
 
