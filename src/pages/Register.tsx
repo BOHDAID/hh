@@ -79,7 +79,7 @@ const Register = () => {
       email,
       password,
       options: {
-        emailRedirectTo: window.location.origin,
+        emailRedirectTo: 'https://ninto.store',
         data: {
           full_name: fullName,
         },
