@@ -102,25 +102,60 @@ const SettingsTab = () => {
 
   const saveSettings = async () => {
     setSaving(true);
+    let hasError = false;
     
     try {
       for (const [key, value] of Object.entries(settings)) {
-        await db
+        // First check if the key exists
+        const { data: existing } = await db
           .from("site_settings")
-          .upsert({ 
-            key, 
-            value, 
-            updated_at: new Date().toISOString() 
-          }, { 
-            onConflict: 'key' 
-          });
+          .select("id")
+          .eq("key", key)
+          .maybeSingle();
+
+        if (existing) {
+          // Update existing row
+          const { error } = await db
+            .from("site_settings")
+            .update({ 
+              value, 
+              updated_at: new Date().toISOString() 
+            })
+            .eq("key", key);
+          if (error) {
+            console.error(`Failed to update setting ${key}:`, error);
+            hasError = true;
+          }
+        } else {
+          // Insert new row
+          const { error } = await db
+            .from("site_settings")
+            .insert({ 
+              key, 
+              value, 
+              updated_at: new Date().toISOString() 
+            });
+          if (error) {
+            console.error(`Failed to insert setting ${key}:`, error);
+            hasError = true;
+          }
+        }
       }
       
-      toast({
-        title: "✅ تم الحفظ بنجاح",
-        description: "تم تحديث جميع الإعدادات",
-      });
+      if (hasError) {
+        toast({
+          title: "⚠️ تحذير",
+          description: "تم حفظ بعض الإعدادات مع وجود أخطاء في بعضها",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "✅ تم الحفظ بنجاح",
+          description: "تم تحديث جميع الإعدادات",
+        });
+      }
     } catch (error) {
+      console.error("Save settings error:", error);
       toast({
         title: "❌ خطأ",
         description: "حدث خطأ أثناء حفظ الإعدادات",
