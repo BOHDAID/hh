@@ -95,6 +95,20 @@ function escapeHtml(str) {
 // QR Automation API routes
 app.use('/api/qr', qrAutomationRoutes);
 
+// Debug OG endpoint - shows what the server will inject
+app.get('/debug-og', async (req, res) => {
+  const settings = await fetchOgSettings();
+  res.json({
+    cached: cachedOgSettings ? true : false,
+    cacheAge: ogCacheTime ? `${Math.round((Date.now() - ogCacheTime) / 1000)}s ago` : 'none',
+    settings,
+    envCheck: {
+      hasUrl: !!EXTERNAL_SUPABASE_URL,
+      hasKey: !!EXTERNAL_SUPABASE_ANON_KEY,
+    }
+  });
+});
+
 // Health check endpoint for Render
 app.get('/health', (req, res) => {
   const sessionStatus = sessionManager.getStatus();
