@@ -102,58 +102,30 @@ const SettingsTab = () => {
 
   const saveSettings = async () => {
     setSaving(true);
-    let hasError = false;
     
     try {
+      let hasError = false;
       for (const [key, value] of Object.entries(settings)) {
-        // First check if the key exists
-        const { data: existing } = await db
+        const { error } = await db
           .from("site_settings")
-          .select("id")
-          .eq("key", key)
-          .maybeSingle();
-
-        if (existing) {
-          // Update existing row
-          const { error } = await db
-            .from("site_settings")
-            .update({ 
-              value, 
-              updated_at: new Date().toISOString() 
-            })
-            .eq("key", key);
-          if (error) {
-            console.error(`Failed to update setting ${key}:`, error);
-            hasError = true;
-          }
-        } else {
-          // Insert new row
-          const { error } = await db
-            .from("site_settings")
-            .insert({ 
-              key, 
-              value, 
-              updated_at: new Date().toISOString() 
-            });
-          if (error) {
-            console.error(`Failed to insert setting ${key}:`, error);
-            hasError = true;
-          }
+          .upsert({ 
+            key, 
+            value, 
+            updated_at: new Date().toISOString() 
+          }, { 
+            onConflict: 'key' 
+          });
+        if (error) {
+          console.error(`Failed to save setting ${key}:`, error);
+          hasError = true;
         }
       }
       
-      if (hasError) {
-        toast({
-          title: "⚠️ تحذير",
-          description: "تم حفظ بعض الإعدادات مع وجود أخطاء في بعضها",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "✅ تم الحفظ بنجاح",
-          description: "تم تحديث جميع الإعدادات",
-        });
-      }
+      toast({
+        title: hasError ? "⚠️ تحذير" : "✅ تم الحفظ بنجاح",
+        description: hasError ? "بعض الإعدادات لم تُحفظ" : "تم تحديث جميع الإعدادات",
+        variant: hasError ? "destructive" : "default",
+      });
     } catch (error) {
       console.error("Save settings error:", error);
       toast({
