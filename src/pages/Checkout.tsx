@@ -605,8 +605,8 @@ const Checkout = () => {
       }
 
       if (paymentMethod === "paypal") {
-        // Check minimum amount for PayPal ($5)
-        const PAYPAL_MINIMUM = 5;
+        // Check minimum amount for PayPal ($1)
+        const PAYPAL_MINIMUM = 1;
         if (totalAmount < PAYPAL_MINIMUM) {
           toast({
             title: "الحد الأدنى للطلب",
@@ -801,7 +801,7 @@ const Checkout = () => {
   const requiresActivation = product?.requires_activation === true;
   // Products with requires_activation (OTP/QR) are always available
   const isOutOfStock = !isCartCheckout && product?.product_type === "account" && stockCount === 0 && !isUnlimited && !requiresActivation;
-  const isPayPalBelowMinimum = paymentMethod === "paypal" && totalAmount < 5;
+  const isPayPalBelowMinimum = paymentMethod === "paypal" && totalAmount < 1;
   const canProceed = paymentMethod !== null && !isOutOfStock && 
     (paymentMethod !== "wallet" || hasEnoughBalance) &&
     (paymentMethod !== "crypto" || cryptoEnabled || directCryptoEnabled) &&
@@ -1072,7 +1072,7 @@ const Checkout = () => {
             )}
 
             {/* PayPal Minimum Amount Warning */}
-            {paymentMethod === "paypal" && totalAmount < 5 && !showPayPalButtons && (
+            {paymentMethod === "paypal" && totalAmount < 1 && !showPayPalButtons && (
               <div className="bg-destructive/10 border border-destructive/30 rounded-lg sm:rounded-xl p-3 sm:p-4 text-center">
                 <p className="text-destructive font-semibold text-sm sm:text-base">⚠️ الحد الأدنى للطلب</p>
                 <p className="text-xs sm:text-sm text-muted-foreground mt-1">
