@@ -19,7 +19,9 @@ const Hero = () => {
         .select("key, value")
         .in("key", [
           "hero_badge", "hero_title1", "hero_title2", "hero_title3",
-          "hero_subtitle", "hero_subtitle_desc"
+          "hero_subtitle", "hero_subtitle_desc",
+          "hero_badge_en", "hero_title1_en", "hero_title2_en", "hero_title3_en",
+          "hero_subtitle_en", "hero_subtitle_desc_en"
         ]);
       if (data) {
         const map: Record<string, string> = {};
@@ -32,7 +34,12 @@ const Hero = () => {
     fetchHeroTexts();
   }, []);
 
-  const h = (key: string, fallbackKey: string) => heroTexts[key] || t(fallbackKey);
+  const h = (key: string, fallbackKey: string) => {
+    if (i18n.language === 'en') {
+      return heroTexts[`${key}_en`] || t(fallbackKey);
+    }
+    return heroTexts[key] || t(fallbackKey);
+  };
 
   const features = [
     {

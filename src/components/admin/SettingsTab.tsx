@@ -81,8 +81,9 @@ const SettingsTab = () => {
   const allRequiredKeys = [
     // هوية المتجر
     "store_name", "store_logo_url", "store_favicon_url", "support_email", "default_currency",
-    // قسم الهيرو
+    // قسم الهيرو (عربي + إنجليزي)
     "hero_badge", "hero_title1", "hero_title2", "hero_title3", "hero_subtitle", "hero_subtitle_desc",
+    "hero_badge_en", "hero_title1_en", "hero_title2_en", "hero_title3_en", "hero_subtitle_en", "hero_subtitle_desc_en",
     // Open Graph
     "og_title", "og_description", "og_image",
     // وسائل التواصل
@@ -127,6 +128,24 @@ const SettingsTab = () => {
     setSaving(true);
     
     try {
+      // ترجمة نصوص الهيرو تلقائياً للإنجليزية
+      const heroKeys = ["hero_badge", "hero_title1", "hero_title2", "hero_title3", "hero_subtitle", "hero_subtitle_desc"];
+      const translationPromises = heroKeys.map(async (key) => {
+        const arabicValue = settings[key];
+        if (arabicValue && arabicValue.trim()) {
+          try {
+            const { translateText } = await import("@/lib/translateApi");
+            const englishValue = await translateText(arabicValue, 'en');
+            if (englishValue) {
+              settings[`${key}_en`] = englishValue;
+            }
+          } catch (e) {
+            console.warn(`Failed to translate ${key}:`, e);
+          }
+        }
+      });
+      await Promise.all(translationPromises);
+
       let hasError = false;
       for (const [key, value] of Object.entries(settings)) {
         const isSensitive = !publicSettingKeys.has(key);
