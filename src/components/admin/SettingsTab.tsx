@@ -506,8 +506,39 @@ const SettingsTab = () => {
                   </Select>
                 </div>
                </CardContent>
-            </MotionCard>
+           </MotionCard>
 
+            {/* Hero Section Settings */}
+            <MotionCard 
+              custom={1}
+              initial="hidden"
+              animate="visible"
+              variants={cardVariants}
+              className="border-border/50 bg-card/50 backdrop-blur-sm"
+            >
+              <CardHeader className="pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-primary/10">
+                    <Sparkles className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg">قسم الهيرو</CardTitle>
+                    <CardDescription>نصوص الواجهة الرئيسية للموقع</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {renderSettingInput("شارة الهيرو (Badge)", "hero_badge", "توصيل فوري عبر تليجرام", { description: "النص الصغير أعلى العنوان" })}
+                {renderSettingInput("العنوان - السطر الأول", "hero_title1", "اشتراكات وحسابات", { description: "السطر الأول من العنوان الرئيسي" })}
+                {renderSettingInput("العنوان - السطر المميز", "hero_title2", "رقمية أصلية", { description: "السطر الملوّن بتدرج اللون الأساسي" })}
+                {renderSettingInput("العنوان - السطر الثالث", "hero_title3", "بأسعار منافسة", { description: "السطر الفرعي تحت العنوان" })}
+                {renderSettingInput("الوصف - السطر الأول", "hero_subtitle", "Netflix, Steam, Spotify, PlayStation والمزيد.", { description: "وصف قصير تحت العنوان" })}
+                {renderSettingInput("الوصف - السطر الثاني", "hero_subtitle_desc", "جميع المنتجات أصلية ومضمونة مع دعم فني على مدار الساعة.", { description: "تكملة الوصف" })}
+              </CardContent>
+            </MotionCard>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-2">
             {/* OG / Link Preview Panel */}
             <MotionCard 
               custom={1}
