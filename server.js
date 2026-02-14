@@ -200,6 +200,9 @@ app.get('/{*splat}', async (req, res) => {
     html = injectOgMeta(html, ogSettings);
     
     res.setHeader('Content-Type', 'text/html');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.send(html);
   } catch (err) {
     console.error('❌ Error serving HTML:', err.message);
