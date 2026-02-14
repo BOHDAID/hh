@@ -50,7 +50,7 @@ async function fetchOgSettings() {
     
     cachedOgSettings = settings;
     ogCacheTime = Date.now();
-    console.log('✅ OG settings fetched from external DB:', Object.keys(settings).join(', '));
+    // OG settings cached silently
     return settings;
   } catch (err) {
     console.error('❌ Failed to fetch OG settings:', err.message);
@@ -67,7 +67,7 @@ function injectOgMeta(html, settings) {
   const ogImage = rawImage.startsWith('data:') ? '' : rawImage;
   const ogUrl = settings.og_url || '';
 
-  console.log('🔄 Injecting OG Meta:', JSON.stringify({ ogTitle, ogDesc, ogImage: ogImage ? ogImage.substring(0, 50) + '...' : '', ogUrl }));
+  // Log only once per cache refresh, not every request
 
   // Strategy: Remove ALL existing OG/Twitter meta tags, then inject fresh ones before </head>
   // This avoids regex matching issues with minified/reformatted HTML from Vite
@@ -115,7 +115,7 @@ function injectOgMeta(html, settings) {
   if (metaTags.length > 0) {
     const injection = '\n    ' + metaTags.join('\n    ') + '\n  ';
     html = html.replace('</head>', injection + '</head>');
-    console.log(`✅ Injected ${metaTags.length} fresh meta tags`);
+    // Silent injection - no log per request
   }
 
   return html;
