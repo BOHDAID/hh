@@ -15,11 +15,13 @@ import {
   Loader2,
   Check,
   Star,
+  Zap,
 } from "lucide-react";
 import { db } from "@/lib/supabaseClient";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { formatWarrantyDays } from "@/lib/warrantyUtils";
 import { useTranslation } from "react-i18next";
+import { useToast } from "@/hooks/use-toast";
 
 interface ProductVariant {
   id: string;
@@ -54,11 +56,14 @@ const ProductDetailsModal = ({
   product,
 }: ProductDetailsModalProps) => {
   const { t, i18n } = useTranslation();
+  const { toast } = useToast();
+  const navigate = useNavigate();
   const isRTL = i18n.language === 'ar';
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
   const [stockCount, setStockCount] = useState(0);
+  const [addingToCart, setAddingToCart] = useState(false);
 
   useEffect(() => {
     if (open && product) {
@@ -120,6 +125,51 @@ const ProductDetailsModal = ({
 
   if (!product) return null;
 
+  const handleAddToCart = async () => {
+    const { data: { session } } = await db.auth.getSession();
+    if (!session) {
+      toast({
+        title: t('auth.loginTitle'),
+        description: isRTL ? "سجل دخولك لإضافة المنتجات للسلة" : "Login to add products to cart",
+      });
+      navigate(`/login?redirect=/`);
+      return;
+    }
+
+    setAddingToCart(true);
+    try {
+      const { data: existingItem } = await db
+        .from("cart_items")
+        .select("id, quantity")
+        .eq("user_id", session.user.id)
+        .eq("product_id", product.id)
+        .maybeSingle();
+
+      if (existingItem) {
+        await db
+          .from("cart_items")
+          .update({ quantity: existingItem.quantity + 1, updated_at: new Date().toISOString() })
+          .eq("id", existingItem.id);
+      } else {
+        await db
+          .from("cart_items")
+          .insert({ user_id: session.user.id, product_id: product.id, quantity: 1 });
+      }
+
+      toast({
+        title: t('common.success'),
+        description: isRTL ? "تم إضافة المنتج للسلة" : "Product added to cart",
+      });
+      window.dispatchEvent(new Event('cart-updated'));
+    } catch (error) {
+      toast({
+        title: t('common.error'),
+        description: isRTL ? "فشل في إضافة المنتج للسلة" : "Failed to add product to cart",
+        variant: "destructive",
+      });
+    }
+    setAddingToCart(false);
+  };
   const hasVariants = variants.length > 0;
   const salesCount = product.sales_count || 0;
   const averageRating = product.average_rating || 0;
@@ -305,7 +355,7 @@ const ProductDetailsModal = ({
           )}
 
           {/* Price & Action */}
-          <div className="flex items-center justify-between pt-4 border-t">
+          <div className="flex flex-col gap-3 pt-4 border-t">
             <div className="text-3xl font-bold text-primary">
               {selectedVariant ? (
                 `$${selectedVariant.price}`
@@ -323,12 +373,28 @@ const ProductDetailsModal = ({
             {effectiveStock > 0 ? (
               hasVariants ? (
                 selectedVariant ? (
-                  <Link to={`/checkout/${product.id}?variant=${selectedVariant.id}`}>
-                    <Button size="lg" className="gap-2">
-                      <ShoppingCart className="h-5 w-5" />
-                      {t('products.buyNow')}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      className="flex-1 gap-2"
+                      onClick={handleAddToCart}
+                      disabled={addingToCart}
+                    >
+                      {addingToCart ? (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : (
+                        <ShoppingCart className="h-5 w-5" />
+                      )}
+                      {isRTL ? "أضف للسلة" : "Add to Cart"}
                     </Button>
-                  </Link>
+                    <Link to={`/checkout/${product.id}?variant=${selectedVariant.id}`} className="flex-1">
+                      <Button size="lg" className="w-full gap-2">
+                        <Zap className="h-5 w-5" />
+                        {t('products.buyNow')}
+                      </Button>
+                    </Link>
+                  </div>
                 ) : (
                   <Button size="lg" disabled className="gap-2">
                     <ShoppingCart className="h-5 w-5" />
@@ -336,12 +402,28 @@ const ProductDetailsModal = ({
                   </Button>
                 )
               ) : (
-                <Link to={`/checkout/${product.id}`}>
-                  <Button size="lg" className="gap-2">
-                    <ShoppingCart className="h-5 w-5" />
-                    {t('products.buyNow')}
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="flex-1 gap-2"
+                    onClick={handleAddToCart}
+                    disabled={addingToCart}
+                  >
+                    {addingToCart ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <ShoppingCart className="h-5 w-5" />
+                    )}
+                    {isRTL ? "أضف للسلة" : "Add to Cart"}
                   </Button>
-                </Link>
+                  <Link to={`/checkout/${product.id}`} className="flex-1">
+                    <Button size="lg" className="w-full gap-2">
+                      <Zap className="h-5 w-5" />
+                      {t('products.buyNow')}
+                    </Button>
+                  </Link>
+                </div>
               )
             ) : (
               <Button size="lg" disabled>
