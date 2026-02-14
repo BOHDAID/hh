@@ -40,7 +40,10 @@ const Checkout = () => {
   const location = useLocation();
   const { toast } = useToast();
 
+  const isCartCheckout = productId === "cart";
+
   const [product, setProduct] = useState<Product | null>(null);
+  const [cartItems, setCartItems] = useState<Array<{ product: Product; quantity: number; variant_id: string | null }>>([]);
   const [quantity, setQuantity] = useState(1);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
   const [loading, setLoading] = useState(true);
@@ -68,8 +71,10 @@ const Checkout = () => {
   const [originalPrice, setOriginalPrice] = useState<number | null>(null);
   const variantId = new URLSearchParams(location.search).get("variant");
   // Use flash sale price if available, otherwise use variant/product price
-  const unitPrice = flashSalePrice ?? (selectedVariant?.price ?? product?.price ?? 0);
-  const subtotal = unitPrice * quantity;
+  const unitPrice = isCartCheckout ? 0 : (flashSalePrice ?? (selectedVariant?.price ?? product?.price ?? 0));
+  const subtotal = isCartCheckout 
+    ? cartItems.reduce((sum, item) => sum + item.product.price * item.quantity, 0)
+    : unitPrice * quantity;
   const discountAmount = appliedCoupon?.discount ?? 0;
   const totalAmount = Math.max(0, subtotal - discountAmount);
   const hasEnoughBalance = walletBalance >= totalAmount;
@@ -104,8 +109,47 @@ const Checkout = () => {
         setWalletBalance(0);
       }
 
-      // Fetch product
-      if (productId) {
+      // Cart checkout mode - load all cart items
+      if (isCartCheckout) {
+        const { data: cartData } = await db
+          .from("cart_items")
+          .select(`
+            id,
+            product_id,
+            quantity,
+            product:products(id, name, price, image_url, product_type, warranty_days, requires_activation)
+          `)
+          .eq("user_id", session.user.id);
+
+        if (!cartData || cartData.length === 0) {
+          toast({ title: "السلة فارغة", variant: "destructive" });
+          navigate("/cart");
+          return;
+        }
+
+        const items = cartData
+          .filter((item: any) => item.product)
+          .map((item: any) => ({
+            product: Array.isArray(item.product) ? item.product[0] : item.product,
+            quantity: item.quantity,
+            variant_id: null,
+          }))
+          .filter((item: any) => item.product) as Array<{ product: Product; quantity: number; variant_id: string | null }>;
+
+        if (items.length === 0) {
+          toast({ title: "لا توجد منتجات متاحة", variant: "destructive" });
+          navigate("/cart");
+          return;
+        }
+
+        setCartItems(items);
+        // Set first product as "product" for compatibility with rest of page
+        setProduct(items[0].product);
+        setStockCount(999); // Cart items already validated
+      }
+
+      // Single product checkout
+      if (productId && !isCartCheckout) {
         const { data: productData, error } = await db
           .from("products")
           .select("*")
@@ -114,11 +158,7 @@ const Checkout = () => {
           .single();
 
         if (error || !productData) {
-          toast({
-            title: "خطأ",
-            description: "لم يتم العثور على المنتج",
-            variant: "destructive",
-          });
+          toast({ title: "خطأ", description: "لم يتم العثور على المنتج", variant: "destructive" });
           navigate("/");
           return;
         }
@@ -425,7 +465,8 @@ const Checkout = () => {
    }, [productId, location.search, navigate, toast]);
 
   const handleCheckout = async () => {
-    if (!product || !user || !paymentMethod) return;
+    if ((!product && !isCartCheckout) || !user || !paymentMethod) return;
+    if (isCartCheckout && cartItems.length === 0) return;
 
     setProcessing(true);
     const authClient = isExternalConfigured ? getAuthClient() : db;
@@ -443,10 +484,14 @@ const Checkout = () => {
 
         // Create order with wallet payment via Cloud function
         // process-order handles: wallet deduction, transaction recording, order completion, and delivery
+        const orderItems = isCartCheckout
+          ? cartItems.map(ci => ({ product_id: ci.product.id, quantity: ci.quantity, variant_id: ci.variant_id }))
+          : [{ product_id: product!.id, quantity, variant_id: variantId || null }];
+
         const response = await invokeCloudFunction<{ success: boolean; order?: { id: string; order_number: string }; error?: string }>(
           "process-order",
           {
-            items: [{ product_id: product.id, quantity, variant_id: variantId || null }],
+            items: orderItems,
             payment_method: "wallet",
           },
           session.access_token
@@ -479,6 +524,12 @@ const Checkout = () => {
           console.warn("complete-payment failed (will retry on invoice page):", e);
         }
 
+        // Clear cart after successful purchase
+        if (isCartCheckout) {
+          await db.from("cart_items").delete().eq("user_id", user.id);
+          window.dispatchEvent(new Event('cart-updated'));
+        }
+
         navigate(`/order/${result.order.id}`);
         return;
       }
@@ -486,10 +537,14 @@ const Checkout = () => {
        // First create the order via Cloud
        // NOTE: process-order currently supports only: wallet | manual
        // For PayPal/Crypto/LemonSqueezy we create a manual order first, then redirect to the gateway.
+       const manualItems = isCartCheckout
+         ? cartItems.map(ci => ({ product_id: ci.product.id, quantity: ci.quantity, variant_id: ci.variant_id }))
+         : [{ product_id: product!.id, quantity, variant_id: variantId || null }];
+
        const orderRes = await invokeCloudFunction<{ success: boolean; order?: { id: string; order_number: string }; error?: string }>(
          "process-order",
          {
-           items: [{ product_id: product.id, quantity, variant_id: variantId || null }],
+           items: manualItems,
            payment_method: "manual",
          },
          session.access_token
@@ -606,7 +661,7 @@ const Checkout = () => {
           {
             order_id: orderId,
             amount: totalAmount,
-            product_name: product.name,
+            product_name: isCartCheckout ? `طلب سلة (${cartItems.length} منتج)` : product!.name,
             customer_email: profile?.email || user.email,
             customer_name: profile?.full_name || "",
           },
@@ -738,14 +793,14 @@ const Checkout = () => {
     );
   }
 
-  if (!product) {
+  if (!product && !isCartCheckout) {
     return null;
   }
 
   const isUnlimited = selectedVariant?.is_unlimited === true;
-  const requiresActivation = product.requires_activation === true;
+  const requiresActivation = product?.requires_activation === true;
   // Products with requires_activation (OTP/QR) are always available
-  const isOutOfStock = product.product_type === "account" && stockCount === 0 && !isUnlimited && !requiresActivation;
+  const isOutOfStock = !isCartCheckout && product?.product_type === "account" && stockCount === 0 && !isUnlimited && !requiresActivation;
   const isPayPalBelowMinimum = paymentMethod === "paypal" && totalAmount < 5;
   const canProceed = paymentMethod !== null && !isOutOfStock && 
     (paymentMethod !== "wallet" || hasEnoughBalance) &&
@@ -922,7 +977,7 @@ const Checkout = () => {
             <div className="pt-2">
               <CouponInput
                 orderTotal={subtotal}
-                cartProductTypes={product?.product_type ? [product.product_type] : []}
+                cartProductTypes={isCartCheckout ? cartItems.map(ci => ci.product.product_type) : (product?.product_type ? [product.product_type] : [])}
                 onApply={(discount, couponId, couponCode) => {
                   setAppliedCoupon({ id: couponId, code: couponCode, discount });
                 }}
@@ -991,6 +1046,11 @@ const Checkout = () => {
                         { order_id: pendingOrderId },
                         session.access_token
                       );
+                    }
+                    // Clear cart after successful PayPal payment
+                    if (isCartCheckout) {
+                      await db.from("cart_items").delete().eq("user_id", user.id);
+                      window.dispatchEvent(new Event('cart-updated'));
                     }
                     navigate(`/order/${pendingOrderId}`);
                   }}
@@ -1077,17 +1137,43 @@ const Checkout = () => {
           {/* Order Summary - Sidebar */}
           <div className="lg:col-span-2">
             <div className="sticky top-24">
-              <OrderSummaryCard
-                product={product}
-                unitPrice={unitPrice}
-                variantName={selectedVariant?.name}
-                quantity={quantity}
-                onQuantityChange={setQuantity}
-                stockCount={stockCount}
-                flashSalePrice={flashSalePrice}
-                originalPrice={originalPrice}
-                variantWarrantyDays={selectedVariant?.warranty_days}
-              />
+              {isCartCheckout ? (
+                <div className="border rounded-xl overflow-hidden">
+                  <div className="bg-muted/50 p-3 sm:p-4">
+                    <h3 className="font-bold text-base sm:text-lg">ملخص الطلب ({cartItems.length} منتج)</h3>
+                  </div>
+                  <div className="p-3 sm:p-4 space-y-3">
+                    {cartItems.map((item, idx) => (
+                      <div key={idx} className="flex gap-3">
+                        {item.product.image_url && (
+                          <img src={item.product.image_url} alt={item.product.name} className="w-12 h-12 object-cover rounded-lg border" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-semibold text-sm truncate">{item.product.name}</h4>
+                          <p className="text-xs text-muted-foreground">الكمية: {item.quantity}</p>
+                        </div>
+                        <span className="text-sm font-bold text-primary">${(item.product.price * item.quantity).toFixed(2)}</span>
+                      </div>
+                    ))}
+                    <div className="border-t pt-3 flex justify-between">
+                      <span className="font-bold text-lg">الإجمالي</span>
+                      <span className="font-bold text-2xl text-primary">${subtotal.toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : product ? (
+                <OrderSummaryCard
+                  product={product}
+                  unitPrice={unitPrice}
+                  variantName={selectedVariant?.name}
+                  quantity={quantity}
+                  onQuantityChange={setQuantity}
+                  stockCount={stockCount}
+                  flashSalePrice={flashSalePrice}
+                  originalPrice={originalPrice}
+                  variantWarrantyDays={selectedVariant?.warranty_days}
+                />
+              ) : null}
             </div>
           </div>
         </div>
