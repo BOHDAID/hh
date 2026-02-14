@@ -147,7 +147,13 @@ const SettingsTab = () => {
       await Promise.all(translationPromises);
 
       let hasError = false;
-      for (const [key, value] of Object.entries(settings)) {
+      const existingKeys = new Set(Object.keys(settings).filter(k => {
+        // Only save keys that have values or already existed in DB
+        return settings[k] && settings[k].trim() !== '';
+      }));
+
+      for (const key of existingKeys) {
+        const value = settings[key];
         const isSensitive = !publicSettingKeys.has(key);
         const { error } = await db
           .from("site_settings")
