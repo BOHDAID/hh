@@ -68,16 +68,31 @@ const Contact = () => {
   const [sent, setSent] = useState(false);
   const [socialLinks, setSocialLinks] = useState<Record<string, string>>({});
 
-  // Social media configuration
+  // Social media configuration - uses username/invite keys from admin settings
   const socialConfig: SocialLink[] = [
-    { key: "instagram_url", name: "انستقرام", nameEn: "Instagram", icon: <InstagramIcon />, color: "bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400", hoverColor: "hover:from-purple-600 hover:via-pink-600 hover:to-orange-500" },
-    { key: "tiktok_url", name: "تيك توك", nameEn: "TikTok", icon: <TikTokIcon />, color: "bg-black dark:bg-white dark:text-black", hoverColor: "hover:bg-gray-800 dark:hover:bg-gray-200" },
-    { key: "telegram_url", name: "تيليجرام", nameEn: "Telegram", icon: <TelegramIcon />, color: "bg-[#0088cc]", hoverColor: "hover:bg-[#0077b5]" },
+    { key: "instagram_username", name: "انستقرام", nameEn: "Instagram", icon: <InstagramIcon />, color: "bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400", hoverColor: "hover:from-purple-600 hover:via-pink-600 hover:to-orange-500" },
+    { key: "tiktok_username", name: "تيك توك", nameEn: "TikTok", icon: <TikTokIcon />, color: "bg-black dark:bg-white dark:text-black", hoverColor: "hover:bg-gray-800 dark:hover:bg-gray-200" },
+    { key: "telegram_username", name: "تيليجرام", nameEn: "Telegram", icon: <TelegramIcon />, color: "bg-[#0088cc]", hoverColor: "hover:bg-[#0077b5]" },
     { key: "telegram_channel", name: "قناة تيليجرام", nameEn: "Telegram Channel", icon: <TelegramIcon />, color: "bg-[#0088cc]", hoverColor: "hover:bg-[#0077b5]" },
-    { key: "discord_url", name: "ديسكورد", nameEn: "Discord", icon: <DiscordIcon />, color: "bg-[#5865F2]", hoverColor: "hover:bg-[#4752c4]" },
-    { key: "twitter_url", name: "إكس", nameEn: "X", icon: <TwitterIcon />, color: "bg-black dark:bg-white dark:text-black", hoverColor: "hover:bg-gray-800 dark:hover:bg-gray-200" },
+    { key: "discord_invite", name: "ديسكورد", nameEn: "Discord", icon: <DiscordIcon />, color: "bg-[#5865F2]", hoverColor: "hover:bg-[#4752c4]" },
+    { key: "twitter_username", name: "إكس", nameEn: "X", icon: <TwitterIcon />, color: "bg-black dark:bg-white dark:text-black", hoverColor: "hover:bg-gray-800 dark:hover:bg-gray-200" },
     { key: "whatsapp_url", name: "واتساب", nameEn: "WhatsApp", icon: <WhatsAppIcon />, color: "bg-[#25D366]", hoverColor: "hover:bg-[#20bd5a]" },
   ];
+
+  // Build full URL from username/invite code
+  const buildSocialUrl = (key: string, value: string): string => {
+    const clean = value.replace(/^@/, '');
+    switch (key) {
+      case "instagram_username": return `https://instagram.com/${clean}`;
+      case "tiktok_username": return `https://tiktok.com/@${clean}`;
+      case "telegram_username": return `https://t.me/${clean}`;
+      case "telegram_channel": return `https://t.me/${clean}`;
+      case "discord_invite": return `https://discord.gg/${clean}`;
+      case "twitter_username": return `https://x.com/${clean}`;
+      case "whatsapp_url": return value.startsWith("http") ? value : `https://wa.me/${value}`;
+      default: return value;
+    }
+  };
 
   useEffect(() => {
     const fetchSocialLinks = async () => {
@@ -255,13 +270,10 @@ const Contact = () => {
                 </h2>
                 <div className="flex flex-wrap justify-center gap-4">
                   {socialConfig.map((social) => {
-                    const url = socialLinks[social.key];
-                    if (!url) return null;
+                    const value = socialLinks[social.key];
+                    if (!value) return null;
                     
-                    // Handle telegram channel format
-                    const finalUrl = social.key === "telegram_channel" 
-                      ? (url.startsWith("@") ? `https://t.me/${url.slice(1)}` : url.startsWith("http") ? url : `https://t.me/${url}`)
-                      : url;
+                    const finalUrl = buildSocialUrl(social.key, value);
                     
                     return (
                       <a
