@@ -103,8 +103,8 @@ const Footer = ({ className }: FooterProps) => {
               <li><Link to="/" className="transition-colors hover:text-primary">{t('common.home')}</Link></li>
               <li><a href="/#products" className="transition-colors hover:text-primary">{t('common.products')}</a></li>
               <li><Link to="/contact" className="transition-colors hover:text-primary">{t('common.contactUs')}</Link></li>
-              <li><Link to="/privacy-policy" className="transition-colors hover:text-primary">Privacy Policy</Link></li>
-              <li><Link to="/refund-policy" className="transition-colors hover:text-primary">Refund Policy</Link></li>
+              <li><Link to="/privacy-policy" className="transition-colors hover:text-primary">{t('footer.privacyPolicy')}</Link></li>
+              <li><Link to="/refund-policy" className="transition-colors hover:text-primary">{t('footer.refundPolicy')}</Link></li>
             </ul>
           </div>
 
@@ -134,11 +134,11 @@ const Footer = ({ className }: FooterProps) => {
         {/* Bottom */}
         <div className="mt-12 border-t border-border pt-8 text-center text-sm text-muted-foreground">
           <div className="flex flex-wrap items-center justify-center gap-4 mb-3">
-            <Link to="/privacy-policy" className="underline transition-colors hover:text-primary">Privacy Policy</Link>
+            <Link to="/privacy-policy" className="underline transition-colors hover:text-primary">{t('footer.privacyPolicy')}</Link>
             <span className="text-border">|</span>
-            <Link to="/refund-policy" className="underline transition-colors hover:text-primary">Refund Policy</Link>
+            <Link to="/refund-policy" className="underline transition-colors hover:text-primary">{t('footer.refundPolicy')}</Link>
             <span className="text-border">|</span>
-            <Link to="/terms" className="underline transition-colors hover:text-primary">Terms of Service</Link>
+            <Link to="/terms" className="underline transition-colors hover:text-primary">{t('footer.termsOfService')}</Link>
           </div>
           <p>© {new Date().getFullYear()} {storeName}. {t('footer.allRightsReserved')}.</p>
         </div>
