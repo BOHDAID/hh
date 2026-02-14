@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getAuthClient } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
-import { ShoppingBag, Mail, Loader2, ArrowRight, Lock, KeyRound, CheckCircle, Shield } from "lucide-react";
+import { Mail, Loader2, ArrowRight, Lock, KeyRound, CheckCircle, Shield } from "lucide-react";
+import StoreLogo from "@/components/StoreLogo";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -253,15 +254,7 @@ const ForgotPassword = () => {
       >
         {/* Logo */}
         <div className="text-center mb-8">
-          <Link to="/" className="inline-flex items-center gap-3">
-            <motion.div 
-              className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-primary shadow-glow-primary"
-              whileHover={{ scale: 1.05, rotate: 5 }}
-            >
-              <ShoppingBag className="h-6 w-6 text-primary-foreground" />
-            </motion.div>
-            <span className="text-2xl font-bold text-foreground">متجر رقمي</span>
-          </Link>
+          <StoreLogo size="md" animated />
         </div>
 
         {/* Card */}

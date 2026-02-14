@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getAuthClient } from "@/lib/supabaseClient";
 import { toast } from "@/hooks/use-toast";
-import { ShoppingBag, Mail, Lock, Loader2, Sparkles, Shield, Zap, Eye, EyeOff } from "lucide-react";
+import { Mail, Lock, Loader2, Sparkles, Shield, Zap, Eye, EyeOff } from "lucide-react";
+import StoreLogo from "@/components/StoreLogo";
 import { motion } from "framer-motion";
 
 const Login = () => {
@@ -115,12 +116,7 @@ const Login = () => {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6 }}
           >
-            <Link to="/" className="inline-flex items-center gap-3 mb-12">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary shadow-glow-primary">
-                <ShoppingBag className="h-7 w-7 text-primary-foreground" />
-              </div>
-              <span className="text-3xl font-bold text-foreground">{isRTL ? "متجر رقمي" : "Digital Store"}</span>
-            </Link>
+            <StoreLogo size="lg" className="mb-12" />
           </motion.div>
 
           <motion.h2
@@ -183,12 +179,7 @@ const Login = () => {
         >
           {/* Mobile Logo */}
           <div className="text-center mb-8 lg:hidden">
-            <Link to="/" className="inline-flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-primary shadow-glow-primary">
-                <ShoppingBag className="h-6 w-6 text-primary-foreground" />
-              </div>
-              <span className="text-2xl font-bold text-foreground">{isRTL ? "متجر رقمي" : "Digital Store"}</span>
-            </Link>
+            <StoreLogo size="md" />
           </div>
 
           {/* Card */}

@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getAuthClient } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
-import { ShoppingBag, Lock, Loader2, CheckCircle } from "lucide-react";
+import { Lock, Loader2, CheckCircle } from "lucide-react";
+import StoreLogo from "@/components/StoreLogo";
 
 const ResetPassword = () => {
   const navigate = useNavigate();
@@ -140,12 +141,7 @@ const ResetPassword = () => {
       <div className="relative w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <Link to="/" className="inline-flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-primary shadow-glow-primary">
-              <ShoppingBag className="h-6 w-6 text-primary-foreground" />
-            </div>
-            <span className="text-2xl font-bold text-foreground">متجر رقمي</span>
-          </Link>
+          <StoreLogo size="md" />
         </div>
 
         {/* Card */}
