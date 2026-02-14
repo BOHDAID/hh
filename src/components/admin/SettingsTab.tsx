@@ -77,18 +77,38 @@ const SettingsTab = () => {
     fetchSettings();
   }, []);
 
+  // جميع المفاتيح التي يجب أن تكون موجودة دائماً في state (حتى لو فارغة)
+  const allRequiredKeys = [
+    // هوية المتجر
+    "store_name", "store_logo_url", "store_favicon_url", "support_email", "default_currency",
+    // قسم الهيرو
+    "hero_badge", "hero_title1", "hero_title2", "hero_title3", "hero_subtitle", "hero_subtitle_desc",
+    // Open Graph
+    "og_title", "og_description", "og_image",
+    // وسائل التواصل
+    "instagram_username", "tiktok_username", "telegram_username", "telegram_channel",
+    "discord_invite", "twitter_username", "whatsapp_number",
+    // إعدادات عامة
+    "on_demand_message", "site_name", "site_description",
+  ];
+
   const fetchSettings = async () => {
     const { data, error } = await db
       .from("site_settings")
       .select("*");
     
+    // تهيئة كل المفاتيح المطلوبة بقيم فارغة أولاً
+    const settingsMap: Record<string, string> = {};
+    allRequiredKeys.forEach(key => {
+      settingsMap[key] = "";
+    });
+
     if (data) {
-      const settingsMap: Record<string, string> = {};
       data.forEach((setting: Setting) => {
         settingsMap[setting.key] = setting.value || "";
       });
-      setSettings(settingsMap);
     }
+    setSettings(settingsMap);
     setLoading(false);
   };
 
@@ -101,19 +121,7 @@ const SettingsTab = () => {
   };
 
   // الإعدادات العامة (غير حساسة) التي يجب أن تكون مرئية للجميع
-  const publicSettingKeys = new Set([
-    // هوية المتجر
-    "store_name", "store_logo_url", "store_favicon_url", "support_email", "default_currency",
-    // قسم الهيرو
-    "hero_badge", "hero_title1", "hero_title2", "hero_title3", "hero_subtitle", "hero_subtitle_desc",
-    // Open Graph / بطاقة المشاركة
-    "og_title", "og_description", "og_image",
-    // وسائل التواصل
-    "instagram_username", "tiktok_username", "telegram_username", "telegram_channel",
-    "discord_invite", "twitter_username",
-    // إعدادات عامة
-    "on_demand_message", "site_name", "site_description",
-  ]);
+  const publicSettingKeys = new Set(allRequiredKeys);
 
   const saveSettings = async () => {
     setSaving(true);
