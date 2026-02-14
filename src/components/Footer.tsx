@@ -103,6 +103,8 @@ const Footer = ({ className }: FooterProps) => {
               <li><Link to="/" className="transition-colors hover:text-primary">{t('common.home')}</Link></li>
               <li><a href="/#products" className="transition-colors hover:text-primary">{t('common.products')}</a></li>
               <li><Link to="/contact" className="transition-colors hover:text-primary">{t('common.contactUs')}</Link></li>
+              <li><Link to="/privacy-policy" className="transition-colors hover:text-primary">Privacy Policy</Link></li>
+              <li><Link to="/refund-policy" className="transition-colors hover:text-primary">Refund Policy</Link></li>
             </ul>
           </div>
 
