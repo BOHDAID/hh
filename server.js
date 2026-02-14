@@ -63,7 +63,9 @@ function injectOgMeta(html, settings) {
 
   const ogTitle = settings.og_title || settings.store_name || '';
   const ogDesc = settings.og_description || '';
-  const ogImage = settings.og_image || settings.store_logo_url || '';
+  // Only use proper URLs for OG image - base64 data URIs are not supported by crawlers
+  const rawImage = settings.og_image || settings.store_logo_url || '';
+  const ogImage = rawImage.startsWith('data:') ? '' : rawImage;
   const ogUrl = settings.og_url || '';
 
   console.log('🔄 Injecting OG Meta:', JSON.stringify({ ogTitle, ogDesc, ogImage: ogImage ? ogImage.substring(0, 50) + '...' : '', ogUrl }));
