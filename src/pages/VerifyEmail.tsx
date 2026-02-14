@@ -70,7 +70,7 @@ const VerifyEmail = () => {
       type: "signup",
       email,
       options: {
-        emailRedirectTo: window.location.origin,
+        emailRedirectTo: 'https://ninto.store',
       },
     });
 
