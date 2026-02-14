@@ -3,8 +3,12 @@ import { db } from "@/lib/supabaseClient";
 import { Loader2, Shield } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
 
 const PrivacyPolicy = () => {
+  const { t } = useTranslation();
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -35,11 +39,12 @@ const PrivacyPolicy = () => {
 
   return (
     <div className="min-h-screen bg-background" dir="rtl">
+      <Header />
       <div className="container max-w-4xl mx-auto px-4 py-12">
         <div className="mb-8">
           <Link to="/">
             <Button variant="ghost" size="sm">
-              ← العودة للرئيسية
+              ← {t('common.back')}
             </Button>
           </Link>
         </div>
@@ -49,7 +54,7 @@ const PrivacyPolicy = () => {
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
               <Shield className="h-6 w-6 text-primary" />
             </div>
-            <h1 className="text-3xl font-bold text-foreground">سياسة الخصوصية</h1>
+            <h1 className="text-3xl font-bold text-foreground">{t('footer.privacyPolicy')}</h1>
           </div>
 
           {content ? (
@@ -58,11 +63,12 @@ const PrivacyPolicy = () => {
             </div>
           ) : (
             <p className="text-muted-foreground text-center py-8">
-              لم يتم إضافة سياسة الخصوصية بعد.
+              {t('common.loading')}
             </p>
           )}
         </div>
       </div>
+      <Footer />
     </div>
   );
 };

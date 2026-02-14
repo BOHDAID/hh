@@ -3,11 +3,13 @@ import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { db } from "@/lib/supabaseClient";
-import useStoreBranding from "@/hooks/useStoreBranding";
+import { useTranslation } from "react-i18next";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
 
 const RefundPolicy = () => {
+  const { t } = useTranslation();
   const [content, setContent] = useState("");
-  const { storeName } = useStoreBranding();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -31,18 +33,19 @@ const RefundPolicy = () => {
 
   return (
     <div className="min-h-screen bg-background" dir="rtl">
+      <Header />
       <div className="container max-w-4xl mx-auto px-4 py-12">
         <div className="mb-8">
           <Button variant="ghost" asChild>
             <Link to="/" className="flex items-center gap-2">
               <ArrowRight className="h-4 w-4" />
-              العودة للرئيسية
+              {t('common.back')}
             </Link>
           </Button>
         </div>
 
         <div className="glass rounded-2xl p-8">
-          <h1 className="text-3xl font-bold mb-8 text-foreground">سياسة الإرجاع والاسترداد</h1>
+          <h1 className="text-3xl font-bold mb-8 text-foreground">{t('footer.refundPolicy')}</h1>
           
           {loading ? (
             <div className="animate-pulse space-y-4">
@@ -57,11 +60,12 @@ const RefundPolicy = () => {
             />
           ) : (
             <p className="text-muted-foreground">
-              لم يتم إضافة سياسة الإرجاع بعد. يرجى التواصل مع إدارة {storeName} للمزيد من المعلومات.
+              {t('common.loading')}
             </p>
           )}
         </div>
       </div>
+      <Footer />
     </div>
   );
 };
