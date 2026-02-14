@@ -1,12 +1,38 @@
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Zap, ArrowLeft, ArrowRight, Shield, Clock, Sparkles, Star, TrendingUp } from "lucide-react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
+import { db } from "@/lib/supabaseClient";
 
 const Hero = () => {
   const { t, i18n } = useTranslation();
   const isRTL = i18n.language === 'ar';
+
+  const [heroTexts, setHeroTexts] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const fetchHeroTexts = async () => {
+      const { data } = await db
+        .from("site_settings")
+        .select("key, value")
+        .in("key", [
+          "hero_badge", "hero_title1", "hero_title2", "hero_title3",
+          "hero_subtitle", "hero_subtitle_desc"
+        ]);
+      if (data) {
+        const map: Record<string, string> = {};
+        data.forEach((s) => {
+          if (s.key && s.value) map[s.key] = s.value;
+        });
+        setHeroTexts(map);
+      }
+    };
+    fetchHeroTexts();
+  }, []);
+
+  const h = (key: string, fallbackKey: string) => heroTexts[key] || t(fallbackKey);
 
   const features = [
     {
@@ -79,7 +105,7 @@ const Hero = () => {
           >
             <div className="mb-8 inline-flex items-center gap-2 rounded-full glass px-5 py-2.5 text-sm font-medium text-primary border border-primary/20">
               <Sparkles className="h-4 w-4" />
-              <span>{t('hero.badge')}</span>
+              <span>{h('hero_badge', 'hero.badge')}</span>
               <span className="flex h-2 w-2 relative">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
@@ -94,10 +120,10 @@ const Hero = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2, duration: 0.5 }}
           >
-            {t('hero.title1')}
+            {h('hero_title1', 'hero.title1')}
             <br />
             <span className="text-gradient-primary inline-block relative pb-3">
-              {t('hero.title2')}
+              {h('hero_title2', 'hero.title2')}
               <motion.span
                 className="absolute bottom-0 left-0 right-0 h-1.5 bg-gradient-primary rounded-full origin-right"
                 initial={{ scaleX: 0 }}
@@ -107,7 +133,7 @@ const Hero = () => {
               />
             </span>
             <br />
-            <span className="text-muted-foreground text-3xl md:text-4xl lg:text-5xl">{t('hero.title3')}</span>
+            <span className="text-muted-foreground text-3xl md:text-4xl lg:text-5xl">{h('hero_title3', 'hero.title3')}</span>
           </motion.h1>
 
           {/* Subheading */}
@@ -117,9 +143,9 @@ const Hero = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3, duration: 0.5 }}
           >
-            {t('hero.subtitle')}
+            {h('hero_subtitle', 'hero.subtitle')}
             <br className="hidden sm:block" />
-            {t('hero.subtitleDesc')}
+            {h('hero_subtitle_desc', 'hero.subtitleDesc')}
           </motion.p>
 
           {/* CTA Buttons */}
