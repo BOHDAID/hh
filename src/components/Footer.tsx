@@ -133,6 +133,13 @@ const Footer = ({ className }: FooterProps) => {
 
         {/* Bottom */}
         <div className="mt-12 border-t border-border pt-8 text-center text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center justify-center gap-4 mb-3">
+            <Link to="/privacy-policy" className="underline transition-colors hover:text-primary">Privacy Policy</Link>
+            <span className="text-border">|</span>
+            <Link to="/refund-policy" className="underline transition-colors hover:text-primary">Refund Policy</Link>
+            <span className="text-border">|</span>
+            <Link to="/terms" className="underline transition-colors hover:text-primary">Terms of Service</Link>
+          </div>
           <p>© {new Date().getFullYear()} {storeName}. {t('footer.allRightsReserved')}.</p>
         </div>
       </div>
