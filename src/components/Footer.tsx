@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { db } from "@/lib/supabaseClient";
 import { useTranslation } from "react-i18next";
+import useStoreBranding from "@/hooks/useStoreBranding";
 
 interface FooterProps {
   className?: string;
@@ -11,8 +12,7 @@ interface FooterProps {
 
 const Footer = ({ className }: FooterProps) => {
   const { t } = useTranslation();
-  const [storeName, setStoreName] = useState("متجر رقمي");
-  const [storeLogo, setStoreLogo] = useState<string | null>(null);
+  const { storeName, storeLogo } = useStoreBranding();
   const [socialLinks, setSocialLinks] = useState<{
     twitter?: string;
     instagram?: string;
@@ -20,21 +20,15 @@ const Footer = ({ className }: FooterProps) => {
   }>({});
 
   useEffect(() => {
-    const fetchStoreSettings = async () => {
+    const fetchSocialLinks = async () => {
       const { data } = await db
         .from("site_settings")
         .select("key, value")
-        .in("key", ["store_name", "store_logo_url", "twitter_username", "instagram_username", "telegram_username"]);
+        .in("key", ["twitter_username", "instagram_username", "telegram_username"]);
 
       if (data) {
         const links: { twitter?: string; instagram?: string; telegram?: string } = {};
         data.forEach((setting) => {
-          if (setting.key === "store_name" && setting.value) {
-            setStoreName(setting.value);
-          }
-          if (setting.key === "store_logo_url" && setting.value) {
-            setStoreLogo(setting.value);
-          }
           if (setting.key === "twitter_username" && setting.value) {
             const cleanUsername = setting.value.replace(/^@/, '');
             links.twitter = `https://twitter.com/${cleanUsername}`;
@@ -51,7 +45,7 @@ const Footer = ({ className }: FooterProps) => {
         setSocialLinks(links);
       }
     };
-    fetchStoreSettings();
+    fetchSocialLinks();
   }, []);
 
   const hasSocialLinks = socialLinks.twitter || socialLinks.instagram || socialLinks.telegram;
