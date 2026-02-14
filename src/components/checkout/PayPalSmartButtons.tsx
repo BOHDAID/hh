@@ -125,7 +125,7 @@ const PayPalSmartButtons = ({
               error?: string;
             }>(
               "paypal-capture",
-              { paypal_order_id: data.orderID },
+              { paypal_order_id: data.orderID, order_id: orderId },
               accessToken
             );
 
