@@ -41,7 +41,7 @@ export async function initializeBot() {
     .eq('key', 'telegram_bot_token')
     .maybeSingle();
 
-  botToken = process.env.TELEGRAM_BOT_TOKEN || tokenData?.value;
+  botToken = tokenData?.value || process.env.TELEGRAM_BOT_TOKEN;
 
   if (!botToken) {
     console.log('⚠️ TELEGRAM_BOT_TOKEN not configured. Bot disabled.');
