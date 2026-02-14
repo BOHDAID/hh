@@ -66,25 +66,42 @@ function injectOgMeta(html, settings) {
   const ogImage = settings.og_image || settings.store_logo_url || '';
   const ogUrl = settings.og_url || '';
 
-  console.log('🔄 Injecting OG Meta:', { ogTitle, ogDesc, ogImage: ogImage ? '✅ has image' : '❌ no image', ogUrl });
+  console.log('🔄 Injecting OG Meta:', JSON.stringify({ ogTitle, ogDesc, ogImage: ogImage ? ogImage.substring(0, 50) + '...' : '', ogUrl }));
+
+  // Use flexible regex that handles various HTML formats (minified, extra spaces, single/double quotes)
+  const replaceMetaProperty = (h, prop, val) => {
+    const regex = new RegExp(`<meta\\s+property=["']${prop}["']\\s+content=["'][^"']*["']`, 'i');
+    const replacement = `<meta property="${prop}" content="${escapeHtml(val)}"`;
+    const matched = regex.test(h);
+    console.log(`  ${prop}: ${matched ? '✅ matched' : '❌ NOT matched'}`);
+    return h.replace(regex, replacement);
+  };
+
+  const replaceMetaName = (h, name, val) => {
+    const regex = new RegExp(`<meta\\s+name=["']${name}["']\\s+content=["'][^"']*["']`, 'i');
+    const replacement = `<meta name="${name}" content="${escapeHtml(val)}"`;
+    const matched = regex.test(h);
+    console.log(`  ${name}: ${matched ? '✅ matched' : '❌ NOT matched'}`);
+    return h.replace(regex, replacement);
+  };
 
   if (ogTitle) {
-    html = html.replace(/<meta property="og:title" content="[^"]*"/, `<meta property="og:title" content="${escapeHtml(ogTitle)}"`);
-    html = html.replace(/<meta property="og:site_name" content="[^"]*"/, `<meta property="og:site_name" content="${escapeHtml(ogTitle)}"`);
-    html = html.replace(/<meta name="twitter:title" content="[^"]*"/, `<meta name="twitter:title" content="${escapeHtml(ogTitle)}"`);
-    html = html.replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(ogTitle)}</title>`);
+    html = replaceMetaProperty(html, 'og:title', ogTitle);
+    html = replaceMetaProperty(html, 'og:site_name', ogTitle);
+    html = replaceMetaName(html, 'twitter:title', ogTitle);
+    html = html.replace(/<title>[^<]*<\/title>/i, `<title>${escapeHtml(ogTitle)}</title>`);
   }
   if (ogDesc) {
-    html = html.replace(/<meta property="og:description" content="[^"]*"/, `<meta property="og:description" content="${escapeHtml(ogDesc)}"`);
-    html = html.replace(/<meta name="twitter:description" content="[^"]*"/, `<meta name="twitter:description" content="${escapeHtml(ogDesc)}"`);
-    html = html.replace(/<meta name="description" content="[^"]*"/, `<meta name="description" content="${escapeHtml(ogDesc)}"`);
+    html = replaceMetaProperty(html, 'og:description', ogDesc);
+    html = replaceMetaName(html, 'twitter:description', ogDesc);
+    html = replaceMetaName(html, 'description', ogDesc);
   }
   if (ogImage) {
-    html = html.replace(/<meta property="og:image" content="[^"]*"/, `<meta property="og:image" content="${escapeHtml(ogImage)}"`);
-    html = html.replace(/<meta name="twitter:image" content="[^"]*"/, `<meta name="twitter:image" content="${escapeHtml(ogImage)}"`);
+    html = replaceMetaProperty(html, 'og:image', ogImage);
+    html = replaceMetaName(html, 'twitter:image', ogImage);
   }
   if (ogUrl) {
-    html = html.replace(/<meta property="og:url" content="[^"]*"/, `<meta property="og:url" content="${escapeHtml(ogUrl)}"`);
+    html = replaceMetaProperty(html, 'og:url', ogUrl);
   }
 
   return html;
@@ -99,16 +116,42 @@ app.use('/api/qr', qrAutomationRoutes);
 
 // Debug OG endpoint - shows what the server will inject
 app.get('/debug-og', async (req, res) => {
-  const settings = await fetchOgSettings();
-  res.json({
-    cached: cachedOgSettings ? true : false,
-    cacheAge: ogCacheTime ? `${Math.round((Date.now() - ogCacheTime) / 1000)}s ago` : 'none',
-    settings,
-    envCheck: {
-      hasUrl: !!EXTERNAL_SUPABASE_URL,
-      hasKey: !!EXTERNAL_SUPABASE_ANON_KEY,
+  try {
+    // Force fresh fetch (bypass cache)
+    cachedOgSettings = null;
+    ogCacheTime = 0;
+    const settings = await fetchOgSettings();
+    
+    // Also show what the final HTML looks like
+    const htmlPath = join(__dirname, 'dist', 'index.html');
+    const rawHtml = readFileSync(htmlPath, 'utf-8');
+    const injectedHtml = injectOgMeta(rawHtml, settings);
+    
+    // Extract meta tags from injected HTML
+    const metaRegex = /<meta\s+(property|name)=["']([^"']*)["']\s+content=["']([^"']*)["']/gi;
+    const metas = {};
+    let match;
+    while ((match = metaRegex.exec(injectedHtml)) !== null) {
+      metas[match[2]] = match[3];
     }
-  });
+    
+    // Extract title
+    const titleMatch = injectedHtml.match(/<title>([^<]*)<\/title>/i);
+    
+    res.json({
+      status: '✅ Debug OG Report',
+      dbValues: settings,
+      injectedMeta: metas,
+      injectedTitle: titleMatch ? titleMatch[1] : 'not found',
+      envCheck: {
+        EXTERNAL_SUPABASE_URL: EXTERNAL_SUPABASE_URL ? '✅ set' : '❌ missing',
+        EXTERNAL_SUPABASE_ANON_KEY: EXTERNAL_SUPABASE_ANON_KEY ? '✅ set' : '❌ missing',
+      },
+      note: 'If dbValues show correct data but Telegram still shows old card, use @WebpageBot in Telegram to purge cache'
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Health check endpoint for Render
