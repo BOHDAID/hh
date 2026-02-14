@@ -188,7 +188,7 @@ app.get('/health', (req, res) => {
 });
 
 // Serve static files from the dist folder (Vite build output)
-app.use(express.static(join(__dirname, 'dist')));
+app.use(express.static(join(__dirname, 'dist'), { index: false }));
 
 // Handle SPA routing - inject dynamic OG meta
 app.get('/{*splat}', async (req, res) => {
