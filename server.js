@@ -63,47 +63,59 @@ function injectOgMeta(html, settings) {
 
   const ogTitle = settings.og_title || settings.store_name || '';
   const ogDesc = settings.og_description || '';
-  // Only use proper URLs for OG image - base64 data URIs are not supported by crawlers
   const rawImage = settings.og_image || settings.store_logo_url || '';
   const ogImage = rawImage.startsWith('data:') ? '' : rawImage;
   const ogUrl = settings.og_url || '';
 
   console.log('🔄 Injecting OG Meta:', JSON.stringify({ ogTitle, ogDesc, ogImage: ogImage ? ogImage.substring(0, 50) + '...' : '', ogUrl }));
 
-  // Use flexible regex that handles various HTML formats (minified, extra spaces, single/double quotes)
-  const replaceMetaProperty = (h, prop, val) => {
-    const regex = new RegExp(`<meta\\s+property=["']${prop}["']\\s+content=["'][^"']*["']`, 'i');
-    const replacement = `<meta property="${prop}" content="${escapeHtml(val)}"`;
-    const matched = regex.test(h);
-    console.log(`  ${prop}: ${matched ? '✅ matched' : '❌ NOT matched'}`);
-    return h.replace(regex, replacement);
-  };
+  // Strategy: Remove ALL existing OG/Twitter meta tags, then inject fresh ones before </head>
+  // This avoids regex matching issues with minified/reformatted HTML from Vite
 
-  const replaceMetaName = (h, name, val) => {
-    const regex = new RegExp(`<meta\\s+name=["']${name}["']\\s+content=["'][^"']*["']`, 'i');
-    const replacement = `<meta name="${name}" content="${escapeHtml(val)}"`;
-    const matched = regex.test(h);
-    console.log(`  ${name}: ${matched ? '✅ matched' : '❌ NOT matched'}`);
-    return h.replace(regex, replacement);
-  };
+  // Remove existing meta tags (handles any attribute order, spacing, self-closing)
+  const removePatterns = [
+    /<meta[^>]*property\s*=\s*["']og:[^"']*["'][^>]*\/?>/gi,
+    /<meta[^>]*name\s*=\s*["']twitter:[^"']*["'][^>]*\/?>/gi,
+    /<meta[^>]*name\s*=\s*["']description["'][^>]*\/?>/gi,
+  ];
+  for (const pat of removePatterns) {
+    html = html.replace(pat, '');
+  }
 
+  // Replace title tag
   if (ogTitle) {
-    html = replaceMetaProperty(html, 'og:title', ogTitle);
-    html = replaceMetaProperty(html, 'og:site_name', ogTitle);
-    html = replaceMetaName(html, 'twitter:title', ogTitle);
     html = html.replace(/<title>[^<]*<\/title>/i, `<title>${escapeHtml(ogTitle)}</title>`);
   }
+
+  // Build fresh meta tags
+  const metaTags = [];
+  if (ogTitle) {
+    metaTags.push(`<meta property="og:title" content="${escapeHtml(ogTitle)}" />`);
+    metaTags.push(`<meta property="og:site_name" content="${escapeHtml(ogTitle)}" />`);
+    metaTags.push(`<meta name="twitter:title" content="${escapeHtml(ogTitle)}" />`);
+  }
   if (ogDesc) {
-    html = replaceMetaProperty(html, 'og:description', ogDesc);
-    html = replaceMetaName(html, 'twitter:description', ogDesc);
-    html = replaceMetaName(html, 'description', ogDesc);
+    metaTags.push(`<meta property="og:description" content="${escapeHtml(ogDesc)}" />`);
+    metaTags.push(`<meta name="twitter:description" content="${escapeHtml(ogDesc)}" />`);
+    metaTags.push(`<meta name="description" content="${escapeHtml(ogDesc)}" />`);
   }
   if (ogImage) {
-    html = replaceMetaProperty(html, 'og:image', ogImage);
-    html = replaceMetaName(html, 'twitter:image', ogImage);
+    metaTags.push(`<meta property="og:image" content="${escapeHtml(ogImage)}" />`);
+    metaTags.push(`<meta property="og:image:width" content="1200" />`);
+    metaTags.push(`<meta property="og:image:height" content="630" />`);
+    metaTags.push(`<meta name="twitter:image" content="${escapeHtml(ogImage)}" />`);
+    metaTags.push(`<meta name="twitter:card" content="summary_large_image" />`);
   }
   if (ogUrl) {
-    html = replaceMetaProperty(html, 'og:url', ogUrl);
+    metaTags.push(`<meta property="og:url" content="${escapeHtml(ogUrl)}" />`);
+  }
+  metaTags.push(`<meta property="og:type" content="website" />`);
+
+  // Inject before </head>
+  if (metaTags.length > 0) {
+    const injection = '\n    ' + metaTags.join('\n    ') + '\n  ';
+    html = html.replace('</head>', injection + '</head>');
+    console.log(`✅ Injected ${metaTags.length} fresh meta tags`);
   }
 
   return html;
