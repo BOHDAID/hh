@@ -66,6 +66,8 @@ function injectOgMeta(html, settings) {
   const ogImage = settings.og_image || settings.store_logo_url || '';
   const ogUrl = settings.og_url || '';
 
+  console.log('🔄 Injecting OG Meta:', { ogTitle, ogDesc, ogImage: ogImage ? '✅ has image' : '❌ no image', ogUrl });
+
   if (ogTitle) {
     html = html.replace(/<meta property="og:title" content="[^"]*"/, `<meta property="og:title" content="${escapeHtml(ogTitle)}"`);
     html = html.replace(/<meta property="og:site_name" content="[^"]*"/, `<meta property="og:site_name" content="${escapeHtml(ogTitle)}"`);
