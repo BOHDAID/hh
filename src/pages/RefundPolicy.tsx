@@ -3,10 +3,11 @@ import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { db } from "@/lib/supabaseClient";
+import useStoreBranding from "@/hooks/useStoreBranding";
 
 const RefundPolicy = () => {
   const [content, setContent] = useState("");
-  const [storeName, setStoreName] = useState("متجر رقمي");
+  const { storeName } = useStoreBranding();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -14,15 +15,12 @@ const RefundPolicy = () => {
       const { data } = await db
         .from("site_settings")
         .select("key, value")
-        .in("key", ["refund_policy", "store_name"]);
+        .in("key", ["refund_policy"]);
 
       if (data) {
         data.forEach((setting) => {
           if (setting.key === "refund_policy" && setting.value) {
             setContent(setting.value);
-          }
-          if (setting.key === "store_name" && setting.value) {
-            setStoreName(setting.value);
           }
         });
       }

@@ -5,6 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { db, getAuthClient, isExternalConfigured } from "@/lib/supabaseClient";
 import { useTranslation } from "react-i18next";
 import LanguageSwitcher from "./LanguageSwitcher";
+import useStoreBranding from "@/hooks/useStoreBranding";
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -17,31 +18,10 @@ const Header = ({ onMenuClick, showMenuButton = false }: HeaderProps) => {
   const [user, setUser] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [cartCount, setCartCount] = useState(0);
-  const [storeName, setStoreName] = useState("متجر رقمي");
-  const [storeLogo, setStoreLogo] = useState<string | null>(null);
+  const { storeName, storeLogo } = useStoreBranding();
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Fetch store settings
-    const fetchStoreSettings = async () => {
-      const { data } = await db
-        .from('site_settings')
-        .select('key, value')
-        .in('key', ['store_name', 'store_logo_url']);
-      
-      if (data) {
-        data.forEach(setting => {
-          if (setting.key === 'store_name' && setting.value) {
-            setStoreName(setting.value);
-          }
-          if (setting.key === 'store_logo_url' && setting.value) {
-            setStoreLogo(setting.value);
-          }
-        });
-      }
-    };
-    fetchStoreSettings();
-
     // Use external auth client
     const authClient = isExternalConfigured ? getAuthClient() : db;
     

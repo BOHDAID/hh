@@ -3,10 +3,11 @@ import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { db } from "@/lib/supabaseClient";
+import useStoreBranding from "@/hooks/useStoreBranding";
 
 const Terms = () => {
   const [content, setContent] = useState("");
-  const [storeName, setStoreName] = useState("متجر رقمي");
+  const { storeName } = useStoreBranding();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -14,15 +15,12 @@ const Terms = () => {
       const { data } = await db
         .from("site_settings")
         .select("key, value")
-        .in("key", ["terms_of_service", "store_name"]);
+        .in("key", ["terms_of_service"]);
 
       if (data) {
         data.forEach((setting) => {
           if (setting.key === "terms_of_service" && setting.value) {
             setContent(setting.value);
-          }
-          if (setting.key === "store_name" && setting.value) {
-            setStoreName(setting.value);
           }
         });
       }

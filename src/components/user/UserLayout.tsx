@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import UserSidebar from "./UserSidebar";
 import { db, getAuthClient, isExternalConfigured } from "@/lib/supabaseClient";
 import { useTranslation } from "react-i18next";
+import useStoreBranding from "@/hooks/useStoreBranding";
 
 interface UserLayoutProps {
   children: React.ReactNode;
@@ -18,31 +19,10 @@ const UserLayout = ({ children, title, subtitle }: UserLayoutProps) => {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
-  const [storeName, setStoreName] = useState(isRTL ? "متجر رقمي" : "Digital Store");
-  const [storeLogo, setStoreLogo] = useState<string | null>(null);
+  const { storeName, storeLogo } = useStoreBranding();
 
   useEffect(() => {
     const authClient = isExternalConfigured ? getAuthClient() : db;
-
-    // Fetch store settings
-    const fetchStoreSettings = async () => {
-      const { data } = await db
-        .from("site_settings")
-        .select("key, value")
-        .in("key", ["store_name", "store_logo_url"]);
-
-      if (data) {
-        data.forEach((setting) => {
-          if (setting.key === "store_name" && setting.value) {
-            setStoreName(setting.value);
-          }
-          if (setting.key === "store_logo_url" && setting.value) {
-            setStoreLogo(setting.value);
-          }
-        });
-      }
-    };
-    fetchStoreSettings();
 
     // Check auth
     authClient.auth.getSession().then(({ data: { session } }) => {
