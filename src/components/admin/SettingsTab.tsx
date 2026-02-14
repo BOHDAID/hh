@@ -100,17 +100,34 @@ const SettingsTab = () => {
     setShowPasswords(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
+  // الإعدادات العامة (غير حساسة) التي يجب أن تكون مرئية للجميع
+  const publicSettingKeys = new Set([
+    // هوية المتجر
+    "store_name", "store_logo_url", "store_favicon_url", "support_email", "default_currency",
+    // قسم الهيرو
+    "hero_badge", "hero_title1", "hero_title2", "hero_title3", "hero_subtitle", "hero_subtitle_desc",
+    // Open Graph / بطاقة المشاركة
+    "og_title", "og_description", "og_image",
+    // وسائل التواصل
+    "instagram_username", "tiktok_username", "telegram_username", "telegram_channel",
+    "discord_invite", "twitter_username",
+    // إعدادات عامة
+    "on_demand_message", "site_name", "site_description",
+  ]);
+
   const saveSettings = async () => {
     setSaving(true);
     
     try {
       let hasError = false;
       for (const [key, value] of Object.entries(settings)) {
+        const isSensitive = !publicSettingKeys.has(key);
         const { error } = await db
           .from("site_settings")
           .upsert({ 
             key, 
             value, 
+            is_sensitive: isSensitive,
             updated_at: new Date().toISOString() 
           }, { 
             onConflict: 'key' 
