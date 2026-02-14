@@ -266,7 +266,7 @@ const Contact = () => {
             {Object.keys(socialLinks).length > 0 && (
               <div className="mt-12">
                 <h2 className="text-xl font-bold text-foreground text-center mb-6">
-                  {isRTL ? "تابعنا على منصات التواصل" : "Follow us on social media"}
+                  {isRTL ? "تواصل معنا عبر" : "Reach us on"}
                 </h2>
                 <div className="flex flex-wrap justify-center gap-4">
                   {socialConfig.map((social) => {
