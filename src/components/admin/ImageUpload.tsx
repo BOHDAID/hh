@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { db, getAuthClient, isExternalConfigured } from "@/lib/supabaseClient";
-import { supabase } from "@/integrations/supabase/client";
 import { invokeCloudFunction } from "@/lib/cloudFunctions";
 import { toast } from "@/hooks/use-toast";
 import { Upload, Loader2, X, Image as ImageIcon, Wand2, Package } from "lucide-react";
@@ -210,7 +209,7 @@ const ImageUpload = ({
       const filePath = fileName;
 
       // Upload to Lovable Cloud Storage (has proper RLS policies)
-      const { error: uploadError } = await supabase.storage
+      const { error: uploadError } = await db.storage
         .from(bucket)
         .upload(filePath, optimizedFile, {
           cacheControl: "3600",
@@ -223,7 +222,7 @@ const ImageUpload = ({
       }
 
       // Get public URL from Lovable Cloud
-      const { data: { publicUrl } } = supabase.storage
+      const { data: { publicUrl } } = db.storage
         .from(bucket)
         .getPublicUrl(filePath);
 
