@@ -42,8 +42,8 @@ const WalletTopUp = () => {
   const serviceFee = isPayPalSelected ? (baseAmount * 0.10 + 0.50) : 0;
   const totalAmount = baseAmount + serviceFee;
   
-  // PayPal requires minimum $5
-  const isPayPalBelowMinimum = isPayPalSelected && baseAmount < 5;
+   // PayPal requires minimum $1
+  const isPayPalBelowMinimum = isPayPalSelected && baseAmount < 1;
 
   useEffect(() => {
     if (!baseAmount || baseAmount < 1) {
