@@ -58,6 +58,20 @@ function hashIP(ip: string): string {
   return Math.abs(hash).toString(16);
 }
 
+function validateReferrer(referrer: unknown): string | null {
+  if (referrer === null || referrer === undefined) return null;
+  if (typeof referrer !== 'string') return null;
+  if (referrer.length > 500) return null;
+  if (referrer.includes('<') || referrer.includes('>') || referrer.includes('javascript:')) return null;
+  if (referrer.startsWith('utm:')) return referrer.slice(0, 500);
+  try {
+    if (referrer.length > 0) new URL(referrer);
+    return referrer.slice(0, 500) || null;
+  } catch {
+    return null;
+  }
+}
+
 function getDeviceType(userAgent: string): string {
   if (!userAgent) return "unknown";
   const ua = userAgent.toLowerCase();
@@ -93,6 +107,9 @@ function checkRateLimit(identifier: string, maxRequests: number = 10, windowMs: 
 interface TrackVisitRequest {
   page_path: string;
   referrer?: string;
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
 }
 
 // ==================== Main Handler ====================
@@ -128,6 +145,7 @@ serve(async (req: Request) => {
     const userAgent = req.headers.get("user-agent") || "";
     const ipHash = hashIP(clientIP);
     const deviceType = getDeviceType(userAgent);
+    const validatedReferrer = validateReferrer(referrer);
 
     // Insert visit record
     const { error } = await adminClient
@@ -136,7 +154,7 @@ serve(async (req: Request) => {
         page_path: page_path.slice(0, 255),
         ip_hash: ipHash,
         user_agent: userAgent.slice(0, 500),
-        referrer: referrer?.slice(0, 500) || null,
+        referrer: validatedReferrer,
         device_type: deviceType,
       });
 
