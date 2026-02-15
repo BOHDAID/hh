@@ -69,6 +69,10 @@ function validateReferrer(referrer: unknown): string | null {
   if (referrer.length > 500) return null;
   // Block suspicious patterns
   if (referrer.includes('<') || referrer.includes('>') || referrer.includes('javascript:')) return null;
+  // Allow utm: prefixed sources
+  if (referrer.startsWith('utm:')) {
+    return referrer.slice(0, 500);
+  }
   try {
     // Must be a valid URL or empty
     if (referrer && referrer.length > 0) {

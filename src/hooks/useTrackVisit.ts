@@ -11,11 +11,23 @@ export const useTrackVisit = (pagePath?: string) => {
       try {
         const path = pagePath || window.location.pathname;
         const referrer = document.referrer || null;
+        
+        // Extract UTM source or other query params as fallback referrer
+        const params = new URLSearchParams(window.location.search);
+        const utmSource = params.get("utm_source");
+        const utmMedium = params.get("utm_medium");
+        const utmCampaign = params.get("utm_campaign");
+        
+        // Build effective referrer: use document.referrer first, fallback to utm_source
+        const effectiveReferrer = referrer || (utmSource ? `utm:${utmSource}` : null);
 
         // Call the edge function on external Supabase
         const { error } = await invokeCloudFunctionPublic("track-visit", {
           page_path: path,
-          referrer: referrer,
+          referrer: effectiveReferrer,
+          utm_source: utmSource,
+          utm_medium: utmMedium,
+          utm_campaign: utmCampaign,
         });
 
         if (error) {
