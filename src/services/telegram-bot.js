@@ -493,12 +493,24 @@ async function handleCallbackQuery(callbackQuery) {
   if (data === 'crunchyroll_phone_done') {
     await markCodeAsUsed(session.activationCodeId);
     
-    await editMessage(chatId, messageId, bi(
-      `✅ <b>تم التفعيل بنجاح!</b>\n\n🎉 استمتع بمشاهدة Crunchyroll!`,
-      `✅ <b>Activation complete!</b>\n\n🎉 Enjoy watching Crunchyroll!`
-    ));
+    try {
+      await editMessage(chatId, messageId, bi(
+        `✅ <b>تم التفعيل بنجاح!</b>\n\n🎉 استمتع بمشاهدة Crunchyroll!`,
+        `✅ <b>Activation complete!</b>\n\n🎉 Enjoy watching Crunchyroll!`
+      ));
+    } catch (e) {
+      console.error('⚠️ Failed to edit message:', e.message);
+    }
     
-    await sendSuccessMessage(chatId, session);
+    try {
+      await sendSuccessMessage(chatId, session);
+    } catch (e) {
+      console.error('⚠️ Failed to send success message:', e.message);
+      await sendMessage(chatId, bi(
+        '✅ تم التفعيل بنجاح! 🎉',
+        '✅ Activation complete! 🎉'
+      )).catch(() => {});
+    }
     delete userSessions[chatId];
     return;
   }
@@ -624,21 +636,37 @@ async function handleCallbackQuery(callbackQuery) {
           await markCodeAsUsed(session.activationCodeId);
           // حذف رسالة الانتظار وإرسال رسالة النجاح النهائية مباشرة
           try { await deleteMessage(chatId, messageId); } catch(e) {}
-          await sendSuccessMessage(chatId, session);
+          try {
+            await sendSuccessMessage(chatId, session);
+          } catch (msgErr) {
+            console.error('⚠️ Failed to send success message:', msgErr.message);
+            await sendMessage(chatId, bi(
+              '✅ تم تفعيل التلفاز بنجاح! 🎉',
+              '✅ TV activated successfully! 🎉'
+            )).catch(() => {});
+          }
           delete userSessions[chatId];
         } else {
           const errorMsg = tvResult.error || tvResult.message || 'سبب غير معروف';
-          await editMessage(chatId, messageId, bi(
-            `❌ <b>فشل ربط التلفزيون</b>\n\n📋 السبب: ${errorMsg}`,
-            `❌ <b>TV linking failed</b>\n\n📋 Reason: ${errorMsg}`
-          ));
+          try {
+            await editMessage(chatId, messageId, bi(
+              `❌ <b>فشل ربط التلفزيون</b>\n\n📋 السبب: ${errorMsg}`,
+              `❌ <b>TV linking failed</b>\n\n📋 Reason: ${errorMsg}`
+            ));
+          } catch (editErr) {
+            console.error('⚠️ Failed to edit message:', editErr.message);
+            await sendMessage(chatId, bi(
+              `❌ فشل ربط التلفزيون: ${errorMsg}`,
+              `❌ TV linking failed: ${errorMsg}`
+            )).catch(() => {});
+          }
           // قفل الجلسة - المستخدم لازم يرسل /cancel لإعادة المحاولة
           session.step = 'locked_needs_cancel';
           delete session.pendingTvCode;
           await sendMessage(chatId, bi(
             '🔒 تم قفل الجلسة. لإعادة المحاولة أرسل /cancel ثم أعد إدخال الكود من البداية.',
             '🔒 Session locked. To retry, send /cancel then re-enter your code.'
-          ));
+          )).catch(() => {});
         }
       } catch (fetchErr) {
         console.error('❌ Crunchyroll TV fetch error:', fetchErr.message);
@@ -665,32 +693,52 @@ async function handleCallbackQuery(callbackQuery) {
     if (tvResult.success && tvResult.paired) {
       await markCodeAsUsed(session.activationCodeId);
       // إرسال السكرينشوت بدون نص نجاح مكرر
-      if (tvResult.screenshot) {
-        await sendPhoto(chatId, tvResult.screenshot, '📺');
+      try {
+        if (tvResult.screenshot) {
+          await sendPhoto(chatId, tvResult.screenshot, '📺');
+        }
+      } catch (photoErr) {
+        console.error('⚠️ Failed to send screenshot:', photoErr.message);
       }
-      await sendSuccessMessage(chatId, session);
+      try {
+        await sendSuccessMessage(chatId, session);
+      } catch (msgErr) {
+        console.error('⚠️ Failed to send success message:', msgErr.message);
+        await sendMessage(chatId, bi(
+          '✅ تم تفعيل التلفاز بنجاح! 🎉',
+          '✅ TV activated successfully! 🎉'
+        )).catch(() => {});
+      }
       delete userSessions[chatId];
     } else {
       const errorDetail = tvResult.error || tvResult.message || 'سبب غير معروف';
       console.log(`❌ TV code failed: ${errorDetail}, hasScreenshot: ${!!tvResult.screenshot}`);
       
-      if (tvResult.screenshot) {
-        await sendPhoto(chatId, tvResult.screenshot, bi(
-          `❌ <b>فشل ربط التلفزيون</b>\n\n📋 السبب: ${errorDetail}`,
-          `❌ <b>TV linking failed</b>\n\n📋 Reason: ${errorDetail}`
-        ));
-      } else {
+      try {
+        if (tvResult.screenshot) {
+          await sendPhoto(chatId, tvResult.screenshot, bi(
+            `❌ <b>فشل ربط التلفزيون</b>\n\n📋 السبب: ${errorDetail}`,
+            `❌ <b>TV linking failed</b>\n\n📋 Reason: ${errorDetail}`
+          ));
+        } else {
+          await sendMessage(chatId, bi(
+            `❌ <b>فشل ربط التلفزيون</b>\n\n📋 السبب: ${errorDetail}`,
+            `❌ <b>TV linking failed</b>\n\n📋 Reason: ${errorDetail}`
+          ));
+        }
+      } catch (errMsgErr) {
+        console.error('⚠️ Failed to send error message:', errMsgErr.message);
         await sendMessage(chatId, bi(
-          `❌ <b>فشل ربط التلفزيون</b>\n\n📋 السبب: ${errorDetail}`,
-          `❌ <b>TV linking failed</b>\n\n📋 Reason: ${errorDetail}`
-        ));
+          `❌ فشل ربط التلفزيون: ${errorDetail}`,
+          `❌ TV linking failed: ${errorDetail}`
+        )).catch(() => {});
       }
       session.step = 'awaiting_tv_code';
       delete session.pendingTvCode;
       await sendMessage(chatId, bi(
         '📝 أرسل الكود الصحيح المعروض على شاشة التلفزيون مرة أخرى:',
         '📝 Send the correct code shown on your TV screen again:'
-      ));
+      )).catch(() => {});
     }
     return;
   }
@@ -1020,15 +1068,43 @@ async function getOTPFromSession(senderFilter = null) {
 }
 
 async function markCodeAsUsed(codeId) {
-  await supabase
-    .from('activation_codes')
-    .update({
-      status: 'used',
-      is_used: true,
-      used_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', codeId);
+  try {
+    // 1️⃣ تحديث كود التفعيل
+    await supabase
+      .from('activation_codes')
+      .update({
+        status: 'used',
+        is_used: true,
+        used_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', codeId);
+
+    // 2️⃣ تحديث حالة الطلب إلى "مكتمل"
+    const { data: codeData } = await supabase
+      .from('activation_codes')
+      .select('order_id')
+      .eq('id', codeId)
+      .maybeSingle();
+
+    if (codeData?.order_id) {
+      const { error: orderErr } = await supabase
+        .from('orders')
+        .update({
+          status: 'completed',
+          payment_status: 'completed',
+        })
+        .eq('id', codeData.order_id);
+
+      if (orderErr) {
+        console.error('❌ Failed to update order status:', orderErr.message);
+      } else {
+        console.log(`✅ Order ${codeData.order_id} marked as completed`);
+      }
+    }
+  } catch (err) {
+    console.error('❌ markCodeAsUsed error:', err.message);
+  }
 }
 
 // ============================================================
