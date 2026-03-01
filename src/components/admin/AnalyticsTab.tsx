@@ -370,7 +370,7 @@ const AnalyticsTab = () => {
       if (referrerData && referrerData.length > 0) {
         const referrerMap = new Map<string, number>();
         // Filter out internal/preview domains
-        const excludedDomains = ["lovable.dev", "lovable.app", "localhost", "127.0.0.1", "webcontainer.io"];
+        const excludedDomains = ["lovable.dev", "lovable.app", "lovableproject.com", "localhost", "127.0.0.1", "webcontainer.io", "onrender.com", "ninto.store"];
         referrerData.forEach((visit) => {
           if (visit.referrer && visit.referrer.trim() !== "") {
             // Extract domain from referrer URL
