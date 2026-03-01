@@ -774,6 +774,7 @@ const Checkout = () => {
           });
           setProcessing(false);
           return;
+        }
       }
 
       if (paymentMethod === "ivno") {
@@ -815,7 +816,6 @@ const Checkout = () => {
           setProcessing(false);
           return;
         }
-      }
       }
     } catch (error) {
       console.error("Checkout error:", error);
