@@ -1105,7 +1105,52 @@ const SettingsTab = () => {
               </CardContent>
             </MotionCard>
 
-            {/* General Payment Settings */}
+            {/* Ivno */}
+            <MotionCard 
+              custom={6}
+              initial="hidden"
+              animate="visible"
+              variants={cardVariants}
+              className="border-emerald-500/20 bg-card/50 backdrop-blur-sm"
+            >
+              <CardHeader className="pb-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl bg-emerald-500/10">
+                      <CreditCard className="h-5 w-5 text-emerald-500" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg">Ivno</CardTitle>
+                      <CardDescription>Visa, Mastercard, Apple Pay, Google Pay → USDC فوري</CardDescription>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="border-emerald-500/30 text-emerald-600">جديد</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {renderPasswordInput("API Key", "ivno_api_key", "iv_live_...", "يبدأ بـ iv_live_")}
+                {renderPasswordInput("API Secret", "ivno_api_secret", "iv_secret_...", "يبدأ بـ iv_secret_")}
+                <InfoBox variant="success">
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-start gap-2">
+                      <ExternalLink className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                      <span>
+                        <a href="https://ivno.io" target="_blank" rel="noopener noreferrer" className="underline font-medium">
+                          ivno.io
+                        </a>
+                        {" → Apply Now → Merchant Dashboard → API Keys"}
+                      </span>
+                    </div>
+                    <p className="text-xs opacity-80">
+                      • بدون رسوم شهرية - نسبة فقط على كل عملية<br/>
+                      • لا يتطلب KYC معقد - تفعيل سريع<br/>
+                      • الدفعات تصل فوراً بـ USDC على شبكة Polygon
+                    </p>
+                  </div>
+                </InfoBox>
+              </CardContent>
+            </MotionCard>
+
             <MotionCard 
               custom={3}
               initial="hidden"

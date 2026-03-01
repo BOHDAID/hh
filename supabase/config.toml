@@ -17,3 +17,9 @@ verify_jwt = false
 
 [functions.test-cookies]
 verify_jwt = false
+
+[functions.ivno-create]
+verify_jwt = false
+
+[functions.ivno-webhook]
+verify_jwt = false
