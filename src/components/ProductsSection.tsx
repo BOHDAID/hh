@@ -2,8 +2,9 @@ import ProductCard from "@/components/ProductCard";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect, useRef } from "react";
 import { db } from "@/lib/supabaseClient";
-import { Loader2, PackageX, Sparkles } from "lucide-react";
+import { PackageX, Sparkles } from "lucide-react";
 import { motion, useInView, AnimatePresence } from "framer-motion";
+import { ProductGridSkeleton } from "@/components/ProductCardSkeleton";
 import { useTranslation } from "react-i18next";
 
 interface Product {
@@ -155,16 +156,12 @@ const ProductsSection = () => {
         {/* Loading State */}
         <AnimatePresence mode="wait">
           {loading && (
-            <motion.div 
-              className="flex justify-center py-20"
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
             >
-              <div className="flex flex-col items-center gap-4">
-                <Loader2 className="h-12 w-12 animate-spin text-primary" />
-                <p className="text-muted-foreground">{t('products.loadingProducts')}</p>
-              </div>
+              <ProductGridSkeleton count={6} />
             </motion.div>
           )}
         </AnimatePresence>
