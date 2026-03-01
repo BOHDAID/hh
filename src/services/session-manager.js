@@ -756,7 +756,7 @@ class OSNSessionManager {
         console.log('🔘 [OSN-Browser] Looking for submit button...');
         let activateBtn = await page.$('button[type="submit"]');
         if (!activateBtn) {
-          activateBtn = await this._findButton(page, ['activate', 'link', 'submit', 'connect', 'تفعيل', 'ربط', 'إضافة', 'add', 'pair']);
+          activateBtn = await this._findButton(page, ['continue', 'activate', 'link', 'submit', 'connect', 'متابعة', 'تفعيل', 'ربط', 'إضافة', 'add', 'pair', 'next', 'التالي']);
         }
 
         if (activateBtn) {
