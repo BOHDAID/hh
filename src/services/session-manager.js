@@ -750,14 +750,60 @@ class OSNSessionManager {
         await page.keyboard.press('Backspace');
         await this._sleep(300);
         await codeInput.type(tvCode, { delay: 120 });
-        await this._sleep(1000);
+
+        // إذا كانت الصفحة تستخدم حقول OTP متعددة (كل خانة رقم واحد)
+        const typedValue = await page.evaluate(el => (el?.value || '').toString(), codeInput).catch(() => '');
+        if ((typedValue || '').replace(/\s/g, '').length < Math.min(tvCode.length, 4)) {
+          const splitInputs = await page.$$('input[maxlength="1"], input[inputmode="numeric"], input[type="tel"]');
+          if (splitInputs.length > 1 && splitInputs.length <= 8) {
+            console.log(`🔢 [OSN-Browser] Detected ${splitInputs.length} split OTP inputs, filling one-by-one...`);
+            for (let i = 0; i < Math.min(tvCode.length, splitInputs.length); i++) {
+              await splitInputs[i].click({ clickCount: 3 }).catch(() => {});
+              await splitInputs[i].type(tvCode[i], { delay: 80 }).catch(() => {});
+            }
+          }
+        }
+        await this._sleep(800);
 
         // الخطوة 5: الضغط على زر التفعيل
         console.log('🔘 [OSN-Browser] Looking for submit button...');
-        let activateBtn = await page.$('button[type="submit"]');
-        if (!activateBtn) {
-          activateBtn = await this._findButton(page, ['continue', 'activate', 'link', 'submit', 'connect', 'متابعة', 'تفعيل', 'ربط', 'إضافة', 'add', 'pair', 'next', 'التالي']);
+        const buttonKeywords = ['continue', 'activate', 'link', 'submit', 'connect', 'متابعة', 'تفعيل', 'ربط', 'إضافة', 'add', 'pair', 'next', 'التالي'];
+        let activateBtn = null;
+
+        // الأولوية: زر داخل نفس الفورم الخاص بحقل الكود
+        let formHandle = null;
+        let formElement = null;
+        try {
+          formHandle = await codeInput.evaluateHandle(el => el.closest('form'));
+          formElement = formHandle?.asElement?.() || null;
+          if (formElement) {
+            activateBtn = await formElement.$('button[type="submit"], input[type="submit"]');
+            if (!activateBtn) {
+              activateBtn = await this._findButton(page, buttonKeywords, formElement);
+            }
+          }
+        } catch {}
+        finally {
+          try { await formHandle?.dispose?.(); } catch {}
         }
+
+        if (!activateBtn) {
+          activateBtn = await page.$('button[type="submit"], input[type="submit"]');
+        }
+        if (!activateBtn) {
+          activateBtn = await this._findButton(page, buttonKeywords);
+        }
+
+        // راقب رد API الخاص بالربط (إن تم)
+        const activationResponsePromise = page.waitForResponse((resp) => {
+          try {
+            const url = resp.url().toLowerCase();
+            const method = (resp.request()?.method?.() || '').toUpperCase();
+            return method === 'POST' && (url.includes('/devices/link') || url.includes('/api/v1/devices/link'));
+          } catch {
+            return false;
+          }
+        }, { timeout: 12000 }).catch(() => null);
 
         if (activateBtn) {
           console.log('🔘 [OSN-Browser] Clicking activate/submit button...');
@@ -766,10 +812,42 @@ class OSNSessionManager {
           console.log('⏎ [OSN-Browser] No button found, pressing Enter...');
           await page.keyboard.press('Enter');
         }
-        
+
         // الخطوة 6: انتظار النتيجة
         console.log('⏳ [OSN-Browser] Waiting for activation result...');
         await this._sleep(5000);
+
+        const activationResponse = await activationResponsePromise;
+        if (activationResponse) {
+          const apiStatus = activationResponse.status();
+          const apiUrl = activationResponse.url();
+          let apiText = '';
+          try { apiText = (await activationResponse.text()) || ''; } catch {}
+          const apiLower = apiText.toLowerCase();
+
+          console.log(`📡 [OSN-Browser] Link API response: ${apiStatus} ${apiUrl}`);
+          console.log(`📡 [OSN-Browser] Link API body (first 250): ${apiText.substring(0, 250)}`);
+
+          const apiHasError = apiStatus >= 400 ||
+            apiLower.includes('invalid') || apiLower.includes('expired') ||
+            apiLower.includes('incorrect') || apiLower.includes('wrong') ||
+            apiLower.includes('not found') || apiLower.includes('error') ||
+            apiLower.includes('غير صحيح') || apiLower.includes('منتهي') || apiLower.includes('غير صالح');
+
+          if (!apiHasError && apiStatus >= 200 && apiStatus < 300) {
+            console.log('✅ [OSN-Browser] TV activated successfully! (API response)');
+            this.lastActivity = new Date();
+            return { success: true, paired: true, message: '✅ تم تفعيل التلفاز بنجاح! استمتع بالمشاهدة 🎉📺' };
+          }
+
+          if (apiHasError) {
+            const errorMsg = (apiLower.includes('expired') || apiLower.includes('منتهي'))
+              ? '❌ الرمز منتهي الصلاحية. أعد تشغيل التطبيق على التلفاز واحصل على رمز جديد.'
+              : '❌ الرمز غير صحيح. تأكد من إدخال الرمز الظاهر على شاشة التلفاز بالضبط.';
+            console.log('❌ [OSN-Browser] API indicated activation error');
+            return { success: false, paired: false, failed: true, message: errorMsg };
+          }
+        }
 
         const resultText = await page.evaluate(() => document.body?.innerText?.toLowerCase() || '');
         const finalUrl = page.url();
@@ -810,9 +888,15 @@ class OSNSessionManager {
 
         // حقل الإدخال لا يزال موجود = فشل
         console.log('⚠️ [OSN-Browser] Input still present - activation failed');
-        const screenshotPath2 = `/tmp/osn-tv-uncertain-${Date.now()}.png`;
-        await page.screenshot({ path: screenshotPath2, fullPage: true }).catch(() => {});
-        return { success: false, paired: false, failed: true, message: '❌ لم يتم التفعيل. الرمز قد يكون غير صحيح أو منتهي الصلاحية.' };
+        let failureScreenshot = null;
+        try { failureScreenshot = await page.screenshot({ encoding: 'base64', fullPage: true }); } catch {}
+        return {
+          success: false,
+          paired: false,
+          failed: true,
+          message: '❌ لم يتم التفعيل. الرمز قد يكون غير صحيح أو منتهي الصلاحية.',
+          screenshot: failureScreenshot ? `data:image/png;base64,${failureScreenshot}` : null,
+        };
       } catch (err) {
         console.error('❌ [OSN-Browser] TV activation error:', err.message);
         return { success: false, paired: false, failed: true, message: err.message };
@@ -1081,11 +1165,21 @@ class OSNSessionManager {
   /**
    * بحث عن زر بالنص
    */
-  async _findButton(page, texts) {
-    const buttons = await page.$$('button, a, [role="button"]');
+  async _findButton(page, texts, scope = null) {
+    const root = scope || page;
+    const buttons = await root.$$('button, a, [role="button"], input[type="submit"], input[type="button"]');
     for (const btn of buttons) {
-      const text = await page.evaluate(el => (el.textContent || '').toLowerCase().trim(), btn);
-      if (texts.some(t => text.includes(t))) {
+      const meta = await page.evaluate((el) => {
+        const style = window.getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        const visible = style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+        const disabled = !!el.disabled || el.getAttribute('aria-disabled') === 'true';
+        const text = ((el.textContent || el.value || el.getAttribute('aria-label') || el.getAttribute('title') || '') + '').toLowerCase().trim();
+        return { visible, disabled, text };
+      }, btn).catch(() => ({ visible: false, disabled: true, text: '' }));
+
+      if (!meta.visible || meta.disabled) continue;
+      if (texts.some(t => meta.text.includes((t || '').toLowerCase()))) {
         return btn;
       }
     }
