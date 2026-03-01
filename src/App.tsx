@@ -32,6 +32,7 @@ import Demo from "./pages/Demo";
 import useDynamicFavicon from "./hooks/useDynamicFavicon";
 import useOpenGraphMeta from "./hooks/useOpenGraphMeta";
 import ErrorBoundary from "./components/ErrorBoundary";
+import AppInitializer from "./components/AppInitializer";
 
 const queryClient = new QueryClient();
 
@@ -79,7 +80,9 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <AppContent />
+        <AppInitializer>
+          <AppContent />
+        </AppInitializer>
       </TooltipProvider>
     </QueryClientProvider>
   </ErrorBoundary>

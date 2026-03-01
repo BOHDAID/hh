@@ -1,11 +1,10 @@
 import { Button } from "@/components/ui/button";
-import { ShoppingBag, Menu, User, LogOut, ShoppingCart, Wallet, Home, Package, MessageCircle, Settings } from "lucide-react";
-import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { db, getAuthClient, isExternalConfigured } from "@/lib/supabaseClient";
+import { ShoppingBag, Menu, Home, Package, MessageCircle, Settings, ShoppingCart, Wallet } from "lucide-react";
+import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import LanguageSwitcher from "./LanguageSwitcher";
-import useStoreBranding from "@/hooks/useStoreBranding";
+import { useAppData } from "./AppInitializer";
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -15,59 +14,7 @@ interface HeaderProps {
 const Header = ({ onMenuClick, showMenuButton = false }: HeaderProps) => {
   const { t } = useTranslation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [user, setUser] = useState<any>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [cartCount, setCartCount] = useState(0);
-  const { storeName, storeLogo } = useStoreBranding();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    // Use external auth client
-    const authClient = isExternalConfigured ? getAuthClient() : db;
-    
-    // Check current session
-    authClient.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        checkAdminRole(session.user.id);
-        fetchCartCount(session.user.id);
-      }
-    });
-
-    // Listen for auth changes
-    const { data: { subscription } } = authClient.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        checkAdminRole(session.user.id);
-        fetchCartCount(session.user.id);
-      } else {
-        setIsAdmin(false);
-        setCartCount(0);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const checkAdminRole = async (userId: string) => {
-    const { data } = await db
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId)
-      .maybeSingle();
-    
-    setIsAdmin(data?.role === 'admin');
-  };
-
-  const fetchCartCount = async (userId: string) => {
-    const { count } = await db
-      .from('cart_items')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId);
-    
-    setCartCount(count || 0);
-  };
-
+  const { user, isAdmin, storeName, storeLogo, cartCount } = useAppData();
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/50 glass">
@@ -125,19 +72,12 @@ const Header = ({ onMenuClick, showMenuButton = false }: HeaderProps) => {
 
         {/* Actions */}
         <div className="flex items-center gap-2">
-          {/* Language Switcher */}
           <LanguageSwitcher />
           
           {user ? (
             <>
-              {/* Sidebar Toggle Button - Only visible on desktop when onMenuClick is provided */}
               {onMenuClick && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="hidden md:flex"
-                  onClick={onMenuClick}
-                >
+                <Button variant="ghost" size="icon" className="hidden md:flex" onClick={onMenuClick}>
                   <Menu className="h-5 w-5" />
                 </Button>
               )}
@@ -145,29 +85,22 @@ const Header = ({ onMenuClick, showMenuButton = false }: HeaderProps) => {
           ) : (
             <>
               <Link to="/login">
-                <Button variant="outline" size="sm" className="hidden md:flex">
-                  {t('common.login')}
-                </Button>
+                <Button variant="outline" size="sm" className="hidden md:flex">{t('common.login')}</Button>
               </Link>
               <Link to="/register">
-                <Button variant="hero" size="sm" className="hidden md:flex">
-                  {t('common.register')}
-                </Button>
+                <Button variant="hero" size="sm" className="hidden md:flex">{t('common.register')}</Button>
               </Link>
             </>
           )}
           
-          {/* Mobile Menu Button - Single button for mobile */}
           <Button
             variant="ghost"
             size="icon"
             className="md:hidden"
             onClick={() => {
-              // If user is logged in and has sidebar, toggle sidebar
               if (user && onMenuClick) {
                 onMenuClick();
               } else {
-                // Otherwise toggle the header mobile menu
                 setIsMenuOpen(!isMenuOpen);
               }
             }}
@@ -182,47 +115,37 @@ const Header = ({ onMenuClick, showMenuButton = false }: HeaderProps) => {
         <div className="border-t border-border/50 glass p-3 md:hidden">
           <nav className="flex flex-col gap-2">
             <Link to="/" className="text-xs font-medium text-foreground flex items-center gap-2 py-1.5" onClick={() => setIsMenuOpen(false)}>
-              <Home className="h-3.5 w-3.5" />
-              {t('common.home')}
+              <Home className="h-3.5 w-3.5" />{t('common.home')}
             </Link>
             <a href="/#products" className="text-xs font-medium text-muted-foreground flex items-center gap-2 py-1.5" onClick={() => setIsMenuOpen(false)}>
-              <Package className="h-3.5 w-3.5" />
-              {t('common.products')}
+              <Package className="h-3.5 w-3.5" />{t('common.products')}
             </a>
             {user && (
               <>
                 <Link to="/wallet" className="text-xs font-medium text-muted-foreground flex items-center gap-2 py-1.5" onClick={() => setIsMenuOpen(false)}>
-                  <Wallet className="h-3.5 w-3.5" />
-                  {t('common.myBalance')}
+                  <Wallet className="h-3.5 w-3.5" />{t('common.myBalance')}
                 </Link>
                 <Link to="/cart" className="text-xs font-medium text-muted-foreground flex items-center gap-2 py-1.5" onClick={() => setIsMenuOpen(false)}>
-                  <ShoppingCart className="h-3.5 w-3.5" />
-                  {t('common.cart')} {cartCount > 0 && `(${cartCount})`}
+                  <ShoppingCart className="h-3.5 w-3.5" />{t('common.cart')} {cartCount > 0 && `(${cartCount})`}
                 </Link>
               </>
             )}
             <Link to="/contact" className="text-xs font-medium text-muted-foreground flex items-center gap-2 py-1.5" onClick={() => setIsMenuOpen(false)}>
-              <MessageCircle className="h-3.5 w-3.5" />
-              {t('common.contactUs')}
+              <MessageCircle className="h-3.5 w-3.5" />{t('common.contactUs')}
             </Link>
             {isAdmin && (
               <Link to="/admin" className="text-xs font-medium text-primary flex items-center gap-2 py-1.5" onClick={() => setIsMenuOpen(false)}>
-                <Settings className="h-3.5 w-3.5" />
-                {t('common.adminPanel')}
+                <Settings className="h-3.5 w-3.5" />{t('common.adminPanel')}
               </Link>
             )}
             <div className="flex flex-col gap-2 pt-3">
               {!user && (
                 <>
                   <Link to="/login" onClick={() => setIsMenuOpen(false)}>
-                    <Button variant="outline" className="w-full">
-                      {t('common.login')}
-                    </Button>
+                    <Button variant="outline" className="w-full">{t('common.login')}</Button>
                   </Link>
                   <Link to="/register" onClick={() => setIsMenuOpen(false)}>
-                    <Button variant="hero" className="w-full">
-                      {t('common.register')}
-                    </Button>
+                    <Button variant="hero" className="w-full">{t('common.register')}</Button>
                   </Link>
                 </>
               )}
