@@ -165,9 +165,25 @@ const AIChatBot = () => {
                         : "bg-muted text-foreground rounded-bl-sm"
                     }`}
                   >
-                    <div className="prose prose-sm prose-invert max-w-none [&>p]:m-0 [&>ul]:m-0 [&>ol]:m-0 [&>li]:m-0 [&_strong]:text-inherit [&_em]:text-inherit">
-                      {msg.role === "assistant" ? <ReactMarkdown>{msg.content}</ReactMarkdown> : msg.content}
-                    </div>
+                    {msg.role === "assistant" ? (
+                      <ReactMarkdown
+                        components={{
+                          a: ({ href, children }) => (
+                            <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2 hover:opacity-80 transition-opacity">
+                              {children}
+                            </a>
+                          ),
+                          strong: ({ children }) => <strong className="font-bold text-foreground">{children}</strong>,
+                          ul: ({ children }) => <ul className="my-1 mr-3 list-disc list-inside space-y-0.5">{children}</ul>,
+                          ol: ({ children }) => <ol className="my-1 mr-3 list-decimal list-inside space-y-0.5">{children}</ol>,
+                          li: ({ children }) => <li className="text-foreground">{children}</li>,
+                          p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
+                          code: ({ children }) => <code className="bg-background/50 rounded px-1 py-0.5 text-xs font-mono">{children}</code>,
+                        }}
+                      >
+                        {msg.content}
+                      </ReactMarkdown>
+                    ) : msg.content}
                   </div>
                   {msg.role === "user" && (
                     <div className="h-7 w-7 rounded-full bg-secondary flex items-center justify-center shrink-0 mt-1">
