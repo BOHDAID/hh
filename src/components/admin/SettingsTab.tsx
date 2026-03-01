@@ -72,6 +72,8 @@ const SettingsTab = () => {
   const [lemonsqueezyTestMessage, setLemonsqueezyTestMessage] = useState<string>("");
   const [sellauthTestStatus, setSellauthTestStatus] = useState<"idle" | "testing" | "connected" | "failed">("idle");
   const [sellauthTestMessage, setSellauthTestMessage] = useState<string>("");
+  const [ivnoTestStatus, setIvnoTestStatus] = useState<"idle" | "testing" | "connected" | "failed">("idle");
+  const [ivnoTestMessage, setIvnoTestMessage] = useState<string>("");
 
   useEffect(() => {
     fetchSettings();
@@ -322,6 +324,10 @@ const SettingsTab = () => {
 
   const testSellauthConnection = () => testGatewayConnection(
     "SellAuth", "sellauth_api_key", null, setSellauthTestStatus, setSellauthTestMessage
+  );
+
+  const testIvnoConnection = () => testGatewayConnection(
+    "Ivno", "ivno_api_key", null, setIvnoTestStatus, setIvnoTestMessage
   );
 
   // Render functions instead of inline components to avoid re-creation
@@ -1148,6 +1154,7 @@ const SettingsTab = () => {
                     </p>
                   </div>
                 </InfoBox>
+                {renderTestButton(testIvnoConnection, ivnoTestStatus, ivnoTestMessage)}
               </CardContent>
             </MotionCard>
 
