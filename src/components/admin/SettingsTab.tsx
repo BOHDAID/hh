@@ -149,12 +149,12 @@ const SettingsTab = () => {
       await Promise.all(translationPromises);
 
       let hasError = false;
-      const existingKeys = new Set(Object.keys(settings).filter(k => {
-        // Only save keys that have values or already existed in DB
-        return settings[k] && settings[k].trim() !== '';
-      }));
+      const allKeys = Object.keys(settings);
+      const keysWithValues = allKeys.filter(k => settings[k] && settings[k].trim() !== '');
+      const emptyKeys = allKeys.filter(k => !settings[k] || settings[k].trim() === '');
 
-      for (const key of existingKeys) {
+      // حفظ المفاتيح التي لها قيم
+      for (const key of keysWithValues) {
         const value = settings[key];
         const isSensitive = !publicSettingKeys.has(key);
         const { error } = await db
@@ -169,6 +169,18 @@ const SettingsTab = () => {
           });
         if (error) {
           console.error(`Failed to save setting ${key}:`, error);
+          hasError = true;
+        }
+      }
+
+      // حذف المفاتيح الفارغة من قاعدة البيانات حتى تختفي بوابات الدفع تلقائياً
+      if (emptyKeys.length > 0) {
+        const { error: deleteError } = await db
+          .from("site_settings")
+          .delete()
+          .in("key", emptyKeys);
+        if (deleteError) {
+          console.error("Failed to delete empty settings:", deleteError);
           hasError = true;
         }
       }
