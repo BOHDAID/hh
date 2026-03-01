@@ -165,6 +165,8 @@ export type Database = {
           id: string
           product_id: string
           quantity: number
+          reminder_sent: boolean | null
+          reminder_sent_at: string | null
           updated_at: string
           user_id: string
         }
@@ -173,6 +175,8 @@ export type Database = {
           id?: string
           product_id: string
           quantity?: number
+          reminder_sent?: boolean | null
+          reminder_sent_at?: string | null
           updated_at?: string
           user_id: string
         }
@@ -181,6 +185,8 @@ export type Database = {
           id?: string
           product_id?: string
           quantity?: number
+          reminder_sent?: boolean | null
+          reminder_sent_at?: string | null
           updated_at?: string
           user_id?: string
         }
