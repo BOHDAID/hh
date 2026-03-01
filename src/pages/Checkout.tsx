@@ -958,10 +958,16 @@ const Checkout = () => {
               {ivnoEnabled && (
                 <CompactPaymentOption
                   title="Ivno (Visa / Apple Pay / Google Pay)"
-                  description="بطاقات بنكية و Apple Pay مع دفعات USDC فورية"
+                  description={
+                    totalAmount < 10
+                      ? "الحد الأدنى $10 للبطاقات و Apple Pay"
+                      : "بطاقات بنكية و Apple Pay مع دفعات USDC فورية"
+                  }
                   icon={<SmallIvnoIcon />}
                   isSelected={paymentMethod === "ivno"}
                   onClick={() => setPaymentMethod("ivno")}
+                  disabled={totalAmount < 10}
+                  disabledReason="الحد الأدنى للدفع $10"
                 />
               )}
 
