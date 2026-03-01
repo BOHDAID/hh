@@ -9,7 +9,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Helper to encode content with UTF-8 Base64
 function encodeBase64(str: string): string {
   const encoder = new TextEncoder();
   const bytes = encoder.encode(str);
@@ -23,43 +22,25 @@ interface BanEmailRequest {
   is_banned: boolean;
 }
 
-interface SiteSettings {
-  [key: string]: string;
-}
+interface SiteSettings { [key: string]: string; }
 
-// Helper function to get settings from database
 async function getSettings(supabase: any): Promise<SiteSettings> {
-  const { data, error } = await supabase
-    .from("site_settings")
-    .select("key, value");
-
-  if (error) {
-    console.error("Error fetching settings:", error);
-    throw new Error("Failed to fetch site settings");
-  }
-
+  const { data, error } = await supabase.from("site_settings").select("key, value");
+  if (error) throw new Error("Failed to fetch site settings");
   const settings: SiteSettings = {};
-  data?.forEach((item: { key: string; value: string | null }) => {
-    settings[item.key] = item.value || "";
-  });
-
+  data?.forEach((item: { key: string; value: string | null }) => { settings[item.key] = item.value || ""; });
   return settings;
 }
 
 const handler = async (req: Request): Promise<Response> => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    // Initialize Supabase client - External DB first
     const supabaseUrl = Deno.env.get("EXTERNAL_SUPABASE_URL") || Deno.env.get("VITE_EXTERNAL_SUPABASE_URL") || Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get settings from database
     const settings = await getSettings(supabase);
-
     const smtpHost = settings.smtp_host || "smtp.gmail.com";
     const smtpPort = parseInt(settings.smtp_port || "465");
     const smtpUser = settings.smtp_user;
@@ -69,218 +50,210 @@ const handler = async (req: Request): Promise<Response> => {
     const storeLogoUrl = settings.store_logo_url || "";
     const supportEmail = settings.support_email || senderEmail;
 
-    // Validate SMTP settings
-    if (!smtpUser || !smtpPass) {
-      throw new Error("SMTP credentials not configured. Please set smtp_user and smtp_pass in site settings.");
-    }
+    if (!smtpUser || !smtpPass) throw new Error("SMTP credentials not configured");
 
-    const {
-      to_email,
-      user_name,
-      ban_reason,
-      is_banned,
-    }: BanEmailRequest = await req.json();
+    const { to_email, user_name, ban_reason, is_banned }: BanEmailRequest = await req.json();
+    if (!to_email) throw new Error("Missing required field: to_email");
 
-    // Validate required fields
-    if (!to_email) {
-      throw new Error("Missing required field: to_email");
-    }
+    const currentYear = new Date().getFullYear();
+    const displayName = user_name || "عزيزي العميل";
 
-    const emailSubject = is_banned 
-      ? `Account Suspended - ${storeName}`
-      : `Account Reactivated - ${storeName}`;
+    const logoHtml = storeLogoUrl ? `
+    <tr>
+      <td align="center" style="padding-bottom:16px;">
+        <img src="${storeLogoUrl}" alt="${storeName}" width="72" height="72" style="display:block; border:0; border-radius:16px; box-shadow:0 4px 12px rgba(0,0,0,0.15);" />
+      </td>
+    </tr>` : '';
 
-    const emailHtml = is_banned ? `
-    <!DOCTYPE html>
-    <html dir="rtl" lang="ar">
-    <head>
-      <meta charset="UTF-8">
-      <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>تم إيقاف حسابك</title>
-    </head>
-    <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background-color: #f5f5f5; direction: rtl;">
-      <div style="max-width: 600px; margin: 20px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
-        
-        <!-- Header -->
-        <div style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 40px 30px; text-align: center;">
-          ${storeLogoUrl && !storeLogoUrl.startsWith('data:') ? `<img src="${storeLogoUrl}" alt="${storeName}" style="max-width: 120px; max-height: 80px; margin-bottom: 15px; border-radius: 8px;">` : `<div style="background: white; display: inline-block; padding: 15px 30px; border-radius: 50px; margin-bottom: 20px;">
-            <h1 style="margin: 0; font-size: 28px; color: #dc2626; font-weight: bold;">${storeName}</h1>
-          </div>`}
-          <p style="color: white; margin: 0; font-size: 18px; opacity: 0.95;">⚠️ تم إيقاف حسابك ⚠️</p>
-        </div>
-        
-        <!-- Content -->
-        <div style="padding: 35px;">
-          
-          <!-- Greeting -->
-          <div style="text-align: center; margin-bottom: 30px;">
-            <p style="color: #333; font-size: 18px; margin: 0;">
-              مرحباً <strong style="color: #dc2626;">${user_name || "عزيزي العميل"}</strong>
-            </p>
-          </div>
-          
-          <!-- Message Box -->
-          <div style="background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%); border-radius: 12px; padding: 25px; margin-bottom: 25px; border-right: 5px solid #ef4444;">
-            <div style="display: flex; align-items: flex-start;">
-              <span style="font-size: 24px; margin-left: 12px;">🚫</span>
-              <div>
-                <p style="margin: 0 0 8px 0; color: #991b1b; font-weight: bold; font-size: 16px;">تم إيقاف حسابك</p>
-                <p style="margin: 0; color: #7f1d1d; font-size: 14px; line-height: 1.8;">
-                  نأسف لإبلاغك بأنه تم إيقاف حسابك في ${storeName}.
-                  ${ban_reason ? `<br/><br/><strong>السبب:</strong> ${ban_reason}` : ''}
-                </p>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Support Section -->
-          <div style="text-align: center; padding: 25px; background: #f8f9fa; border-radius: 12px;">
-            <p style="color: #666; font-size: 15px; margin: 0 0 15px 0;">
-              إذا كنت تعتقد أن هذا خطأ، يرجى التواصل معنا
-            </p>
-            <a href="mailto:${supportEmail}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 30px; border-radius: 25px; text-decoration: none; font-size: 14px; font-weight: bold;">
-              📧 تواصل مع الدعم الفني
-            </a>
-          </div>
-          
-        </div>
-        
-        <!-- Footer -->
-        <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 30px; text-align: center;">
-          <p style="color: #888; margin: 0 0 10px 0; font-size: 13px;">
-            ${storeName}
+    const emailSubject = is_banned
+      ? `⚠️ إشعار إيقاف الحساب — ${storeName}`
+      : `✅ تم إعادة تفعيل حسابك — ${storeName}`;
+
+    const accentColor = is_banned ? '#ef4444' : '#10b981';
+    const accentDark = is_banned ? '#dc2626' : '#059669';
+
+    const emailHtml = `<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${is_banned ? 'إيقاف الحساب' : 'إعادة تفعيل الحساب'}</title>
+<style type="text/css">
+body,table,td,p,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}
+body{margin:0;padding:0;background-color:#f4f4f8;}
+</style>
+</head>
+<body style="margin:0;padding:0;font-family:'Segoe UI',Tahoma,Arial,sans-serif;background-color:#f4f4f8;">
+<center style="width:100%;background-color:#f4f4f8;padding:24px 0;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,0.08);overflow:hidden;">
+
+<!-- HEADER -->
+<tr>
+  <td style="background:linear-gradient(135deg,${accentColor} 0%,${accentDark} 100%); padding:36px 24px 28px; text-align:center;">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+      ${logoHtml}
+      <tr>
+        <td align="center" style="padding-bottom:8px;">
+          <span style="font-size:26px; color:#ffffff; font-weight:700; font-family:'Segoe UI',Tahoma,sans-serif; letter-spacing:0.5px;">${storeName}</span>
+        </td>
+      </tr>
+      <tr>
+        <td align="center">
+          <span style="color:rgba(255,255,255,0.92); font-size:16px; font-family:'Segoe UI',Tahoma,sans-serif;">
+            ${is_banned ? '⚠️ إشعار إيقاف الحساب' : '🎉 تم إعادة تفعيل حسابك!'}
+          </span>
+        </td>
+      </tr>
+    </table>
+  </td>
+</tr>
+
+<!-- CONTENT -->
+<tr>
+  <td style="padding:28px 24px;">
+
+    <!-- Greeting -->
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="color:#1a1a2e; font-size:17px; padding-bottom:20px; font-family:'Segoe UI',Tahoma,sans-serif; text-align:right;">
+          مرحباً <span style="color:${accentColor}; font-weight:700;">${displayName}</span> 👋
+        </td>
+      </tr>
+    </table>
+
+    ${is_banned ? `
+    <!-- Ban Message -->
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:linear-gradient(135deg,#fef2f2,#fee2e2); border-radius:12px; border:1px solid #fecaca; margin-bottom:24px;">
+      <tr>
+        <td style="padding:22px; border-right:4px solid #ef4444; border-radius:12px;">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td style="font-size:20px; padding-bottom:10px;">🚫</td>
+            </tr>
+            <tr>
+              <td style="color:#991b1b; font-weight:700; font-size:16px; padding-bottom:8px; font-family:'Segoe UI',Tahoma,sans-serif;">
+                تم إيقاف حسابك
+              </td>
+            </tr>
+            <tr>
+              <td style="color:#7f1d1d; font-size:14px; line-height:1.8; font-family:'Segoe UI',Tahoma,sans-serif;">
+                نأسف لإبلاغك بأنه تم إيقاف حسابك في ${storeName}.
+                ${ban_reason ? `<br/><br/><strong style="color:#991b1b;">📋 السبب:</strong> ${ban_reason}` : ''}
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Support CTA -->
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f8f8fc; border-radius:12px; border:1px solid #e5e7eb;">
+      <tr>
+        <td align="center" style="padding:24px;">
+          <p style="color:#6b7280; font-size:14px; margin:0 0 16px 0; font-family:'Segoe UI',Tahoma,sans-serif; line-height:1.6;">
+            إذا كنت تعتقد أن هذا خطأ، يمكنك التواصل مع فريق الدعم
           </p>
-          <p style="color: #666; margin: 0; font-size: 12px;">
-            © ${new Date().getFullYear()} ${storeName}. جميع الحقوق محفوظة.
-          </p>
-        </div>
-        
-      </div>
-    </body>
-    </html>
+          <a href="mailto:${supportEmail}" style="display:inline-block; background:linear-gradient(135deg,#7c3aed,#6d28d9); color:#ffffff; padding:13px 32px; border-radius:10px; text-decoration:none; font-size:14px; font-weight:bold; font-family:'Segoe UI',Tahoma,sans-serif; box-shadow:0 4px 12px rgba(124,58,237,0.3);">
+            📧 تواصل مع الدعم
+          </a>
+        </td>
+      </tr>
+    </table>
     ` : `
-    <!DOCTYPE html>
-    <html dir="rtl" lang="ar">
-    <head>
-      <meta charset="UTF-8">
-      <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>تم إعادة تفعيل حسابك</title>
-    </head>
-    <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background-color: #f5f5f5; direction: rtl;">
-      <div style="max-width: 600px; margin: 20px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
-        
-        <!-- Header -->
-        <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 40px 30px; text-align: center;">
-          ${storeLogoUrl && !storeLogoUrl.startsWith('data:') ? `<img src="${storeLogoUrl}" alt="${storeName}" style="max-width: 120px; max-height: 80px; margin-bottom: 15px; border-radius: 8px;">` : `<div style="background: white; display: inline-block; padding: 15px 30px; border-radius: 50px; margin-bottom: 20px;">
-            <h1 style="margin: 0; font-size: 28px; color: #059669; font-weight: bold;">${storeName}</h1>
-          </div>`}
-          <p style="color: white; margin: 0; font-size: 18px; opacity: 0.95;">✅ تم إعادة تفعيل حسابك ✅</p>
-        </div>
-        
-        <!-- Content -->
-        <div style="padding: 35px;">
-          
-          <!-- Greeting -->
-          <div style="text-align: center; margin-bottom: 30px;">
-            <p style="color: #333; font-size: 18px; margin: 0;">
-              مرحباً <strong style="color: #059669;">${user_name || "عزيزي العميل"}</strong>
-            </p>
-          </div>
-          
-          <!-- Message Box -->
-          <div style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border-radius: 12px; padding: 25px; margin-bottom: 25px; border-right: 5px solid #10b981;">
-            <div style="display: flex; align-items: flex-start;">
-              <span style="font-size: 24px; margin-left: 12px;">🎉</span>
-              <div>
-                <p style="margin: 0 0 8px 0; color: #065f46; font-weight: bold; font-size: 16px;">أخبار سارة!</p>
-                <p style="margin: 0; color: #047857; font-size: 14px; line-height: 1.8;">
-                  تم إعادة تفعيل حسابك في ${storeName}. يمكنك الآن تسجيل الدخول والتسوق مرة أخرى.
-                </p>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Support Section -->
-          <div style="text-align: center; padding: 25px; background: #f8f9fa; border-radius: 12px;">
-            <p style="color: #666; font-size: 15px; margin: 0 0 15px 0;">
-              شكراً لتفهمك، نتمنى لك تجربة تسوق ممتعة
-            </p>
-          </div>
-          
-        </div>
-        
-        <!-- Footer -->
-        <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 30px; text-align: center;">
-          <p style="color: #888; margin: 0 0 10px 0; font-size: 13px;">
-            ${storeName}
-          </p>
-          <p style="color: #666; margin: 0; font-size: 12px;">
-            © ${new Date().getFullYear()} ${storeName}. جميع الحقوق محفوظة.
-          </p>
-        </div>
-        
-      </div>
-    </body>
-    </html>
-    `;
+    <!-- Unban Message -->
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:linear-gradient(135deg,#ecfdf5,#d1fae5); border-radius:12px; border:1px solid #a7f3d0; margin-bottom:24px;">
+      <tr>
+        <td style="padding:22px; border-right:4px solid #10b981; border-radius:12px;">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td style="font-size:20px; padding-bottom:10px;">🎉</td>
+            </tr>
+            <tr>
+              <td style="color:#065f46; font-weight:700; font-size:16px; padding-bottom:8px; font-family:'Segoe UI',Tahoma,sans-serif;">
+                أخبار سارة!
+              </td>
+            </tr>
+            <tr>
+              <td style="color:#047857; font-size:14px; line-height:1.8; font-family:'Segoe UI',Tahoma,sans-serif;">
+                تم إعادة تفعيل حسابك في ${storeName} بنجاح! يمكنك الآن تسجيل الدخول والتسوق مرة أخرى. نتمنى لك تجربة ممتعة! 🛍️
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
 
-    const plainTextContent = is_banned 
-      ? `${storeName}\n\nمرحباً ${user_name || "عزيزي العميل"},\n\nنأسف لإبلاغك بأنه تم إيقاف حسابك.${ban_reason ? `\n\nالسبب: ${ban_reason}` : ''}\n\nإذا كنت تعتقد أن هذا خطأ، يرجى التواصل معنا على: ${supportEmail}`
-      : `${storeName}\n\nمرحباً ${user_name || "عزيزي العميل"},\n\nتم إعادة تفعيل حسابك. يمكنك الآن تسجيل الدخول والتسوق مرة أخرى.\n\nشكراً لتفهمك!`;
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f8f8fc; border-radius:12px; border:1px solid #e5e7eb;">
+      <tr>
+        <td align="center" style="padding:20px;">
+          <p style="color:#6b7280; font-size:14px; margin:0; font-family:'Segoe UI',Tahoma,sans-serif;">
+            شكراً لتفهمك، نتمنى لك تجربة تسوق ممتعة 💚
+          </p>
+        </td>
+      </tr>
+    </table>
+    `}
 
-    // Initialize SMTP client
+  </td>
+</tr>
+
+<!-- FOOTER -->
+<tr>
+  <td style="background-color:#fafafa; padding:24px 20px; text-align:center; border-top:1px solid #f0f0f0;">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td align="center" style="color:#999999; font-size:12px; font-family:'Segoe UI',Tahoma,sans-serif;">
+          © ${currentYear} ${storeName} — جميع الحقوق محفوظة
+        </td>
+      </tr>
+      <tr>
+        <td align="center" style="color:#bbbbbb; font-size:11px; padding-top:4px; font-family:'Segoe UI',Tahoma,sans-serif;">
+          هذه رسالة تلقائية، يرجى عدم الرد عليها
+        </td>
+      </tr>
+    </table>
+  </td>
+</tr>
+
+</table>
+</center>
+</body>
+</html>`;
+
+    const plainTextContent = is_banned
+      ? `${storeName}\n\nمرحباً ${displayName}،\n\nنأسف لإبلاغك بأنه تم إيقاف حسابك.${ban_reason ? `\n\nالسبب: ${ban_reason}` : ''}\n\nإذا كنت تعتقد أن هذا خطأ، تواصل معنا على: ${supportEmail}\n\n© ${currentYear} ${storeName}`
+      : `${storeName}\n\nمرحباً ${displayName}،\n\nتم إعادة تفعيل حسابك بنجاح! يمكنك الآن تسجيل الدخول والتسوق.\n\nشكراً لتفهمك!\n\n© ${currentYear} ${storeName}`;
+
     const client = new SMTPClient({
       connection: {
-        hostname: smtpHost,
-        port: smtpPort,
-        tls: true,
-        auth: {
-          username: smtpUser,
-          password: smtpPass,
-        },
+        hostname: smtpHost, port: smtpPort, tls: true,
+        auth: { username: smtpUser, password: smtpPass },
       },
     });
 
-    // Send email with proper Base64 encoding
     await client.send({
       from: `${storeName} <${senderEmail}>`,
       to: to_email,
       subject: emailSubject,
       mimeContent: [
-        {
-          mimeType: 'text/plain; charset="utf-8"',
-          content: encodeBase64(plainTextContent),
-          transferEncoding: "base64",
-        },
-        {
-          mimeType: 'text/html; charset="utf-8"',
-          content: encodeBase64(emailHtml),
-          transferEncoding: "base64",
-        },
+        { mimeType: 'text/plain; charset="utf-8"', content: encodeBase64(plainTextContent), transferEncoding: "base64" },
+        { mimeType: 'text/html; charset="utf-8"', content: encodeBase64(emailHtml), transferEncoding: "base64" },
       ],
     });
 
     await client.close();
-
     console.log("Ban notification email sent successfully to:", to_email);
 
     return new Response(
       JSON.stringify({ success: true, message: "Email sent successfully" }),
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      }
+      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   } catch (error: any) {
-    console.error("Error in send-ban-email function:", error);
+    console.error("Error in send-ban-email:", error);
     return new Response(
       JSON.stringify({ error: error.message }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      }
+      { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   }
 };
