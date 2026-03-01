@@ -197,13 +197,15 @@ const ProductsSection = () => {
               {filteredProducts.map((product, index) => (
                 <motion.div
                   key={product.id}
-                  initial={{ opacity: 0, y: 30, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  initial={{ opacity: 0, y: 60, scale: 0.85, rotateX: 15 }}
+                  animate={{ opacity: 1, y: 0, scale: 1, rotateX: 0 }}
                   transition={{ 
-                    delay: index * 0.08,
-                    duration: 0.4,
+                    delay: index * 0.1,
+                    duration: 0.6,
+                    ease: [0.22, 1, 0.36, 1],
                   }}
-                  whileHover={{ y: -8 }}
+                  whileHover={{ y: -8, transition: { duration: 0.3 } }}
+                  style={{ perspective: 1000 }}
                 >
                   <ProductCard
                     id={product.id}

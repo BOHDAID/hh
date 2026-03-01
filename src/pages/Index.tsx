@@ -9,6 +9,7 @@ import UserSidebar from "@/components/user/UserSidebar";
 import FlashSaleBanner from "@/components/FlashSaleBanner";
 import { useTrackVisit } from "@/hooks/useTrackVisit";
 import { useAppData } from "@/components/AppInitializer";
+import AIChatBot from "@/components/AIChatBot";
 
 const Index = () => {
   useTrackVisit("/");
@@ -36,6 +37,7 @@ const Index = () => {
         <ReviewsSection />
       </main>
       <Footer />
+      <AIChatBot />
     </div>
   );
 };
