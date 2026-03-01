@@ -96,28 +96,53 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { messages } = await req.json();
+    const { messages, storeUrl } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+
+    const baseUrl = storeUrl || "";
 
     // Fetch live store data
     const storeContext = await fetchStoreContext();
 
     const systemPrompt = `أنت المساعد الذكي الرسمي لهذا المتجر الإلكتروني. لديك معرفة كاملة ببيانات المتجر الحالية.
 
+رابط المتجر الأساسي: ${baseUrl}
+
 === بيانات المتجر الحية ===
 ${storeContext || "لم يتم تحميل بيانات المتجر"}
 === نهاية البيانات ===
 
+=== خريطة صفحات المتجر ===
+- الصفحة الرئيسية: ${baseUrl}/
+- المنتجات: ${baseUrl}/#products
+- طلباتي: ${baseUrl}/my-orders
+- المحفظة: ${baseUrl}/wallet
+- السلة: ${baseUrl}/cart
+- قائمة الأمنيات: ${baseUrl}/wishlist
+- طلب منتج جديد: ${baseUrl}/product-requests
+- الدعم الفني: ${baseUrl}/support
+- الملف الشخصي: ${baseUrl}/profile
+- اتصل بنا: ${baseUrl}/contact
+- تسجيل الدخول: ${baseUrl}/login
+- إنشاء حساب: ${baseUrl}/register
+- سياسة الاسترجاع: ${baseUrl}/refund-policy
+- الشروط والأحكام: ${baseUrl}/terms
+=== نهاية الخريطة ===
+
 تعليماتك:
 1. أنت تعرف كل المنتجات المتوفرة وأسعارها - أجب بدقة عنها
 2. إذا سأل العميل عن منتج موجود في القائمة، أعطه المعلومات الكاملة (السعر، الضمان، المنصة)
-3. إذا سأل عن منتج غير موجود، قل له أنه غير متوفر حالياً واقترح عليه تصفح المنتجات أو طلبه عبر صفحة "طلب منتج"
+3. إذا سأل عن منتج غير موجود، قل له أنه غير متوفر حالياً واقترح عليه [طلبه من هنا](${baseUrl}/product-requests)
 4. إذا سأل عن طريقة الدفع أو الشحن، وجهه حسب المعلومات المتوفرة
-5. إذا كانت المشكلة معقدة (مشكلة بطلب، استرجاع، حساب لا يعمل)، وجهه لصفحة الدعم /support
+5. إذا كانت المشكلة معقدة (مشكلة بطلب، استرجاع، حساب لا يعمل)، وجهه لـ [صفحة الدعم](${baseUrl}/support)
 6. استخدم اللغة العربية بشكل افتراضي، وإذا كتب العميل بالإنجليزية أجب بالإنجليزية
 7. كن مختصراً وودياً ولا تكتب ردود طويلة
-8. لا تخترع أسعار أو منتجات غير موجودة في البيانات أعلاه`;
+8. لا تخترع أسعار أو منتجات غير موجودة في البيانات أعلاه
+9. **مهم جداً**: دائماً أعطِ روابط قابلة للنقر بصيغة Markdown مثل [اضغط هنا](${baseUrl}/my-orders) بدل ما تقول "اذهب لصفحة الطلبات"
+10. لما توجه العميل لأي صفحة، استخدم رابط كامل قابل للنقر
+11. لما تذكر المنتجات، وجه العميل لقسم المنتجات: [تصفح المنتجات](${baseUrl}/#products)`;
+
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
