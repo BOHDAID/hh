@@ -23,21 +23,35 @@ const ProductTest = () => {
   const [selectedVariant, setSelectedVariant] = useState<any>(null);
   const [reviews, setReviews] = useState<any[]>([]);
   const [similarProducts, setSimilarProducts] = useState<any[]>([]);
+  const [allProducts, setAllProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // UUID validation
+  const isValidUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+
   useEffect(() => {
-    if (!id) return;
+    if (!id || !isValidUUID(id)) {
+      // Invalid ID - fetch all products to show as fallback
+      const fetchAll = async () => {
+        setLoading(true);
+        const { data } = await db.from("products").select("*").eq("is_active", true).order("sales_count", { ascending: false });
+        setAllProducts(data || []);
+        setLoading(false);
+      };
+      fetchAll();
+      return;
+    }
+
     const fetchProduct = async () => {
       setLoading(true);
       const [prodRes, varRes, revRes] = await Promise.all([
-        db.from("products").select("*").eq("id", id).single(),
+        db.from("products").select("*").eq("id", id).maybeSingle(),
         db.from("product_variants").select("*").eq("product_id", id).eq("is_active", true).order("display_order"),
         db.from("reviews").select("*").eq("product_id", id).eq("is_approved", true).order("created_at", { ascending: false }).limit(10),
       ]);
 
       if (prodRes.data) {
         setProduct(prodRes.data);
-        // Fetch similar products
         const { data: similar } = await db
           .from("products")
           .select("*")
@@ -46,6 +60,10 @@ const ProductTest = () => {
           .neq("id", id)
           .limit(4);
         setSimilarProducts(similar || []);
+      } else {
+        // Product not found - fetch all products
+        const { data } = await db.from("products").select("*").eq("is_active", true).order("sales_count", { ascending: false });
+        setAllProducts(data || []);
       }
       setVariants(varRes.data || []);
       setReviews(revRes.data || []);
@@ -68,14 +86,40 @@ const ProductTest = () => {
   if (!product) {
     return (
       <div className="min-h-screen bg-background" dir={isRTL ? "rtl" : "ltr"}>
-        <Header />
-        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-          <Package className="h-16 w-16 text-muted-foreground" />
-          <h2 className="text-xl font-bold">{isRTL ? "المنتج غير موجود" : "Product not found"}</h2>
-          <Link to="/">
-            <Button>{isRTL ? "العودة للرئيسية" : "Back to Home"}</Button>
-          </Link>
-        </div>
+        <Header onMenuClick={user ? () => setSidebarOpen(!sidebarOpen) : undefined} />
+        {user && <UserSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} onOpen={() => setSidebarOpen(true)} />}
+        <main className="container mx-auto px-4 py-8">
+          <h1 className="text-2xl font-bold mb-2">{isRTL ? "اختر منتج لعرض تفاصيله" : "Select a product to view details"}</h1>
+          <p className="text-muted-foreground mb-6">{isRTL ? "اضغط على أي منتج لتشوف صفحته المستقلة" : "Click any product to see its standalone page"}</p>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {allProducts.map((p) => (
+              <Link key={p.id} to={`/product-test/${p.id}`}>
+                <Card className="overflow-hidden hover:shadow-lg transition-all hover:-translate-y-1 cursor-pointer h-full">
+                  <div className="aspect-square bg-muted">
+                    {p.image_url ? (
+                      <img src={p.image_url} alt={p.name} className="w-full h-full object-contain p-4" />
+                    ) : (
+                      <div className="flex items-center justify-center h-full">
+                        <Package className="h-10 w-10 text-muted-foreground/30" />
+                      </div>
+                    )}
+                  </div>
+                  <CardContent className="p-3">
+                    <p className="font-medium text-sm truncate">{isRTL ? p.name : (p.name_en || p.name)}</p>
+                    <p className="text-primary font-bold text-sm mt-1">${p.price}</p>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+          {allProducts.length === 0 && !loading && (
+            <div className="text-center py-16">
+              <Package className="h-16 w-16 text-muted-foreground/30 mx-auto mb-4" />
+              <p className="text-muted-foreground">{isRTL ? "لا توجد منتجات" : "No products found"}</p>
+            </div>
+          )}
+        </main>
+        <Footer />
       </div>
     );
   }
