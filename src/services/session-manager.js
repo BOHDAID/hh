@@ -886,15 +886,95 @@ class OSNSessionManager {
           return { success: true, paired: true, message: '✅ تم تفعيل التلفاز بنجاح! استمتع بالمشاهدة 🎉📺' };
         }
 
-        // حقل الإدخال لا يزال موجود = فشل
-        console.log('⚠️ [OSN-Browser] Input still present - activation failed');
+        // حقل الإدخال لا يزال موجود - إعادة محاولة ذكية مرة واحدة
+        console.log('⚠️ [OSN-Browser] Input still present - trying smart retry...');
+
+        // فحص: هل الحقل فارغ أو لا يزال يحتوي على الكود؟
+        const currentValue = await page.evaluate(el => (el?.value || '').trim(), codeInput).catch(() => '');
+        console.log(`🔄 [OSN-Browser] Current input value: "${currentValue}"`);
+
+        // إعادة محاولة: مسح الحقل وإعادة كتابة الكود + الضغط مرة ثانية
+        console.log('🔄 [OSN-Browser] SMART RETRY: Re-entering code and clicking again...');
+        await codeInput.click({ clickCount: 3 });
+        await page.keyboard.press('Backspace');
+        await this._sleep(500);
+        await codeInput.type(tvCode, { delay: 100 });
+        await this._sleep(800);
+
+        // إعادة الضغط على الزر
+        let retryBtn = null;
+        try {
+          const retryFormHandle = await codeInput.evaluateHandle(el => el.closest('form'));
+          const retryForm = retryFormHandle?.asElement?.() || null;
+          if (retryForm) {
+            retryBtn = await retryForm.$('button[type="submit"], input[type="submit"]');
+            if (!retryBtn) retryBtn = await this._findButton(page, buttonKeywords, retryForm);
+          }
+          try { await retryFormHandle?.dispose?.(); } catch {}
+        } catch {}
+        if (!retryBtn) retryBtn = await page.$('button[type="submit"], input[type="submit"]');
+        if (!retryBtn) retryBtn = await this._findButton(page, buttonKeywords);
+
+        // مراقبة API في المحاولة الثانية
+        const retryResponsePromise = page.waitForResponse((resp) => {
+          try {
+            const url = resp.url().toLowerCase();
+            const method = (resp.request()?.method?.() || '').toUpperCase();
+            return method === 'POST' && (url.includes('/devices/link') || url.includes('/api/v1/devices/link'));
+          } catch { return false; }
+        }, { timeout: 12000 }).catch(() => null);
+
+        if (retryBtn) {
+          console.log('🔘 [OSN-Browser] RETRY: Clicking button again...');
+          await retryBtn.click();
+        } else {
+          console.log('⏎ [OSN-Browser] RETRY: Pressing Enter...');
+          await page.keyboard.press('Enter');
+        }
+
+        await this._sleep(6000);
+
+        // فحص رد API في المحاولة الثانية
+        const retryResponse = await retryResponsePromise;
+        if (retryResponse) {
+          const retryStatus = retryResponse.status();
+          let retryText = '';
+          try { retryText = (await retryResponse.text()) || ''; } catch {}
+          console.log(`📡 [OSN-Browser] RETRY API response: ${retryStatus} - ${retryText.substring(0, 200)}`);
+
+          if (retryStatus >= 200 && retryStatus < 300 && !retryText.toLowerCase().includes('invalid') && !retryText.toLowerCase().includes('error')) {
+            console.log('✅ [OSN-Browser] TV activated on RETRY! (API response)');
+            this.lastActivity = new Date();
+            return { success: true, paired: true, message: '✅ تم تفعيل التلفاز بنجاح! استمتع بالمشاهدة 🎉📺' };
+          }
+        }
+
+        // فحص نص الصفحة بعد المحاولة الثانية
+        const retryPageText = await page.evaluate(() => document.body?.innerText?.toLowerCase() || '');
+        if (retryPageText.includes('success') || retryPageText.includes('activated') || 
+            retryPageText.includes('linked') || retryPageText.includes('تم الربط') || retryPageText.includes('تم التفعيل')) {
+          console.log('✅ [OSN-Browser] TV activated on RETRY! (page text)');
+          this.lastActivity = new Date();
+          return { success: true, paired: true, message: '✅ تم تفعيل التلفاز بنجاح! استمتع بالمشاهدة 🎉📺' };
+        }
+
+        // فحص اختفاء الحقل
+        const retryInputExists = await page.$(codeSelectors.join(', '));
+        if (!retryInputExists) {
+          console.log('✅ [OSN-Browser] Input disappeared on RETRY - activation succeeded');
+          this.lastActivity = new Date();
+          return { success: true, paired: true, message: '✅ تم تفعيل التلفاز بنجاح! استمتع بالمشاهدة 🎉📺' };
+        }
+
+        // فشل نهائي بعد المحاولتين
+        console.log('❌ [OSN-Browser] RETRY also failed - final failure');
         let failureScreenshot = null;
         try { failureScreenshot = await page.screenshot({ encoding: 'base64', fullPage: true }); } catch {}
         return {
           success: false,
           paired: false,
           failed: true,
-          message: '❌ لم يتم التفعيل. الرمز قد يكون غير صحيح أو منتهي الصلاحية.',
+          message: '❌ لم يتم التفعيل بعد محاولتين. الرمز قد يكون غير صحيح أو منتهي الصلاحية.',
           screenshot: failureScreenshot ? `data:image/png;base64,${failureScreenshot}` : null,
         };
       } catch (err) {
