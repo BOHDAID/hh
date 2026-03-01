@@ -9,7 +9,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Helper to encode content with UTF-8 Base64
 function encodeBase64(str: string): string {
   const encoder = new TextEncoder();
   const bytes = encoder.encode(str);
@@ -29,11 +28,9 @@ interface DeliveryEmailRequest {
   }>;
   total_amount: number;
   warranty_expires_at: string;
-  // بيانات كود التفعيل (اختياري - للتوافق القديم)
   activation_code?: string;
   activation_expires_at?: string;
   telegram_bot_username?: string;
-  // جميع أكواد التفعيل (جديد)
   all_activation_codes?: Array<{
     code: string;
     product_name: string;
@@ -44,23 +41,73 @@ interface SiteSettings {
   [key: string]: string;
 }
 
-// Helper function to get settings from database
 async function getSettings(supabase: any): Promise<SiteSettings> {
   const { data, error } = await supabase
     .from("site_settings")
     .select("key, value");
-
-  if (error) {
-    console.error("Error fetching settings:", error);
-    throw new Error("Failed to fetch site settings");
-  }
-
+  if (error) throw new Error("Failed to fetch site settings");
   const settings: SiteSettings = {};
   data?.forEach((item: { key: string; value: string | null }) => {
     settings[item.key] = item.value || "";
   });
-
   return settings;
+}
+
+function buildStoreHeader(storeName: string, storeLogoUrl: string, subtitle: string, accentColor: string): string {
+  const logoHtml = storeLogoUrl ? `
+  <tr>
+    <td align="center" style="padding-bottom:16px;">
+      <img src="${storeLogoUrl}" alt="${storeName}" width="72" height="72" style="display:block; border:0; border-radius:16px; box-shadow:0 4px 12px rgba(0,0,0,0.15);" />
+    </td>
+  </tr>` : '';
+
+  return `
+  <tr>
+    <td style="background:linear-gradient(135deg, ${accentColor} 0%, ${shiftColor(accentColor)} 100%); padding:36px 24px 28px; text-align:center;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+        ${logoHtml}
+        <tr>
+          <td align="center" style="padding-bottom:8px;">
+            <span style="font-size:26px; color:#ffffff; font-weight:700; font-family:'Segoe UI',Tahoma,sans-serif; letter-spacing:0.5px;">${storeName}</span>
+          </td>
+        </tr>
+        <tr>
+          <td align="center">
+            <span style="color:rgba(255,255,255,0.92); font-size:16px; font-family:'Segoe UI',Tahoma,sans-serif;">${subtitle}</span>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>`;
+}
+
+function shiftColor(hex: string): string {
+  // Simple color shift for gradient end
+  if (hex === '#7C3AED') return '#6D28D9';
+  if (hex === '#22c55e') return '#16a34a';
+  if (hex === '#ef4444') return '#dc2626';
+  if (hex === '#10b981') return '#059669';
+  return hex;
+}
+
+function buildFooter(storeName: string, year: number): string {
+  return `
+  <tr>
+    <td style="background-color:#fafafa; padding:24px 20px; text-align:center; border-top:1px solid #f0f0f0;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td align="center" style="color:#999999; font-size:12px; font-family:'Segoe UI',Tahoma,sans-serif; line-height:1.6;">
+            © ${year} ${storeName} — جميع الحقوق محفوظة
+          </td>
+        </tr>
+        <tr>
+          <td align="center" style="color:#bbbbbb; font-size:11px; padding-top:4px; font-family:'Segoe UI',Tahoma,sans-serif;">
+            هذه رسالة تلقائية، يرجى عدم الرد عليها
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>`;
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -74,20 +121,14 @@ const handler = async (req: Request): Promise<Response> => {
     const settingsUrl =
       Deno.env.get("EXTERNAL_SUPABASE_URL") ||
       Deno.env.get("VITE_EXTERNAL_SUPABASE_URL") ||
-      Deno.env.get("SUPABASE_URL") ||
-      "";
+      Deno.env.get("SUPABASE_URL") || "";
     const settingsServiceKey =
       Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") ||
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ||
-      "";
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
-    if (!settingsUrl || !settingsServiceKey) {
-      throw new Error("Email settings database not configured");
-    }
+    if (!settingsUrl || !settingsServiceKey) throw new Error("Database not configured");
 
     const supabase = createClient(settingsUrl, settingsServiceKey);
-
-    console.log("📧 Fetching site settings...");
     const settings = await getSettings(supabase);
 
     const smtpHost = settings.smtp_host || "smtp.gmail.com";
@@ -98,23 +139,13 @@ const handler = async (req: Request): Promise<Response> => {
     const storeName = settings.store_name || "Digital Store";
     const storeLogoUrl = settings.store_logo_url || "";
 
-    if (!smtpUser || !smtpPass) {
-      throw new Error("SMTP credentials not configured");
-    }
+    if (!smtpUser || !smtpPass) throw new Error("SMTP credentials not configured");
 
     const body = await req.json();
     const {
-      to_email,
-      customer_name,
-      order_number,
-      order_id,
-      user_id,
-      products,
-      total_amount,
-      warranty_expires_at,
-      activation_code,
-      activation_expires_at,
-      telegram_bot_username,
+      to_email, customer_name, order_number, order_id, user_id,
+      products, total_amount, warranty_expires_at,
+      activation_code, activation_expires_at, telegram_bot_username,
       all_activation_codes,
     }: DeliveryEmailRequest = body;
 
@@ -122,133 +153,107 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error("Missing required fields");
     }
 
-    const emailSubject = `Order Delivered - #${order_number}`;
-
-    console.log("📧 Preparing email for:", to_email);
-
-    const warrantyDate = new Date(warranty_expires_at).toLocaleDateString("en-GB", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
+    const warrantyDate = new Date(warranty_expires_at).toLocaleDateString("ar-SA", {
+      year: "numeric", month: "long", day: "numeric",
     });
-    
-    const orderDate = new Date().toLocaleDateString("en-GB", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
+    const orderDate = new Date().toLocaleDateString("ar-SA", {
+      year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit",
     });
+    const currentYear = new Date().getFullYear();
 
-    // Build products HTML - Simple Light Theme
+    // Products HTML
     const productsHtml = products.map(product => `
-<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:15px; border:1px solid #e0e0e0; border-radius:8px; border-collapse:separate; overflow:hidden;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:12px; border-radius:10px; border:1px solid #eee; overflow:hidden;">
   <tr>
-    <td style="background-color:#f5f5f5; padding:12px 16px; border-bottom:1px solid #e0e0e0;">
+    <td style="background-color:#f8f8fc; padding:12px 16px; border-bottom:1px solid #eee;">
       <table width="100%" cellpadding="0" cellspacing="0" border="0">
         <tr>
-          <td style="color:#333333; font-size:15px; font-weight:bold; font-family:'Segoe UI',Tahoma,sans-serif; direction:rtl; text-align:right;">
-            ${product.name}
+          <td style="color:#1a1a2e; font-size:15px; font-weight:600; font-family:'Segoe UI',Tahoma,sans-serif; text-align:right;">
+            🎁 ${product.name}
           </td>
-          <td style="color:#666666; font-size:12px; font-family:'Segoe UI',Tahoma,sans-serif; text-align:left; white-space:nowrap;">
-            (الكمية: ${product.quantity})
+          <td style="color:#7C3AED; font-size:12px; font-weight:600; font-family:'Segoe UI',Tahoma,sans-serif; text-align:left; white-space:nowrap;">
+            × ${product.quantity}
           </td>
         </tr>
       </table>
     </td>
   </tr>
   <tr>
-    <td style="background-color:#ffffff; padding:16px;">
-      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#1a1a1a; border-radius:6px; border-collapse:separate;">
+    <td style="padding:14px 16px;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#1a1a2e; border-radius:8px;">
         <tr>
-          <td style="background-color:#1a1a1a; padding:14px; border-radius:6px;">
-            <pre style="margin:0; padding:0; white-space:pre-wrap; word-break:break-all; font-family:Consolas,Monaco,'Courier New',monospace; font-size:13px; line-height:1.6; color:#00ff88; background-color:#1a1a1a; direction:ltr; text-align:left;">${product.account_data}</pre>
+          <td style="padding:14px 16px;">
+            <pre style="margin:0; white-space:pre-wrap; word-break:break-all; font-family:Consolas,Monaco,'Courier New',monospace; font-size:13px; line-height:1.7; color:#a5f3c4; direction:ltr; text-align:left;">${product.account_data}</pre>
           </td>
         </tr>
       </table>
     </td>
   </tr>
-</table>
-    `).join("");
+</table>`).join("");
 
-    // بناء قسم أكواد التفعيل - دعم كود واحد أو عدة أكواد
-    let activationCodeHtml = "";
-    
-    // تجميع كل الأكواد
+    // Activation codes
     const allCodes: Array<{ code: string; product_name?: string }> = [];
     if (all_activation_codes && all_activation_codes.length > 0) {
       allCodes.push(...all_activation_codes);
     } else if (activation_code) {
       allCodes.push({ code: activation_code });
     }
-    
-    if (allCodes.length > 0) {
-      const expiresAt = activation_expires_at 
-        ? new Date(activation_expires_at).toLocaleString("ar-SA", {
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          })
-        : "24 ساعة من الآن";
 
+    let activationCodeHtml = "";
+    if (allCodes.length > 0) {
+      const expiresAt = activation_expires_at
+        ? new Date(activation_expires_at).toLocaleString("ar-SA", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })
+        : "24 ساعة من الآن";
       const cleanBotUsername = telegram_bot_username?.replace(/^@/, '') || '';
-      const botLink = cleanBotUsername
-        ? `https://t.me/${cleanBotUsername}` 
-        : "#";
+      const botLink = cleanBotUsername ? `https://t.me/${cleanBotUsername}` : "#";
 
       const codesListHtml = allCodes.map((c, i) => `
 <tr>
-<td align="center" style="padding-bottom:10px;">
-${c.product_name ? `<div style="color:#666666; font-size:12px; margin-bottom:4px; font-family:'Segoe UI',Tahoma,sans-serif;">${c.product_name} ${allCodes.length > 1 ? `(${i+1})` : ''}</div>` : ''}
-<div style="display:inline-block; background-color:#1a1a1a; padding:12px 25px; border-radius:8px; border:2px dashed #7C3AED;">
-<span style="font-family:Consolas,Monaco,monospace; font-size:${allCodes.length > 3 ? '20' : '28'}px; font-weight:bold; color:#22c55e; letter-spacing:4px;">${c.code}</span>
-</div>
-</td>
+  <td align="center" style="padding-bottom:12px;">
+    ${c.product_name ? `<div style="color:#6b7280; font-size:12px; margin-bottom:6px; font-family:'Segoe UI',Tahoma,sans-serif;">${c.product_name} ${allCodes.length > 1 ? `(${i + 1})` : ''}</div>` : ''}
+    <div style="display:inline-block; background-color:#1a1a2e; padding:14px 28px; border-radius:10px; border:2px dashed #8b5cf6;">
+      <span style="font-family:Consolas,Monaco,monospace; font-size:${allCodes.length > 3 ? '18' : '26'}px; font-weight:bold; color:#a5f3c4; letter-spacing:5px;">${c.code}</span>
+    </div>
+  </td>
 </tr>`).join("");
 
       activationCodeHtml = `
-<!-- Activation Code Section -->
-<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f5f0ff; border-radius:10px; border:2px solid #7C3AED; margin:20px 0; overflow:hidden;">
-<tr>
-<td style="background-color:#7C3AED; padding:12px 15px;">
-<span style="font-size:18px;">🔐</span>
-<strong style="color:#ffffff; font-size:16px; margin-right:8px; font-family:'Segoe UI',Tahoma,sans-serif;">${allCodes.length > 1 ? `أكواد التفعيل (${allCodes.length})` : 'كود التفعيل'}</strong>
-</td>
-</tr>
-<tr>
-<td style="padding:20px; text-align:center;">
-<table width="100%" cellpadding="0" cellspacing="0" border="0">
-${codesListHtml}
-<tr>
-<td align="center" style="color:#7C3AED; font-size:14px; font-weight:bold; padding:10px 0; font-family:'Segoe UI',Tahoma,sans-serif;">
-⏰ صالح حتى: ${expiresAt}
-</td>
-</tr>
-<tr>
-<td align="center" style="color:#666666; font-size:13px; padding:10px 0; line-height:1.6; font-family:'Segoe UI',Tahoma,sans-serif;">
-⚠️ <strong style="color:#7C3AED;">تنبيه هام:</strong> ${allCodes.length > 1 ? 'هذه الأكواد صالحة' : 'هذا الكود صالح'} لمدة <strong>24 ساعة فقط!</strong><br/>
-أرسل ${allCodes.length > 1 ? 'كل كود' : 'هذا الكود'} للبوت للحصول على بيانات الدخول
-</td>
-</tr>
-${telegram_bot_username ? `
-<tr>
-<td align="center" style="padding-top:15px;">
-<a href="${botLink}" style="display:inline-block; background-color:#7C3AED; color:#ffffff; padding:12px 30px; border-radius:8px; text-decoration:none; font-size:14px; font-weight:bold; font-family:'Segoe UI',Tahoma,sans-serif;">
-📱 افتح البوت الآن
-</a>
-</td>
-</tr>
-` : ''}
-</table>
-</td>
-</tr>
-</table>
-`;
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:linear-gradient(135deg,#f5f3ff,#ede9fe); border-radius:12px; border:1px solid #c4b5fd; margin:20px 0; overflow:hidden;">
+  <tr>
+    <td style="background:linear-gradient(135deg,#7c3aed,#6d28d9); padding:14px 18px;">
+      <span style="font-size:18px; vertical-align:middle;">🔐</span>
+      <strong style="color:#ffffff; font-size:16px; margin-right:8px; font-family:'Segoe UI',Tahoma,sans-serif; vertical-align:middle;">${allCodes.length > 1 ? `أكواد التفعيل (${allCodes.length})` : 'كود التفعيل'}</strong>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:22px; text-align:center;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+        ${codesListHtml}
+        <tr>
+          <td align="center" style="color:#7c3aed; font-size:13px; font-weight:600; padding:12px 0; font-family:'Segoe UI',Tahoma,sans-serif;">
+            ⏰ صالح حتى: ${expiresAt}
+          </td>
+        </tr>
+        <tr>
+          <td align="center" style="color:#6b7280; font-size:13px; padding:8px 0; line-height:1.7; font-family:'Segoe UI',Tahoma,sans-serif;">
+            ⚠️ ${allCodes.length > 1 ? 'هذه الأكواد صالحة' : 'هذا الكود صالح'} لمدة <strong style="color:#7c3aed;">24 ساعة فقط</strong><br/>
+            أرسل ${allCodes.length > 1 ? 'كل كود' : 'الكود'} للبوت للحصول على بيانات الدخول
+          </td>
+        </tr>
+        ${telegram_bot_username ? `
+        <tr>
+          <td align="center" style="padding-top:16px;">
+            <a href="${botLink}" style="display:inline-block; background:linear-gradient(135deg,#7c3aed,#6d28d9); color:#ffffff; padding:13px 32px; border-radius:10px; text-decoration:none; font-size:14px; font-weight:bold; font-family:'Segoe UI',Tahoma,sans-serif; box-shadow:0 4px 12px rgba(124,58,237,0.3);">
+              📱 افتح البوت الآن
+            </a>
+          </td>
+        </tr>` : ''}
+      </table>
+    </td>
+  </tr>
+</table>`;
     }
 
-    // SIMPLE LIGHT EMAIL TEMPLATE
     const emailHtml = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -260,205 +265,149 @@ ${telegram_bot_username ? `
 <style type="text/css">
 body,table,td,p,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}
 table,td{mso-table-lspace:0pt;mso-table-rspace:0pt;}
-img{-ms-interpolation-mode:bicubic;border:0;height:auto;line-height:100%;outline:none;text-decoration:none;}
-body{margin:0;padding:0;background-color:#f0f0f0;}
-@media only screen and (max-width:620px){
-.main-table{width:100% !important;}
-}
+body{margin:0;padding:0;background-color:#f4f4f8;}
+@media only screen and (max-width:620px){.main-table{width:100%!important;}}
 </style>
 </head>
-<body style="margin:0; padding:0; background-color:#f0f0f0; font-family:'Segoe UI',Tahoma,Arial,sans-serif;">
-<center style="width:100%; background-color:#f0f0f0; padding:20px 0;">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="main-table" style="max-width:600px; width:100%; background-color:#ffffff; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,0.1); overflow:hidden;">
+<body style="margin:0;padding:0;background-color:#f4f4f8;font-family:'Segoe UI',Tahoma,Arial,sans-serif;">
+<center style="width:100%;background-color:#f4f4f8;padding:24px 0;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="main-table" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,0.08);overflow:hidden;">
 
-<!-- HEADER -->
-<tr>
-<td style="background-color:#7C3AED; padding:30px 20px; text-align:center;">
-<table width="100%" cellpadding="0" cellspacing="0" border="0">
-${storeLogoUrl ? `<tr>
-<td align="center" style="padding-bottom:15px;">
-<img src="${storeLogoUrl}" alt="${storeName}" width="80" height="80" style="display:block; border:0; border-radius:12px; background-color:#ffffff;" />
-</td>
-</tr>` : ''}
-<tr>
-<td align="center">
-<span style="font-size:24px; color:#ffffff; font-weight:bold; font-family:'Segoe UI',Tahoma,sans-serif;">${storeName}</span>
-</td>
-</tr>
-<tr>
-<td align="center" style="padding-top:12px;">
-<span style="color:#ffffff; font-size:18px; font-family:'Segoe UI',Tahoma,sans-serif;">✨ تم تسليم طلبك بنجاح ✨</span>
-</td>
-</tr>
-</table>
-</td>
-</tr>
+${buildStoreHeader(storeName, storeLogoUrl, '✅ تم تسليم طلبك بنجاح!', '#7C3AED')}
 
 <!-- CONTENT -->
 <tr>
-<td style="background-color:#ffffff; padding:25px 20px;">
+<td style="padding:28px 24px;">
 
 <!-- Greeting -->
 <table width="100%" cellpadding="0" cellspacing="0" border="0">
 <tr>
-<td align="center" style="color:#333333; font-size:16px; padding-bottom:8px; font-family:'Segoe UI',Tahoma,sans-serif;">
-مرحباً <span style="color:#7C3AED; font-weight:bold;">${customer_name || "عزيزي العميل"}</span> 👋
-</td>
+  <td style="color:#1a1a2e; font-size:17px; padding-bottom:6px; font-family:'Segoe UI',Tahoma,sans-serif; text-align:right;">
+    مرحباً <span style="color:#7C3AED; font-weight:700;">${customer_name || "عزيزي العميل"}</span> 👋
+  </td>
 </tr>
 <tr>
-<td align="center" style="color:#666666; font-size:14px; padding-bottom:25px; line-height:1.5; font-family:'Segoe UI',Tahoma,sans-serif;">
-شكراً لثقتك بنا! إليك تفاصيل حسابك وإيصال الدفع
-</td>
+  <td style="color:#6b7280; font-size:14px; padding-bottom:24px; line-height:1.6; font-family:'Segoe UI',Tahoma,sans-serif; text-align:right;">
+    يسعدنا إبلاغك بأن طلبك قد تم تسليمه بنجاح! إليك تفاصيل الطلب والحسابات.
+  </td>
 </tr>
 </table>
 
-<!-- Receipt Box -->
-<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f9f9f9; border-radius:10px; border:1px solid #e0e0e0; margin-bottom:25px; overflow:hidden;">
+<!-- Receipt -->
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f8f8fc; border-radius:12px; border:1px solid #ede9fe; margin-bottom:24px;">
 <tr>
-<td style="background-color:#f0f0f0; padding:15px; border-bottom:1px solid #e0e0e0;">
-<span style="font-size:16px;">🧾</span>
-<strong style="color:#7C3AED; font-size:15px; margin-right:6px; font-family:'Segoe UI',Tahoma,sans-serif;">إيصال الدفع</strong>
-</td>
+  <td style="background:linear-gradient(135deg,#f5f3ff,#ede9fe); padding:14px 18px; border-bottom:1px solid #ddd6fe; border-radius:12px 12px 0 0;">
+    <span style="font-size:16px; vertical-align:middle;">🧾</span>
+    <strong style="color:#7C3AED; font-size:15px; margin-right:6px; font-family:'Segoe UI',Tahoma,sans-serif; vertical-align:middle;">تفاصيل الطلب</strong>
+  </td>
 </tr>
 <tr>
-<td style="padding:15px;">
+  <td style="padding:16px 18px;">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="color:#6b7280; font-size:13px; padding:7px 0; font-family:'Segoe UI',Tahoma,sans-serif;">رقم الطلب</td>
+        <td style="color:#1a1a2e; font-size:13px; padding:7px 0; text-align:left; direction:ltr; font-family:Consolas,monospace; font-weight:600;">${order_number}</td>
+      </tr>
+      <tr>
+        <td style="color:#6b7280; font-size:13px; padding:7px 0; font-family:'Segoe UI',Tahoma,sans-serif;">تاريخ الطلب</td>
+        <td style="color:#1a1a2e; font-size:13px; padding:7px 0; font-family:'Segoe UI',Tahoma,sans-serif;">${orderDate}</td>
+      </tr>
+      <tr>
+        <td style="color:#6b7280; font-size:13px; padding:7px 0; font-family:'Segoe UI',Tahoma,sans-serif;">الضمان حتى</td>
+        <td style="color:#1a1a2e; font-size:13px; padding:7px 0; font-family:'Segoe UI',Tahoma,sans-serif;">🛡️ ${warrantyDate}</td>
+      </tr>
+      <tr>
+        <td colspan="2" style="padding-top:10px; border-top:1px dashed #ddd6fe;"></td>
+      </tr>
+      <tr>
+        <td style="color:#1a1a2e; font-size:15px; padding:6px 0; font-weight:700; font-family:'Segoe UI',Tahoma,sans-serif;">الإجمالي</td>
+        <td style="color:#7C3AED; font-size:20px; padding:6px 0; font-weight:800; text-align:left; direction:ltr; font-family:'Segoe UI',Tahoma,sans-serif;">$${total_amount.toFixed(2)}</td>
+      </tr>
+    </table>
+  </td>
+</tr>
+</table>
+
+<!-- Account Details -->
 <table width="100%" cellpadding="0" cellspacing="0" border="0">
 <tr>
-<td style="color:#666666; font-size:13px; padding:6px 0; font-family:'Segoe UI',Tahoma,sans-serif;">رقم الطلب:</td>
-<td style="color:#333333; font-size:13px; padding:6px 0; text-align:left; direction:ltr; font-family:'Segoe UI',Tahoma,sans-serif; font-weight:500;">${order_number}</td>
-</tr>
-<tr>
-<td style="color:#666666; font-size:13px; padding:6px 0; font-family:'Segoe UI',Tahoma,sans-serif;">التاريخ:</td>
-<td style="color:#333333; font-size:13px; padding:6px 0; font-family:'Segoe UI',Tahoma,sans-serif;">${orderDate}</td>
-</tr>
-<tr>
-<td style="color:#666666; font-size:13px; padding:6px 0; font-family:'Segoe UI',Tahoma,sans-serif;">الضمان ساري حتى:</td>
-<td style="color:#333333; font-size:13px; padding:6px 0; font-family:'Segoe UI',Tahoma,sans-serif;">${warrantyDate}</td>
-</tr>
-<tr>
-<td style="color:#333333; font-size:14px; padding:12px 0 0 0; border-top:1px solid #e0e0e0; font-weight:bold; font-family:'Segoe UI',Tahoma,sans-serif;">الإجمالي:</td>
-<td style="color:#22c55e; font-size:18px; padding:12px 0 0 0; border-top:1px solid #e0e0e0; font-weight:bold; text-align:left; direction:ltr; font-family:'Segoe UI',Tahoma,sans-serif;">$${total_amount.toFixed(2)}</td>
+  <td style="padding-bottom:14px;">
+    <span style="font-size:16px; vertical-align:middle;">🔑</span>
+    <strong style="color:#1a1a2e; font-size:15px; margin-right:6px; font-family:'Segoe UI',Tahoma,sans-serif; vertical-align:middle;">بيانات الحسابات</strong>
+  </td>
 </tr>
 </table>
-</td>
-</tr>
-</table>
-
-<!-- Account Details Title -->
-<table width="100%" cellpadding="0" cellspacing="0" border="0">
-<tr>
-<td style="padding-bottom:15px;">
-<span style="font-size:16px;">🔑</span>
-<strong style="color:#7C3AED; font-size:15px; margin-right:6px; font-family:'Segoe UI',Tahoma,sans-serif;">تفاصيل الحسابات</strong>
-</td>
-</tr>
-</table>
-
-<!-- Products List -->
 ${productsHtml}
 
-<!-- Activation Code Section (if applicable) -->
 ${activationCodeHtml}
 
-<!-- Warning Box -->
-<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#fef3c7; border-radius:8px; border:1px solid #f59e0b; margin-top:20px;">
+<!-- Warning -->
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#fffbeb; border-radius:10px; border:1px solid #fcd34d; margin-top:20px;">
 <tr>
-<td style="color:#92400e; font-size:13px; padding:14px; line-height:1.5; font-family:'Segoe UI',Tahoma,sans-serif; direction:rtl; text-align:right;">
-<strong>⚠️ تنبيه:</strong> احتفظ بهذه البيانات في مكان آمن ولا تشاركها مع أحد.
-</td>
+  <td style="color:#92400e; font-size:13px; padding:14px 16px; line-height:1.6; font-family:'Segoe UI',Tahoma,sans-serif; text-align:right;">
+    ⚠️ <strong>تنبيه مهم:</strong> احتفظ بهذه البيانات في مكان آمن ولا تشاركها مع أي شخص. في حال واجهتك أي مشكلة، لا تتردد بالتواصل مع فريق الدعم.
+  </td>
 </tr>
 </table>
 
 </td>
 </tr>
 
-<!-- FOOTER -->
-<tr>
-<td style="background-color:#f5f5f5; padding:20px; text-align:center; border-top:1px solid #e0e0e0;">
-<table width="100%" cellpadding="0" cellspacing="0" border="0">
-<tr>
-<td align="center" style="color:#666666; font-size:12px; font-family:'Segoe UI',Tahoma,sans-serif;">
-© ${new Date().getFullYear()} ${storeName}
-</td>
-</tr>
-<tr>
-<td align="center" style="color:#888888; font-size:11px; padding-top:6px; font-family:'Segoe UI',Tahoma,sans-serif;">
-شكراً لتسوقك معنا 💜
-</td>
-</tr>
-</table>
-</td>
-</tr>
+${buildFooter(storeName, currentYear)}
 
 </table>
 </center>
 </body>
 </html>`;
 
-    // Plain text version
-    const activationTextSection = activation_code 
+    const activationTextSection = activation_code
       ? `\n\n🔐 كود التفعيل: ${activation_code}\n⏰ صالح لمدة 24 ساعة فقط!\n${telegram_bot_username ? `📱 البوت: https://t.me/${telegram_bot_username}` : ''}\n`
       : '';
 
     const plainTextContent = `
 ${storeName}
-تم تسليم طلبك بنجاح!
+✅ تم تسليم طلبك بنجاح!
 
 مرحباً ${customer_name || "عزيزي العميل"}،
 
-شكراً لثقتك بنا! إليك تفاصيل طلبك:
+يسعدنا إبلاغك بأن طلبك قد تم تسليمه بنجاح!
 
 رقم الطلب: ${order_number}
 المبلغ الإجمالي: $${total_amount.toFixed(2)}
 الضمان ساري حتى: ${warrantyDate}
 
-تفاصيل الحسابات:
-${products.map(p => `${p.name} (الكمية: ${p.quantity})\n${p.account_data}`).join('\n\n')}
+بيانات الحسابات:
+${products.map(p => `🎁 ${p.name} (×${p.quantity})\n${p.account_data}`).join('\n\n')}
 ${activationTextSection}
-تنبيه مهم: احتفظ بهذا الإيميل في مكان آمن.
+⚠️ تنبيه: احتفظ بهذا الإيميل في مكان آمن ولا تشاركه.
 
-© ${new Date().getFullYear()} ${storeName}
+© ${currentYear} ${storeName}
     `.trim();
 
-    console.log("📧 Initializing SMTP client...");
-    
     const client = new SMTPClient({
       connection: {
         hostname: smtpHost,
         port: smtpPort,
         tls: true,
-        auth: {
-          username: smtpUser,
-          password: smtpPass,
-        },
+        auth: { username: smtpUser, password: smtpPass },
       },
     });
 
-    console.log("📧 Sending email via SMTP...");
+    const emailSubject = `✅ تم تسليم طلبك — #${order_number}`;
 
     await client.send({
       from: `${storeName} <${senderEmail}>`,
       to: to_email,
       subject: emailSubject,
       mimeContent: [
-        {
-          mimeType: 'text/plain; charset="utf-8"',
-          content: encodeBase64(plainTextContent),
-          transferEncoding: "base64",
-        },
-        {
-          mimeType: 'text/html; charset="utf-8"',
-          content: encodeBase64(emailHtml),
-          transferEncoding: "base64",
-        },
+        { mimeType: 'text/plain; charset="utf-8"', content: encodeBase64(plainTextContent), transferEncoding: "base64" },
+        { mimeType: 'text/html; charset="utf-8"', content: encodeBase64(emailHtml), transferEncoding: "base64" },
       ],
     });
 
     await client.close();
-
     console.log("📧 Email sent successfully to:", to_email);
 
-    // Log successful email to database
     try {
       await supabase.from("email_logs").insert({
         order_id: order_id || null,
@@ -477,39 +426,8 @@ ${activationTextSection}
       JSON.stringify({ success: true, message: "Email sent successfully" }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
-
   } catch (error) {
     console.error("📧 Error:", error);
-    
-    // Try to log failed email
-    try {
-      const settingsUrl =
-        Deno.env.get("EXTERNAL_SUPABASE_URL") ||
-        Deno.env.get("VITE_EXTERNAL_SUPABASE_URL") ||
-        Deno.env.get("SUPABASE_URL") ||
-        "";
-      const settingsServiceKey =
-        Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") ||
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ||
-        "";
-      
-      if (settingsUrl && settingsServiceKey) {
-        const supabase = createClient(settingsUrl, settingsServiceKey);
-        const body = await req.clone().json().catch(() => ({}));
-        await supabase.from("email_logs").insert({
-          order_id: body.order_id || null,
-          user_id: body.user_id || null,
-          email_type: "delivery",
-          recipient_email: body.to_email || "unknown",
-          subject: `Order Delivered - #${body.order_number || "unknown"}`,
-          status: "failed",
-          error_message: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
-    } catch (logErr) {
-      console.error("Failed to log email error:", logErr);
-    }
-    
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
