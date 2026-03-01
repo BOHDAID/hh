@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { ShoppingBag, Menu, Home, Package, MessageCircle, Settings, ShoppingCart, Wallet } from "lucide-react";
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useCallback } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import LanguageSwitcher from "./LanguageSwitcher";
 import ThemeToggle from "./ThemeToggle";
@@ -17,6 +17,20 @@ const Header = ({ onMenuClick, showMenuButton = false }: HeaderProps) => {
   const { t } = useTranslation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { user, isAdmin, storeName, storeLogo, cartCount } = useAppData();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const scrollToProducts = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    if (location.pathname === "/") {
+      document.getElementById("products")?.scrollIntoView({ behavior: "smooth" });
+    } else {
+      navigate("/");
+      setTimeout(() => {
+        document.getElementById("products")?.scrollIntoView({ behavior: "smooth" });
+      }, 300);
+    }
+  }, [location.pathname, navigate]);
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/50 glass">
@@ -39,7 +53,7 @@ const Header = ({ onMenuClick, showMenuButton = false }: HeaderProps) => {
             <Home className="h-4 w-4" />
             {t('common.home')}
           </Link>
-          <a href="/#products" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center gap-1">
+          <a href="/#products" onClick={scrollToProducts} className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center gap-1 cursor-pointer">
             <Package className="h-4 w-4" />
             {t('common.products')}
           </a>
@@ -121,7 +135,7 @@ const Header = ({ onMenuClick, showMenuButton = false }: HeaderProps) => {
             <Link to="/" className="text-xs font-medium text-foreground flex items-center gap-2 py-1.5" onClick={() => setIsMenuOpen(false)}>
               <Home className="h-3.5 w-3.5" />{t('common.home')}
             </Link>
-            <a href="/#products" className="text-xs font-medium text-muted-foreground flex items-center gap-2 py-1.5" onClick={() => setIsMenuOpen(false)}>
+            <a href="/#products" onClick={(e) => { scrollToProducts(e); setIsMenuOpen(false); }} className="text-xs font-medium text-muted-foreground flex items-center gap-2 py-1.5 cursor-pointer">
               <Package className="h-3.5 w-3.5" />{t('common.products')}
             </a>
             {user && (
