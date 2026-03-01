@@ -153,6 +153,8 @@ const ProductCard = ({
           <motion.img
             src={image}
             alt={title}
+            loading="lazy"
+            decoding="async"
             className="h-full w-full object-cover"
             animate={{ scale: isHovered ? 1.1 : 1 }}
             transition={{ duration: 0.5 }}
