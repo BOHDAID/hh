@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { MessageCircle, X, Send, Bot, User, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
+import ReactMarkdown from "react-markdown";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -164,7 +165,9 @@ const AIChatBot = () => {
                         : "bg-muted text-foreground rounded-bl-sm"
                     }`}
                   >
-                    {msg.content}
+                    <div className="prose prose-sm prose-invert max-w-none [&>p]:m-0 [&>ul]:m-0 [&>ol]:m-0 [&>li]:m-0 [&_strong]:text-inherit [&_em]:text-inherit">
+                      {msg.role === "assistant" ? <ReactMarkdown>{msg.content}</ReactMarkdown> : msg.content}
+                    </div>
                   </div>
                   {msg.role === "user" && (
                     <div className="h-7 w-7 rounded-full bg-secondary flex items-center justify-center shrink-0 mt-1">
