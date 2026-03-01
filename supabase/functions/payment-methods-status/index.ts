@@ -20,14 +20,15 @@ function errorResponse(message: string, status = 400) {
 
 type PaymentStatusResponse = {
   paypalEnabled: boolean;
-  paypalClientId?: string; // Public key - safe to expose for SDK initialization
-  cryptoEnabled: boolean; // NOWPayments
+  paypalClientId?: string;
+  cryptoEnabled: boolean;
   lemonSqueezyEnabled: boolean;
   directCryptoEnabled: boolean;
-  enabledDirectCryptos: string[]; // e.g. ["LTC","BTC"]
+  enabledDirectCryptos: string[];
   cryptomusEnabled: boolean;
   oxaPayEnabled: boolean;
   sellAuthEnabled: boolean;
+  ivnoEnabled: boolean;
 };
 
 serve(async (req: Request) => {
@@ -78,6 +79,8 @@ serve(async (req: Request) => {
         "oxapay_merchant_api_key",
         "sellauth_api_key",
         "sellauth_shop_id",
+        "ivno_api_key",
+        "ivno_api_secret",
       ]);
 
     if (error) {
@@ -99,6 +102,8 @@ serve(async (req: Request) => {
     let hasOxaPayKey = false;
     let hasSellAuthApiKey = false;
     let hasSellAuthShopId = false;
+    let hasIvnoApiKey = false;
+    let hasIvnoApiSecret = false;
     let enabledCryptos: string[] = [];
 
     for (const s of settings || []) {
@@ -125,6 +130,8 @@ serve(async (req: Request) => {
       if (key === "oxapay_merchant_api_key" && value) hasOxaPayKey = true;
       if (key === "sellauth_api_key" && value) hasSellAuthApiKey = true;
       if (key === "sellauth_shop_id" && value) hasSellAuthShopId = true;
+      if (key === "ivno_api_key" && value) hasIvnoApiKey = true;
+      if (key === "ivno_api_secret" && value) hasIvnoApiSecret = true;
     }
 
     const enabledDirectCryptos: string[] = [];
@@ -141,6 +148,7 @@ serve(async (req: Request) => {
       cryptomusEnabled: hasCryptomusMerchantId && hasCryptomusApiKey,
       oxaPayEnabled: hasOxaPayKey,
       sellAuthEnabled: hasSellAuthApiKey && hasSellAuthShopId,
+      ivnoEnabled: hasIvnoApiKey && hasIvnoApiSecret,
     };
 
     console.log("payment-methods-status: Response", res);

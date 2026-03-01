@@ -115,3 +115,14 @@ export const SmallSellAuthIcon = () => (
     </div>
   </div>
 );
+
+export const SmallIvnoIcon = () => (
+  <div className="flex items-center gap-1">
+    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-emerald-500/10 flex items-center justify-center">
+      <CreditCard className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-500" />
+    </div>
+    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-emerald-600/10 flex items-center justify-center">
+      <span className="text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400">iv</span>
+    </div>
+  </div>
+);

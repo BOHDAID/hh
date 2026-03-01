@@ -11,7 +11,7 @@ import CompactPaymentOption from "@/components/checkout/CompactPaymentOption";
 import OrderSummaryCard from "@/components/checkout/OrderSummaryCard";
 import CryptoSelector from "@/components/checkout/CryptoSelector";
 import CouponInput from "@/components/CouponInput";
-import { SmallPayPalIcon, SmallCryptoIcon, SmallWalletIcon, SmallLemonIcon, SmallCryptomusIcon, SmallOxaPayIcon, SmallSellAuthIcon } from "@/components/checkout/PaymentIcons";
+import { SmallPayPalIcon, SmallCryptoIcon, SmallWalletIcon, SmallLemonIcon, SmallCryptomusIcon, SmallOxaPayIcon, SmallSellAuthIcon, SmallIvnoIcon } from "@/components/checkout/PaymentIcons";
 import PayPalSmartButtons from "@/components/checkout/PayPalSmartButtons";
 
 interface Product {
@@ -32,7 +32,7 @@ interface SelectedVariant {
   warranty_days?: number | null;
 }
 
-type PaymentMethod = "paypal" | "crypto" | "wallet" | "lemonsqueezy" | "cryptomus" | "oxapay" | "sellauth";
+type PaymentMethod = "paypal" | "crypto" | "wallet" | "lemonsqueezy" | "cryptomus" | "oxapay" | "sellauth" | "ivno";
 
 const Checkout = () => {
   const { productId } = useParams<{ productId: string }>();
@@ -61,6 +61,7 @@ const Checkout = () => {
   const [cryptomusEnabled, setCryptomusEnabled] = useState(false);
   const [oxaPayEnabled, setOxaPayEnabled] = useState(false);
   const [sellAuthEnabled, setSellAuthEnabled] = useState(false);
+  const [ivnoEnabled, setIvnoEnabled] = useState(false);
   const [paypalClientId, setPaypalClientId] = useState<string>("");
   const [showPayPalButtons, setShowPayPalButtons] = useState(false);
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
@@ -313,6 +314,7 @@ const Checkout = () => {
           cryptomusEnabled: boolean;
           oxaPayEnabled: boolean;
           sellAuthEnabled: boolean;
+          ivnoEnabled: boolean;
           }>("payment-methods-status", {});
 
           if (statusRes.error) throw statusRes.error;
@@ -326,7 +328,8 @@ const Checkout = () => {
           setEnabledDirectCryptos(Array.isArray(s.enabledDirectCryptos) ? s.enabledDirectCryptos : []);
           setCryptomusEnabled(!!s.cryptomusEnabled);
           setOxaPayEnabled(!!s.oxaPayEnabled);
-          setSellAuthEnabled(!!s.sellAuthEnabled);
+           setSellAuthEnabled(!!s.sellAuthEnabled);
+           setIvnoEnabled(!!s.ivnoEnabled);
           // Store PayPal Client ID for Smart Buttons
           if ((s as any).paypalClientId) {
             setPaypalClientId((s as any).paypalClientId);
@@ -771,7 +774,48 @@ const Checkout = () => {
           });
           setProcessing(false);
           return;
+      }
+
+      if (paymentMethod === "ivno") {
+        try {
+          const ivnoRes = await invokeCloudFunction<{ success: boolean; payment_url?: string; error?: string }>(
+            "ivno-create",
+            {
+              order_id: orderId,
+              amount: totalAmount,
+              currency: "USD",
+            },
+            session.access_token
+          );
+
+          if (ivnoRes.error || !ivnoRes.data?.success) {
+            const errorMsg = ivnoRes.data?.error || "خدمة Ivno غير متاحة حالياً";
+            console.error("Ivno payment failed:", errorMsg);
+            toast({
+              title: "خطأ في بوابة الدفع",
+              description: `${errorMsg}. يمكنك اختيار طريقة دفع أخرى.`,
+              variant: "destructive",
+            });
+            setProcessing(false);
+            return;
+          }
+
+          const paymentUrl = ivnoRes.data.payment_url;
+          if (paymentUrl) {
+            window.location.href = paymentUrl;
+          }
+          return;
+        } catch (ivnoError) {
+          console.error("Ivno gateway error (isolated):", ivnoError);
+          toast({
+            title: "بوابة Ivno غير متاحة",
+            description: "يرجى اختيار طريقة دفع بديلة.",
+            variant: "destructive",
+          });
+          setProcessing(false);
+          return;
         }
+      }
       }
     } catch (error) {
       console.error("Checkout error:", error);
@@ -809,6 +853,7 @@ const Checkout = () => {
     (paymentMethod !== "cryptomus" || cryptomusEnabled) &&
     (paymentMethod !== "oxapay" || oxaPayEnabled) &&
     (paymentMethod !== "sellauth" || sellAuthEnabled) &&
+    (paymentMethod !== "ivno" || ivnoEnabled) &&
     !isPayPalBelowMinimum;
 
   return (
@@ -906,6 +951,17 @@ const Checkout = () => {
                   icon={<SmallSellAuthIcon />}
                   isSelected={paymentMethod === "sellauth"}
                   onClick={() => setPaymentMethod("sellauth")}
+                />
+              )}
+
+              {/* Ivno - Cards, Apple Pay, Google Pay → USDC */}
+              {ivnoEnabled && (
+                <CompactPaymentOption
+                  title="Ivno (Visa / Apple Pay / Google Pay)"
+                  description="بطاقات بنكية و Apple Pay مع دفعات USDC فورية"
+                  icon={<SmallIvnoIcon />}
+                  isSelected={paymentMethod === "ivno"}
+                  onClick={() => setPaymentMethod("ivno")}
                 />
               )}
 

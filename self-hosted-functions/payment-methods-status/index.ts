@@ -33,6 +33,7 @@ type PaymentStatusResponse = {
   cryptomusEnabled: boolean;
   oxaPayEnabled: boolean;
   sellAuthEnabled: boolean;
+  ivnoEnabled: boolean;
 };
 
 serve(async (req: Request) => {
@@ -68,6 +69,7 @@ serve(async (req: Request) => {
         "enabled_cryptos", "lemonsqueezy_api_key", "lemonsqueezy_store_id",
         "cryptomus_merchant_id", "cryptomus_api_key", "oxapay_merchant_api_key",
         "sellauth_api_key", "sellauth_shop_id",
+        "ivno_api_key", "ivno_api_secret",
       ]);
 
     if (error) {
@@ -80,6 +82,7 @@ serve(async (req: Request) => {
     let paypalEnabled = false, cryptoEnabled = false, hasLtcXpub = false, hasBtcXpub = false;
     let hasLsKey = false, hasLsStoreId = false, hasCmMerchant = false, hasCmKey = false;
     let hasOxaPayKey = false, hasSellAuthApiKey = false, hasSellAuthShopId = false;
+    let hasIvnoApiKey = false, hasIvnoApiSecret = false;
     let enabledCryptos: string[] = [];
 
     for (const s of settings || []) {
@@ -96,6 +99,8 @@ serve(async (req: Request) => {
       if (key === "oxapay_merchant_api_key" && value) hasOxaPayKey = true;
       if (key === "sellauth_api_key" && value) hasSellAuthApiKey = true;
       if (key === "sellauth_shop_id" && value) hasSellAuthShopId = true;
+      if (key === "ivno_api_key" && value) hasIvnoApiKey = true;
+      if (key === "ivno_api_secret" && value) hasIvnoApiSecret = true;
     }
 
     const enabledDirectCryptos: string[] = [];
@@ -111,6 +116,7 @@ serve(async (req: Request) => {
       cryptomusEnabled: hasCmMerchant && hasCmKey,
       oxaPayEnabled: hasOxaPayKey,
       sellAuthEnabled: hasSellAuthApiKey && hasSellAuthShopId,
+      ivnoEnabled: hasIvnoApiKey && hasIvnoApiSecret,
     };
 
     console.log("payment-methods-status: Response", response);

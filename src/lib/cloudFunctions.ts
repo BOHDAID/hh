@@ -44,6 +44,8 @@ export const FUNCTION_SLUGS: Record<string, string> = {
   'oxapay-webhook': 'oxapay-webhook',
   'sellauth-create': 'sellauth-create',
   'sellauth-webhook': 'sellauth-webhook',
+  'ivno-create': 'ivno-create',
+  'ivno-webhook': 'ivno-webhook',
   
   // === أخرى ===
   'payment-methods-status': 'payment-methods-status',
