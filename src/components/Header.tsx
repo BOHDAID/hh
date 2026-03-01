@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import LanguageSwitcher from "./LanguageSwitcher";
+import ThemeToggle from "./ThemeToggle";
 import { useAppData } from "./AppInitializer";
 
 interface HeaderProps {
@@ -72,6 +73,7 @@ const Header = ({ onMenuClick, showMenuButton = false }: HeaderProps) => {
 
         {/* Actions */}
         <div className="flex items-center gap-2">
+          <ThemeToggle />
           <LanguageSwitcher />
           
           {user ? (

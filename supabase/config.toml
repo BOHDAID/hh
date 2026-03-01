@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.ivno-webhook]
 verify_jwt = false
+
+[functions.ai-chat]
+verify_jwt = false
