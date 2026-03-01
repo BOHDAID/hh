@@ -369,6 +369,8 @@ const AnalyticsTab = () => {
 
       if (referrerData && referrerData.length > 0) {
         const referrerMap = new Map<string, number>();
+        // Filter out internal/preview domains
+        const excludedDomains = ["lovable.dev", "lovable.app", "localhost", "127.0.0.1", "webcontainer.io"];
         referrerData.forEach((visit) => {
           if (visit.referrer && visit.referrer.trim() !== "") {
             // Extract domain from referrer URL
@@ -379,6 +381,8 @@ const AnalyticsTab = () => {
             } catch {
               // Keep as-is if not a valid URL
             }
+            // Skip internal/preview domains
+            if (excludedDomains.some(excluded => domain.includes(excluded))) return;
             const existing = referrerMap.get(domain) || 0;
             referrerMap.set(domain, existing + 1);
           }
