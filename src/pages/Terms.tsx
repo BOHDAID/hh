@@ -3,11 +3,11 @@ import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { db } from "@/lib/supabaseClient";
-import useStoreBranding from "@/hooks/useStoreBranding";
+import { useAppData } from "@/components/AppInitializer";
 
 const Terms = () => {
   const [content, setContent] = useState("");
-  const { storeName } = useStoreBranding();
+  const { storeName } = useAppData();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

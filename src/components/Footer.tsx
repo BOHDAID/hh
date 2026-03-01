@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { db } from "@/lib/supabaseClient";
 import { useTranslation } from "react-i18next";
-import useStoreBranding from "@/hooks/useStoreBranding";
+import { useAppData } from "./AppInitializer";
 
 interface FooterProps {
   className?: string;
@@ -12,7 +12,7 @@ interface FooterProps {
 
 const Footer = ({ className }: FooterProps) => {
   const { t } = useTranslation();
-  const { storeName, storeLogo } = useStoreBranding();
+  const { storeName, storeLogo } = useAppData();
   const [socialLinks, setSocialLinks] = useState<{
     twitter?: string;
     instagram?: string;

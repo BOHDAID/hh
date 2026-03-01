@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { ShoppingBag } from "lucide-react";
 import { motion } from "framer-motion";
-import useStoreBranding from "@/hooks/useStoreBranding";
+import { useAppData } from "./AppInitializer";
 
 interface StoreLogoProps {
   size?: "sm" | "md" | "lg";
@@ -16,7 +16,7 @@ const sizeMap = {
 };
 
 const StoreLogo = ({ size = "md", animated = false, className = "" }: StoreLogoProps) => {
-  const { storeName, storeLogo } = useStoreBranding();
+  const { storeName, storeLogo } = useAppData();
   const s = sizeMap[size];
 
   const logoElement = storeLogo ? (

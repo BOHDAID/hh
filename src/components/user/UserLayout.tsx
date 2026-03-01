@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import UserSidebar from "./UserSidebar";
 import { db, getAuthClient, isExternalConfigured } from "@/lib/supabaseClient";
 import { useTranslation } from "react-i18next";
-import useStoreBranding from "@/hooks/useStoreBranding";
+import { useAppData } from "@/components/AppInitializer";
 
 interface UserLayoutProps {
   children: React.ReactNode;
@@ -19,7 +19,7 @@ const UserLayout = ({ children, title, subtitle }: UserLayoutProps) => {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
-  const { storeName, storeLogo } = useStoreBranding();
+  const { storeName, storeLogo } = useAppData();
 
   useEffect(() => {
     const authClient = isExternalConfigured ? getAuthClient() : db;
