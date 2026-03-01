@@ -29,8 +29,7 @@ import Terms from "./pages/Terms";
 import RefundPolicy from "./pages/RefundPolicy";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Demo from "./pages/Demo";
-import ProductTest from "./pages/ProductTest";
-import SearchTest from "./pages/SearchTest";
+import Search from "./pages/Search";
 import useDynamicFavicon from "./hooks/useDynamicFavicon";
 import useOpenGraphMeta from "./hooks/useOpenGraphMeta";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -69,8 +68,7 @@ const AppContent = () => {
         <Route path="/refund-policy" element={<RefundPolicy />} />
         <Route path="/privacy-policy" element={<PrivacyPolicy />} />
         <Route path="/demo" element={<Demo />} />
-        <Route path="/product-test/:id" element={<ProductTest />} />
-        <Route path="/search-test" element={<SearchTest />} />
+        <Route path="/search" element={<Search />} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>

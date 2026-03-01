@@ -1,19 +1,19 @@
 import { useState, useEffect, useMemo } from "react";
-import { Link } from "react-router-dom";
 import { db } from "@/lib/supabaseClient";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import ProductDetailsModal from "@/components/ProductDetailsModal";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Search, Package, Star, SlidersHorizontal, X } from "lucide-react";
+import { Search as SearchIcon, Package, Star, SlidersHorizontal, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAppData } from "@/components/AppInitializer";
 import UserSidebar from "@/components/user/UserSidebar";
 import { motion, AnimatePresence } from "framer-motion";
 
-const SearchTest = () => {
+const Search = () => {
   const { i18n } = useTranslation();
   const isRTL = i18n.language === "ar";
   const { user } = useAppData();
@@ -23,13 +23,16 @@ const SearchTest = () => {
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 1000]);
   const [sortBy, setSortBy] = useState<"price_asc" | "price_desc" | "rating" | "sales">("sales");
   const [showFilters, setShowFilters] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Product details modal
+  const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+
   useEffect(() => {
-    const fetch = async () => {
+    const fetchData = async () => {
       const [prodRes, catRes] = await Promise.all([
         db.from("products").select("*").eq("is_active", true),
         db.from("categories").select("*"),
@@ -38,20 +41,19 @@ const SearchTest = () => {
       setCategories(catRes.data || []);
       setLoading(false);
     };
-    fetch();
+    fetchData();
   }, []);
 
   const filtered = useMemo(() => {
     let result = products.filter((p) => {
       const q = query.toLowerCase();
-      const matchesQuery = !q || 
-        p.name?.toLowerCase().includes(q) || 
-        p.name_en?.toLowerCase().includes(q) || 
+      const matchesQuery = !q ||
+        p.name?.toLowerCase().includes(q) ||
+        p.name_en?.toLowerCase().includes(q) ||
         p.description?.toLowerCase().includes(q) ||
         p.platform?.toLowerCase().includes(q);
       const matchesCat = !selectedCategory || p.category_id === selectedCategory;
-      const matchesPrice = p.price >= priceRange[0] && p.price <= priceRange[1];
-      return matchesQuery && matchesCat && matchesPrice;
+      return matchesQuery && matchesCat;
     });
 
     switch (sortBy) {
@@ -61,7 +63,18 @@ const SearchTest = () => {
       case "sales": result.sort((a, b) => (b.sales_count || 0) - (a.sales_count || 0)); break;
     }
     return result;
-  }, [products, query, selectedCategory, priceRange, sortBy]);
+  }, [products, query, selectedCategory, sortBy]);
+
+  const handleProductClick = (product: any) => {
+    const cat = categories.find(c => c.id === product.category_id);
+    setSelectedProduct({
+      ...product,
+      category: cat ? (isRTL ? cat.name : (cat.name_en || cat.name)) : undefined,
+      description: isRTL ? product.description : (product.description_en || product.description),
+      name: isRTL ? product.name : (product.name_en || product.name),
+    });
+    setModalOpen(true);
+  };
 
   return (
     <div className="min-h-screen bg-background" dir={isRTL ? "rtl" : "ltr"}>
@@ -69,12 +82,12 @@ const SearchTest = () => {
       {user && <UserSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} onOpen={() => setSidebarOpen(true)} />}
 
       <main className="container mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold mb-6">{isRTL ? "البحث الذكي" : "Smart Search"}</h1>
+        <h1 className="text-3xl font-bold mb-6">{isRTL ? "البحث" : "Search"}</h1>
 
         {/* Search Bar */}
         <div className="flex gap-2 mb-6">
           <div className="relative flex-1">
-            <Search className="absolute top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground start-3" />
+            <SearchIcon className="absolute top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground start-3" />
             <Input
               placeholder={isRTL ? "ابحث عن منتج..." : "Search for a product..."}
               value={query}
@@ -109,31 +122,19 @@ const SearchTest = () => {
             >
               <Card>
                 <CardContent className="p-4 space-y-4">
-                  {/* Categories */}
                   <div>
                     <h3 className="text-sm font-semibold mb-2">{isRTL ? "التصنيفات" : "Categories"}</h3>
                     <div className="flex flex-wrap gap-2">
-                      <Badge
-                        variant={!selectedCategory ? "default" : "outline"}
-                        className="cursor-pointer"
-                        onClick={() => setSelectedCategory(null)}
-                      >
+                      <Badge variant={!selectedCategory ? "default" : "outline"} className="cursor-pointer" onClick={() => setSelectedCategory(null)}>
                         {isRTL ? "الكل" : "All"}
                       </Badge>
                       {categories.map((c) => (
-                        <Badge
-                          key={c.id}
-                          variant={selectedCategory === c.id ? "default" : "outline"}
-                          className="cursor-pointer"
-                          onClick={() => setSelectedCategory(c.id)}
-                        >
+                        <Badge key={c.id} variant={selectedCategory === c.id ? "default" : "outline"} className="cursor-pointer" onClick={() => setSelectedCategory(c.id)}>
                           {c.icon} {isRTL ? c.name : (c.name_en || c.name)}
                         </Badge>
                       ))}
                     </div>
                   </div>
-
-                  {/* Sort */}
                   <div>
                     <h3 className="text-sm font-semibold mb-2">{isRTL ? "ترتيب حسب" : "Sort by"}</h3>
                     <div className="flex flex-wrap gap-2">
@@ -143,12 +144,7 @@ const SearchTest = () => {
                         { key: "price_asc", label: isRTL ? "السعر: الأقل" : "Price: Low" },
                         { key: "price_desc", label: isRTL ? "السعر: الأعلى" : "Price: High" },
                       ].map((s) => (
-                        <Badge
-                          key={s.key}
-                          variant={sortBy === s.key ? "default" : "outline"}
-                          className="cursor-pointer"
-                          onClick={() => setSortBy(s.key as any)}
-                        >
+                        <Badge key={s.key} variant={sortBy === s.key ? "default" : "outline"} className="cursor-pointer" onClick={() => setSortBy(s.key as any)}>
                           {s.label}
                         </Badge>
                       ))}
@@ -179,8 +175,8 @@ const SearchTest = () => {
                 exit={{ opacity: 0, scale: 0.9 }}
                 transition={{ delay: i * 0.03 }}
               >
-                <Link to={`/product-test/${p.id}`}>
-                  <Card className="overflow-hidden hover:shadow-lg transition-all hover:-translate-y-1 cursor-pointer h-full">
+                <div onClick={() => handleProductClick(p)} className="cursor-pointer">
+                  <Card className="overflow-hidden hover:shadow-lg transition-all hover:-translate-y-1 h-full">
                     <div className="aspect-square bg-muted relative">
                       {p.image_url ? (
                         <img src={p.image_url} alt={p.name} className="w-full h-full object-contain p-4" loading="lazy" />
@@ -206,7 +202,7 @@ const SearchTest = () => {
                       </div>
                     </CardContent>
                   </Card>
-                </Link>
+                </div>
               </motion.div>
             ))}
           </AnimatePresence>
@@ -214,7 +210,7 @@ const SearchTest = () => {
 
         {!loading && filtered.length === 0 && (
           <div className="text-center py-16">
-            <Search className="h-16 w-16 text-muted-foreground/30 mx-auto mb-4" />
+            <SearchIcon className="h-16 w-16 text-muted-foreground/30 mx-auto mb-4" />
             <h3 className="text-lg font-semibold">{isRTL ? "لا توجد نتائج" : "No results found"}</h3>
             <p className="text-sm text-muted-foreground mt-1">
               {isRTL ? "جرب كلمات بحث مختلفة" : "Try different keywords"}
@@ -224,8 +220,14 @@ const SearchTest = () => {
       </main>
 
       <Footer />
+
+      <ProductDetailsModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        product={selectedProduct}
+      />
     </div>
   );
 };
 
-export default SearchTest;
+export default Search;
