@@ -112,6 +112,7 @@ async function getUpdates() {
 }
 
 async function processUpdate(update) {
+  const chatId = update?.message?.chat?.id?.toString() || update?.callback_query?.message?.chat?.id?.toString();
   try {
     if (update.callback_query) {
       await handleCallbackQuery(update.callback_query);
@@ -122,6 +123,17 @@ async function processUpdate(update) {
     }
   } catch (error) {
     console.error('❌ Error processing update:', error.message);
+    // إرسال رسالة خطأ للعميل حتى لا يبقى بدون رد
+    if (chatId) {
+      try {
+        await sendMessage(chatId, bi(
+          '❌ حدث خطأ غير متوقع أثناء المعالجة. حاول مرة أخرى أو أرسل /cancel ثم أعد المحاولة.',
+          '❌ An unexpected error occurred. Please try again or send /cancel and retry.'
+        ));
+      } catch (e) {
+        console.error('❌ Failed to send error message to user:', e.message);
+      }
+    }
   }
 }
 
@@ -689,6 +701,7 @@ async function handleCallbackQuery(callbackQuery) {
     ));
 
     const tvResult = await enterTVCodeFromSession(tvCode, session.productId);
+    console.log(`📺 OSN TV result: success=${tvResult.success}, paired=${tvResult.paired}, error=${tvResult.error || 'none'}`);
 
     if (tvResult.success && tvResult.paired) {
       await markCodeAsUsed(session.activationCodeId);
@@ -700,38 +713,51 @@ async function handleCallbackQuery(callbackQuery) {
       } catch (photoErr) {
         console.error('⚠️ Failed to send screenshot:', photoErr.message);
       }
+      // إرسال رسالة نجاح واضحة دائماً
+      let successSent = false;
       try {
         await sendSuccessMessage(chatId, session);
+        successSent = true;
       } catch (msgErr) {
-        console.error('⚠️ Failed to send success message:', msgErr.message);
-        await sendMessage(chatId, bi(
-          '✅ تم تفعيل التلفاز بنجاح! 🎉',
-          '✅ TV activated successfully! 🎉'
-        )).catch(() => {});
+        console.error('⚠️ Failed to send branded success message:', msgErr.message);
+      }
+      if (!successSent) {
+        try {
+          await sendMessage(chatId, bi(
+            '✅ <b>تم تفعيل التلفاز بنجاح!</b> 🎉\n\n📺 استمتع بالمشاهدة!',
+            '✅ <b>TV activated successfully!</b> 🎉\n\n📺 Enjoy watching!'
+          ));
+        } catch (fallbackErr) {
+          console.error('❌ Even fallback success message failed:', fallbackErr.message);
+        }
       }
       delete userSessions[chatId];
     } else {
       const errorDetail = tvResult.error || tvResult.message || 'سبب غير معروف';
       console.log(`❌ TV code failed: ${errorDetail}, hasScreenshot: ${!!tvResult.screenshot}`);
       
+      // إرسال رسالة خطأ واضحة دائماً
+      let errorSent = false;
       try {
         if (tvResult.screenshot) {
           await sendPhoto(chatId, tvResult.screenshot, bi(
             `❌ <b>فشل ربط التلفزيون</b>\n\n📋 السبب: ${errorDetail}`,
             `❌ <b>TV linking failed</b>\n\n📋 Reason: ${errorDetail}`
           ));
-        } else {
+          errorSent = true;
+        }
+      } catch (photoErr) {
+        console.error('⚠️ Failed to send error screenshot:', photoErr.message);
+      }
+      if (!errorSent) {
+        try {
           await sendMessage(chatId, bi(
             `❌ <b>فشل ربط التلفزيون</b>\n\n📋 السبب: ${errorDetail}`,
             `❌ <b>TV linking failed</b>\n\n📋 Reason: ${errorDetail}`
           ));
+        } catch (errMsgErr) {
+          console.error('❌ Failed to send error message:', errMsgErr.message);
         }
-      } catch (errMsgErr) {
-        console.error('⚠️ Failed to send error message:', errMsgErr.message);
-        await sendMessage(chatId, bi(
-          `❌ فشل ربط التلفزيون: ${errorDetail}`,
-          `❌ TV linking failed: ${errorDetail}`
-        )).catch(() => {});
       }
       session.step = 'awaiting_tv_code';
       delete session.pendingTvCode;
