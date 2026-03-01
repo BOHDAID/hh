@@ -1,8 +1,9 @@
 import ProductCard from "@/components/ProductCard";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useState, useEffect, useRef } from "react";
 import { db } from "@/lib/supabaseClient";
-import { PackageX, Sparkles } from "lucide-react";
+import { PackageX, Sparkles, Search, X } from "lucide-react";
 import { motion, useInView, AnimatePresence } from "framer-motion";
 import { ProductGridSkeleton } from "@/components/ProductCardSkeleton";
 import { useTranslation } from "react-i18next";
@@ -37,6 +38,7 @@ const ProductsSection = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "-50px" });
@@ -82,9 +84,16 @@ const ProductsSection = () => {
     setLoading(false);
   };
 
-  const filteredProducts = activeCategory === "all" 
-    ? products 
-    : products.filter(p => p.category_id === activeCategory);
+  const filteredProducts = products.filter(p => {
+    const matchesCat = activeCategory === "all" || p.category_id === activeCategory;
+    if (!searchQuery) return matchesCat;
+    const q = searchQuery.toLowerCase();
+    const matchesSearch = p.name?.toLowerCase().includes(q) ||
+      p.name_en?.toLowerCase().includes(q) ||
+      p.description?.toLowerCase().includes(q) ||
+      p.platform?.toLowerCase().includes(q);
+    return matchesCat && matchesSearch;
+  });
 
   return (
     <section id="products" className="py-24 relative" ref={ref}>
@@ -153,7 +162,29 @@ const ProductsSection = () => {
           ))}
         </motion.div>
 
-        {/* Loading State */}
+        {/* Search Bar */}
+        <motion.div
+          className="max-w-xl mx-auto mb-10"
+          initial={{ opacity: 0, y: 10 }}
+          animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 }}
+          transition={{ delay: 0.4, duration: 0.4 }}
+        >
+          <div className="relative">
+            <Search className="absolute top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground start-4" />
+            <Input
+              placeholder={isRTL ? "ابحث عن منتج..." : "Search for a product..."}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="ps-12 h-12 text-base rounded-full border-2 border-border/50 focus:border-primary/50"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery("")} className="absolute top-1/2 -translate-y-1/2 end-4">
+                <X className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
+              </button>
+            )}
+          </div>
+        </motion.div>
+
         <AnimatePresence mode="wait">
           {loading && (
             <motion.div
