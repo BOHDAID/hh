@@ -1,7 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
-import { encode } from "https://deno.land/std@0.190.0/encoding/base64.ts";
 
 /**
  * ============================================================
@@ -17,12 +16,6 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
-// Helper to encode content with UTF-8 Base64
-function encodeBase64(str: string): string {
-  const encoder = new TextEncoder();
-  const bytes = encoder.encode(str);
-  return encode(bytes as unknown as ArrayBuffer);
-}
 
 interface DeliveryEmailRequest {
   to_email: string;
@@ -377,18 +370,8 @@ ${products.map(p => `${p.name} (الكمية: ${p.quantity})\n${p.account_data}`
       from: `${storeName} <${senderEmail}>`,
       to: to_email,
       subject: `Order Delivered - #${order_number}`,
-      mimeContent: [
-        {
-          mimeType: 'text/plain; charset="utf-8"',
-          content: encodeBase64(plainTextContent),
-          transferEncoding: "base64",
-        },
-        {
-          mimeType: 'text/html; charset="utf-8"',
-          content: encodeBase64(emailHtml),
-          transferEncoding: "base64",
-        },
-      ],
+      content: plainTextContent,
+      html: emailHtml,
     });
 
     await client.close();
