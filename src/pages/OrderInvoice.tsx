@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { Copy, Check, Clock, Shield, Star, ArrowRight, Loader2, RefreshCw, Printer, AlertCircle } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import OrderTimeline from "@/components/OrderTimeline";
 
 interface ActivationCode {
   code: string;
@@ -546,6 +547,16 @@ const OrderInvoice = () => {
             </div>
             <h1 className="text-3xl font-bold mb-2">شكراً لك!</h1>
             <p className="text-muted-foreground">تم استلام طلبك بنجاح</p>
+
+            {/* Order Timeline */}
+            <div className="mt-6">
+              <OrderTimeline
+                status={order.status}
+                paymentStatus={order.payment_status}
+                warrantyExpiresAt={order.warranty_expires_at}
+                createdAt={order.created_at}
+              />
+            </div>
           </div>
 
           {/* Order Info */}
