@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { CheckCircle, XCircle, AlertCircle, RefreshCw, Globe, CreditCard, Coins, Loader2 } from "lucide-react";
@@ -7,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { db } from "@/lib/supabaseClient";
 import { invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
+import { useAppData } from "@/components/AppInitializer";
 import { motion } from "framer-motion";
 
 interface ServiceStatus {
@@ -20,6 +22,8 @@ interface ServiceStatus {
 const Status = () => {
   const { i18n } = useTranslation();
   const isRTL = i18n.language === "ar";
+  const navigate = useNavigate();
+  const { isAdmin, user } = useAppData();
   const [services, setServices] = useState<ServiceStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
@@ -79,8 +83,15 @@ const Status = () => {
   };
 
   useEffect(() => {
-    checkServices();
-  }, []);
+    if (isAdmin) checkServices();
+  }, [isAdmin]);
+
+  // Redirect non-admins
+  useEffect(() => {
+    if (!isAdmin) navigate("/");
+  }, [isAdmin, navigate]);
+
+  if (!isAdmin) return null;
 
   const coreServices = services.filter(s => s.category === "core");
   const paymentServices = services.filter(s => s.category === "payment");

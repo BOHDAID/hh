@@ -13,7 +13,7 @@ interface FooterProps {
 const Footer = ({ className }: FooterProps) => {
   const { t, i18n } = useTranslation();
   const isRTL = i18n.language === "ar";
-  const { storeName, storeLogo } = useAppData();
+  const { storeName, storeLogo, isAdmin } = useAppData();
   const [socialLinks, setSocialLinks] = useState<{
     twitter?: string;
     instagram?: string;
@@ -140,8 +140,12 @@ const Footer = ({ className }: FooterProps) => {
             <Link to="/refund-policy" className="underline transition-colors hover:text-primary">{t('footer.refundPolicy')}</Link>
             <span className="text-border">|</span>
             <Link to="/terms" className="underline transition-colors hover:text-primary">{t('footer.termsOfService')}</Link>
-            <span className="text-border">|</span>
-            <Link to="/status" className="underline transition-colors hover:text-primary">{isRTL ? "حالة الخدمة" : "Status"}</Link>
+            {isAdmin && (
+              <>
+                <span className="text-border">|</span>
+                <Link to="/status" className="underline transition-colors hover:text-primary">{isRTL ? "حالة الخدمة" : "Status"}</Link>
+              </>
+            )}
           </div>
           <p>© {new Date().getFullYear()} {storeName}. {t('footer.allRightsReserved')}.</p>
         </div>
