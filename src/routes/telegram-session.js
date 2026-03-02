@@ -5,22 +5,28 @@
 // POST /api/telegram-session/verify-2fa
 // ============================================================
 
-import { Router } from 'express';
+import express, { Router } from 'express';
 import telegramSession from '../services/telegram-session.js';
 
 const router = Router();
 
-// Middleware: JSON parsing + secret verification
+// مهم: لازم Parsing للـ JSON قبل قراءة req.body
+router.use(express.json());
+
+// Middleware: secret verification
 router.use((req, res, next) => {
-  // التحقق من السر
-  const secret = req.body?.secret;
-  const serverSecret = process.env.QR_AUTOMATION_SECRET;
+  const incomingSecret = typeof req.body?.secret === 'string' ? req.body.secret.trim() : '';
+  const serverSecret = (process.env.QR_AUTOMATION_SECRET || '').trim();
 
   if (!serverSecret) {
     return res.status(500).json({ success: false, error: 'QR_AUTOMATION_SECRET not configured on server' });
   }
 
-  if (secret !== serverSecret) {
+  if (!incomingSecret) {
+    return res.status(400).json({ success: false, error: 'Missing secret in request body' });
+  }
+
+  if (incomingSecret !== serverSecret) {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
 
