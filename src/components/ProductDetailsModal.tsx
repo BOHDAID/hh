@@ -22,7 +22,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { formatWarrantyDays } from "@/lib/warrantyUtils";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
-
+import VariantImageGallery from "@/components/VariantImageGallery";
 interface ProductVariant {
   id: string;
   name: string;
@@ -305,7 +305,7 @@ const ProductDetailsModal = ({
                         </div>
                         
                         {variant.image_url && (
-                          <div className="w-10 h-10 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+                          <div className="w-12 h-12 rounded-lg overflow-hidden bg-muted flex-shrink-0">
                             <img
                               src={variant.image_url}
                               alt={variant.name}
@@ -343,6 +343,15 @@ const ProductDetailsModal = ({
                     </div>
                   ))}
               </div>
+
+              {/* Variant Image Gallery */}
+              {selectedVariant && (
+                <VariantImageGallery
+                  variantId={selectedVariant.id}
+                  variantImageUrl={selectedVariant.image_url}
+                  productImageUrl={product.image_url}
+                />
+              )}
             </div>
           ) : (
             /* No Variants - Service/Virtual product - always available */
