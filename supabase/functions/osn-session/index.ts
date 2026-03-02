@@ -119,6 +119,44 @@ serve(async (req) => {
         body.sessionString = reqBody.sessionString;
         break;
 
+      // === Telegram Automation ===
+      case "tg-fetch-groups":
+        endpoint = "/api/telegram-auto/fetch-groups";
+        body.sessionString = reqBody.sessionString;
+        break;
+
+      case "tg-fetch-contacts":
+        endpoint = "/api/telegram-auto/fetch-contacts";
+        body.sessionString = reqBody.sessionString;
+        break;
+
+      case "tg-start-auto-publish":
+        endpoint = "/api/telegram-auto/start-auto-publish";
+        body.sessionString = reqBody.sessionString;
+        body.groupIds = reqBody.groupIds;
+        body.message = reqBody.message;
+        body.intervalMinutes = reqBody.intervalMinutes;
+        body.taskId = reqBody.taskId;
+        break;
+
+      case "tg-stop-auto-publish":
+        endpoint = "/api/telegram-auto/stop-auto-publish";
+        body.taskId = reqBody.taskId;
+        break;
+
+      case "tg-auto-publish-status":
+        endpoint = "/api/telegram-auto/auto-publish-status";
+        body.taskId = reqBody.taskId;
+        break;
+
+      case "tg-broadcast":
+        endpoint = "/api/telegram-auto/broadcast";
+        body.sessionString = reqBody.sessionString;
+        body.message = reqBody.message;
+        body.blacklistIds = reqBody.blacklistIds;
+        body.taskId = reqBody.taskId;
+        break;
+
       default:
         return new Response(
           JSON.stringify({ success: false, error: `إجراء غير معروف: ${action}` }),
