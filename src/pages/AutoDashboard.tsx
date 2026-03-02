@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Bot, Home, LogIn, BookOpen, Users, Send, MessageSquare, User, CheckCircle2, Loader2, AlertCircle, Key, ExternalLink, Eye, EyeOff, Copy, Shield, AtSign } from "lucide-react";
+import { Bot, Home, LogIn, BookOpen, Users, Send, MessageSquare, User, CheckCircle2, Loader2, AlertCircle, Key, ExternalLink, Eye, EyeOff, Copy, Shield, AtSign, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,6 +15,7 @@ import GroupsSelector from "@/components/auto/GroupsSelector";
 import AutoPublishPanel from "@/components/auto/AutoPublishPanel";
 import BroadcastPanel from "@/components/auto/BroadcastPanel";
 import MentionsMonitorPanel from "@/components/auto/MentionsMonitorPanel";
+import StatsPanel from "@/components/auto/StatsPanel";
 
 interface TelegramUser {
   id: string;
@@ -242,18 +243,21 @@ const AutoDashboard = () => {
 
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-4 h-11">
-              <TabsTrigger value="groups" className="gap-2 text-sm">
-                <Users className="h-4 w-4" /> المجموعات
+            <TabsList className="grid w-full grid-cols-5 h-11">
+              <TabsTrigger value="groups" className="gap-1.5 text-xs sm:text-sm">
+                <Users className="h-4 w-4" /> <span className="hidden sm:inline">المجموعات</span>
               </TabsTrigger>
-              <TabsTrigger value="auto-publish" className="gap-2 text-sm">
-                <Send className="h-4 w-4" /> النشر التلقائي
+              <TabsTrigger value="auto-publish" className="gap-1.5 text-xs sm:text-sm">
+                <Send className="h-4 w-4" /> <span className="hidden sm:inline">النشر</span>
               </TabsTrigger>
-              <TabsTrigger value="broadcast" className="gap-2 text-sm">
-                <MessageSquare className="h-4 w-4" /> إرسال رسائل خاص
+              <TabsTrigger value="broadcast" className="gap-1.5 text-xs sm:text-sm">
+                <MessageSquare className="h-4 w-4" /> <span className="hidden sm:inline">رسائل خاص</span>
               </TabsTrigger>
-              <TabsTrigger value="mentions" className="gap-2 text-sm">
-                <AtSign className="h-4 w-4" /> المنشنات
+              <TabsTrigger value="mentions" className="gap-1.5 text-xs sm:text-sm">
+                <AtSign className="h-4 w-4" /> <span className="hidden sm:inline">المنشنات</span>
+              </TabsTrigger>
+              <TabsTrigger value="stats" className="gap-1.5 text-xs sm:text-sm">
+                <BarChart3 className="h-4 w-4" /> <span className="hidden sm:inline">التقارير</span>
               </TabsTrigger>
             </TabsList>
 
@@ -283,6 +287,10 @@ const AutoDashboard = () => {
 
             <TabsContent value="mentions" className="mt-4">
               <MentionsMonitorPanel sessionString={activeSession} savedChannelId={savedMentionsChannelId} />
+            </TabsContent>
+
+            <TabsContent value="stats" className="mt-4">
+              <StatsPanel />
             </TabsContent>
           </Tabs>
         </main>

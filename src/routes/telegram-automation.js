@@ -235,4 +235,15 @@ router.post('/get-mentions', async (req, res) => {
   }
 });
 
+// إحصائيات وتقارير
+router.post('/get-stats', async (req, res) => {
+  try {
+    const result = telegramAuto.getStats();
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Get stats error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 export default router;
