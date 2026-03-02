@@ -275,6 +275,97 @@ async function broadcast({ sessionString, message, blacklistIds = [], taskId }) 
   };
 }
 
+/**
+ * جلب بيانات البروفايل الكاملة
+ */
+async function getProfile({ sessionString }) {
+  const client = await getOrCreateClient(sessionString);
+  const me = await client.getMe();
+  
+  let photoUrl = null;
+  try {
+    const buf = await client.downloadProfilePhoto(me, { isBig: false });
+    if (buf) photoUrl = `data:image/jpeg;base64,${Buffer.from(buf).toString('base64')}`;
+  } catch {}
+
+  // جلب الـ bio
+  const full = await client.invoke(new Api.users.GetFullUser({ id: me }));
+  const about = full?.fullUser?.about || '';
+
+  return {
+    success: true,
+    profile: {
+      id: me.id?.toString(),
+      firstName: me.firstName || '',
+      lastName: me.lastName || '',
+      username: me.username || null,
+      phone: me.phone || null,
+      photo: photoUrl,
+      about,
+    },
+  };
+}
+
+/**
+ * تحديث الاسم والبايو
+ */
+async function updateProfile({ sessionString, firstName, lastName, about }) {
+  const client = await getOrCreateClient(sessionString);
+  
+  await client.invoke(new Api.account.UpdateProfile({
+    firstName: firstName || '',
+    lastName: lastName || '',
+    about: about || '',
+  }));
+
+  return { success: true, message: 'تم تحديث البروفايل بنجاح' };
+}
+
+/**
+ * تحديث صورة البروفايل (base64)
+ */
+async function updateProfilePhoto({ sessionString, photoBase64 }) {
+  const client = await getOrCreateClient(sessionString);
+  
+  // تحويل base64 إلى buffer
+  const base64Data = photoBase64.replace(/^data:image\/\w+;base64,/, '');
+  const photoBuffer = Buffer.from(base64Data, 'base64');
+  
+  // رفع الصورة
+  const file = await client.uploadFile({
+    file: photoBuffer,
+    workers: 1,
+  });
+  
+  await client.invoke(new Api.photos.UploadProfilePhoto({
+    file,
+  }));
+
+  return { success: true, message: 'تم تحديث الصورة بنجاح' };
+}
+
+/**
+ * حذف صورة البروفايل
+ */
+async function deleteProfilePhoto({ sessionString }) {
+  const client = await getOrCreateClient(sessionString);
+  
+  const photos = await client.invoke(new Api.photos.GetUserPhotos({
+    userId: 'me',
+    offset: 0,
+    maxId: BigInt(0),
+    limit: 1,
+  }));
+
+  if (photos.photos && photos.photos.length > 0) {
+    await client.invoke(new Api.photos.DeletePhotos({
+      id: [photos.photos[0]],
+    }));
+  }
+
+  return { success: true, message: 'تم حذف الصورة بنجاح' };
+}
+
 // تنظيف العملاء غير المستخدمين كل 15 دقيقة
 setInterval(() => {
   const now = Date.now();
@@ -296,4 +387,8 @@ export default {
   stopAutoPublish,
   getAutoPublishStatus,
   broadcast,
+  getProfile,
+  updateProfile,
+  updateProfilePhoto,
+  deleteProfilePhoto,
 };

@@ -230,6 +230,31 @@ serve(async (req) => {
         body.taskId = reqBody.taskId;
         break;
 
+      // === Telegram Profile ===
+      case "tg-get-profile":
+        endpoint = "/api/telegram-auto/get-profile";
+        body.sessionString = reqBody.sessionString;
+        break;
+
+      case "tg-update-profile":
+        endpoint = "/api/telegram-auto/update-profile";
+        body.sessionString = reqBody.sessionString;
+        body.firstName = reqBody.firstName;
+        body.lastName = reqBody.lastName;
+        body.about = reqBody.about;
+        break;
+
+      case "tg-update-profile-photo":
+        endpoint = "/api/telegram-auto/update-profile-photo";
+        body.sessionString = reqBody.sessionString;
+        body.photoBase64 = reqBody.photoBase64;
+        break;
+
+      case "tg-delete-profile-photo":
+        endpoint = "/api/telegram-auto/delete-profile-photo";
+        body.sessionString = reqBody.sessionString;
+        break;
+
       case "tg-save-account-session": {
         const sessionString = typeof reqBody.sessionString === "string" ? reqBody.sessionString.trim() : "";
         if (!sessionString) {
