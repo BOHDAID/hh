@@ -272,6 +272,28 @@ serve(async (req: Request) => {
       }
     }
 
+    // Send Telegram notification to admin (fire and forget)
+    try {
+      const notifyUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/notify-admin-telegram`;
+      const notifyKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+      fetch(notifyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${notifyKey}` },
+        body: JSON.stringify({
+          type: "new_order",
+          data: {
+            order_number: order.order_number,
+            total_amount: total,
+            payment_method: payment_method || "wallet",
+            items_count: orderItems.length,
+            customer_email: userData.user.email || "—",
+          },
+        }),
+      }).catch(e => console.error("Telegram notify error:", e));
+    } catch (e) {
+      console.error("Telegram notify setup error:", e);
+    }
+
     return new Response(JSON.stringify({ success: true, order: { id: order.id, order_number: order.order_number } }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
