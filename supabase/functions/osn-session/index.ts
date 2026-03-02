@@ -116,8 +116,6 @@ serve(async (req) => {
 
       case "tg-connect-session":
         endpoint = "/api/telegram-session/connect-session";
-        body.apiId = reqBody.apiId;
-        body.apiHash = reqBody.apiHash;
         body.sessionString = reqBody.sessionString;
         break;
 
