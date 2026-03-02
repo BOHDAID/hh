@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { User, Edit3, Camera, Loader2, Save, X, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,11 +49,19 @@ const TelegramProfileCard = ({ sessionString, initialUser, onLogout }: TelegramP
       const result = await callAction("tg-get-profile", { sessionString });
       setProfile(result.profile);
     } catch (err: any) {
-      toast.error(err.message);
+      console.error("Profile fetch failed:", err.message);
+      toast.error("تعذر تحميل البروفايل: " + err.message);
     } finally {
       setLoading(false);
     }
   };
+
+  // Auto-fetch profile on mount
+  useEffect(() => {
+    if (sessionString) {
+      fetchProfile();
+    }
+  }, [sessionString]);
 
   const startEdit = () => {
     if (profile) {
@@ -195,11 +203,15 @@ const TelegramProfileCard = ({ sessionString, initialUser, onLogout }: TelegramP
 
           {/* Actions */}
           <div className="flex gap-2 pb-1">
-            {!profile ? (
+            {!profile && !loading ? (
               <Button variant="outline" size="sm" onClick={fetchProfile} disabled={loading} className="gap-1.5 text-xs">
-                {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Edit3 className="h-3.5 w-3.5" />}
+                <Edit3 className="h-3.5 w-3.5" />
                 تحميل البروفايل
               </Button>
+            ) : loading ? (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> جاري التحميل...
+              </div>
             ) : !editing ? (
               <Button variant="outline" size="sm" onClick={startEdit} className="gap-1.5 text-xs">
                 <Edit3 className="h-3.5 w-3.5" /> تعديل
