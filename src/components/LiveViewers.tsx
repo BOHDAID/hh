@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Eye } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/supabaseClient";
 
 interface LiveViewersProps {
   productId: string;
@@ -13,13 +13,12 @@ const LiveViewers = ({ productId, salesCount = 0 }: LiveViewersProps) => {
   const { i18n } = useTranslation();
   const isRTL = i18n.language === "ar";
   const [viewers, setViewers] = useState(0);
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const channelRef = useRef<ReturnType<typeof db.channel> | null>(null);
 
   useEffect(() => {
-    // Use Supabase Realtime Presence for real viewer tracking
     const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     
-    const channel = supabase.channel(`product-viewers-${productId}`, {
+    const channel = db.channel(`product-viewers-${productId}`, {
       config: { presence: { key: uniqueId } },
     });
 
@@ -39,11 +38,11 @@ const LiveViewers = ({ productId, salesCount = 0 }: LiveViewersProps) => {
 
     return () => {
       channel.untrack();
-      supabase.removeChannel(channel);
+      db.removeChannel(channel);
     };
   }, [productId]);
 
-  if (viewers < 2) return null;
+  if (viewers < 1) return null;
 
   return (
     <motion.div
@@ -51,12 +50,10 @@ const LiveViewers = ({ productId, salesCount = 0 }: LiveViewersProps) => {
       animate={{ opacity: 1, scale: 1 }}
       className="flex items-center gap-1.5 text-xs text-muted-foreground"
     >
-      <motion.div
-        animate={{ scale: [1, 1.3, 1] }}
-        transition={{ repeat: Infinity, duration: 1.5 }}
-      >
-        <Eye className="h-3 w-3 text-green-500" />
-      </motion.div>
+      <span className="relative flex h-2 w-2">
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
+        <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+      </span>
       <AnimatePresence mode="wait">
         <motion.span
           key={viewers}
@@ -66,9 +63,8 @@ const LiveViewers = ({ productId, salesCount = 0 }: LiveViewersProps) => {
           transition={{ duration: 0.2 }}
           className="font-medium"
         >
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse mr-1" />
           {isRTL
-            ? `${viewers} يشاهدون الآن`
+            ? `${viewers} ${viewers === 1 ? "يشاهد الآن" : "يشاهدون الآن"}`
             : `${viewers} viewing now`
           }
         </motion.span>
