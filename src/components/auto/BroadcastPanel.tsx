@@ -1,14 +1,15 @@
 import { useState } from "react";
-import { MessageSquare, Loader2, Search, User, Ban, Check, Send } from "lucide-react";
+import { MessageSquare, Loader2, Search, User, Ban, Check, Send, Users, Contact } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
 
-interface Contact {
+interface Person {
   id: string;
   firstName: string;
   lastName: string;
@@ -24,7 +25,7 @@ interface BroadcastPanelProps {
 const ITEMS_PER_PAGE = 10;
 
 const BroadcastPanel = ({ sessionString }: BroadcastPanelProps) => {
-  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [people, setPeople] = useState<Person[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetched, setFetched] = useState(false);
   const [blacklist, setBlacklist] = useState<Set<string>>(new Set());
@@ -33,19 +34,20 @@ const BroadcastPanel = ({ sessionString }: BroadcastPanelProps) => {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [result, setResult] = useState<any>(null);
+  const [includeContacts, setIncludeContacts] = useState(false);
 
-  const fetchContacts = async () => {
+  const fetchDialogs = async () => {
     setLoading(true);
     try {
       const res = await invokeCloudFunctionPublic<any>("osn-session", {
-        action: "tg-fetch-contacts",
+        action: "tg-fetch-dialogs",
         sessionString,
       });
       if (res.error) throw new Error(res.error.message);
       if (!res.data?.success) throw new Error(res.data?.error || "فشل الجلب");
-      setContacts(res.data.contacts || []);
+      setPeople(res.data.users || []);
       setFetched(true);
-      toast.success(`تم جلب ${res.data.contacts?.length || 0} جهة اتصال`);
+      toast.success(`تم جلب ${res.data.users?.length || 0} شخص من المحادثات`);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -72,6 +74,7 @@ const BroadcastPanel = ({ sessionString }: BroadcastPanelProps) => {
         sessionString,
         message: message.trim(),
         blacklistIds: Array.from(blacklist),
+        includeContacts,
         taskId: `bc-${Date.now()}`,
       });
       if (res.error) throw new Error(res.error.message);
@@ -85,23 +88,26 @@ const BroadcastPanel = ({ sessionString }: BroadcastPanelProps) => {
     }
   };
 
-  const filtered = contacts.filter(c => {
+  const filtered = people.filter(c => {
     const name = `${c.firstName} ${c.lastName}`.toLowerCase();
     return name.includes(search.toLowerCase()) ||
       (c.username && c.username.toLowerCase().includes(search.toLowerCase()));
   });
 
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
-  const pageContacts = filtered.slice(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE);
+  const pagePeople = filtered.slice(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE);
 
   if (!fetched) {
     return (
       <div className="flex flex-col items-center justify-center py-16 space-y-4">
         <MessageSquare className="h-12 w-12 text-muted-foreground/50" />
-        <p className="text-muted-foreground text-sm">اضغط لجلب جميع جهات الاتصال</p>
-        <Button onClick={fetchContacts} disabled={loading} className="gap-2">
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <User className="h-4 w-4" />}
-          جلب جهات الاتصال
+        <div className="text-center space-y-1">
+          <p className="text-muted-foreground text-sm">جلب الأشخاص الذين راسلوك</p>
+          <p className="text-muted-foreground/60 text-xs">سيتم جلب المحادثات الخاصة فقط</p>
+        </div>
+        <Button onClick={fetchDialogs} disabled={loading} className="gap-2">
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users className="h-4 w-4" />}
+          جلب المحادثات
         </Button>
       </div>
     );
@@ -113,11 +119,28 @@ const BroadcastPanel = ({ sessionString }: BroadcastPanelProps) => {
       <div className="space-y-2 max-w-2xl">
         <Label>رسالة البث</Label>
         <Textarea
-          placeholder="اكتب الرسالة التي ستُرسل لجميع جهات الاتصال..."
+          placeholder="اكتب الرسالة التي ستُرسل لجميع الأشخاص الذين راسلوك..."
           value={message}
           onChange={e => setMessage(e.target.value)}
           className="min-h-[100px]"
         />
+      </div>
+
+      {/* خيار تضمين جهات الاتصال */}
+      <div className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card max-w-2xl">
+        <Switch
+          checked={includeContacts}
+          onCheckedChange={setIncludeContacts}
+        />
+        <div className="flex-1">
+          <Label className="text-sm font-medium flex items-center gap-2 cursor-pointer">
+            <Contact className="h-4 w-4 text-primary" />
+            تضمين جهات الاتصال أيضاً
+          </Label>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            إرسال الرسالة لجهات الاتصال بالإضافة للأشخاص الذين راسلوك
+          </p>
+        </div>
       </div>
 
       {/* نتيجة البث */}
@@ -140,7 +163,7 @@ const BroadcastPanel = ({ sessionString }: BroadcastPanelProps) => {
             <Ban className="h-4 w-4 text-destructive" />
             القائمة السوداء ({blacklist.size})
           </Label>
-          <Button variant="outline" size="sm" onClick={fetchContacts} disabled={loading} className="gap-1 text-xs">
+          <Button variant="outline" size="sm" onClick={fetchDialogs} disabled={loading} className="gap-1 text-xs">
             {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
             تحديث
           </Button>
@@ -149,7 +172,7 @@ const BroadcastPanel = ({ sessionString }: BroadcastPanelProps) => {
         <div className="relative">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="بحث في جهات الاتصال..."
+            placeholder="بحث في الأشخاص..."
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(0); }}
             className="pr-9"
@@ -161,34 +184,34 @@ const BroadcastPanel = ({ sessionString }: BroadcastPanelProps) => {
         </p>
 
         <div className="space-y-2">
-          {pageContacts.map(contact => (
+          {pagePeople.map(person => (
             <div
-              key={contact.id}
-              onClick={() => toggleBlacklist(contact.id)}
+              key={person.id}
+              onClick={() => toggleBlacklist(person.id)}
               className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                blacklist.has(contact.id)
+                blacklist.has(person.id)
                   ? "border-destructive/50 bg-destructive/5"
                   : "border-border bg-card hover:bg-muted/50"
               }`}
             >
-              <Checkbox checked={blacklist.has(contact.id)} />
+              <Checkbox checked={blacklist.has(person.id)} />
               <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center shrink-0 overflow-hidden">
-                {contact.photo ? (
-                  <img src={contact.photo} alt="" className="h-9 w-9 rounded-full object-cover" />
+                {person.photo ? (
+                  <img src={person.photo} alt="" className="h-9 w-9 rounded-full object-cover" />
                 ) : (
                   <User className="h-4 w-4 text-muted-foreground" />
                 )}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-sm text-foreground truncate">
-                  {contact.firstName} {contact.lastName}
+                  {person.firstName} {person.lastName}
                 </p>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  {contact.username && <span dir="ltr">@{contact.username}</span>}
-                  {contact.phone && <span dir="ltr">+{contact.phone}</span>}
+                  {person.username && <span dir="ltr">@{person.username}</span>}
+                  {person.phone && <span dir="ltr">+{person.phone}</span>}
                 </div>
               </div>
-              {blacklist.has(contact.id) && (
+              {blacklist.has(person.id) && (
                 <Ban className="h-4 w-4 text-destructive shrink-0" />
               )}
             </div>
@@ -212,7 +235,7 @@ const BroadcastPanel = ({ sessionString }: BroadcastPanelProps) => {
       <div className="pt-2 border-t border-border max-w-2xl">
         <Button onClick={sendBroadcast} disabled={sending || !message.trim()} className="gap-2">
           {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          بث الرسالة ({contacts.length - blacklist.size} شخص)
+          بث الرسالة ({people.length - blacklist.size} شخص{includeContacts ? " + جهات الاتصال" : ""})
         </Button>
       </div>
     </div>
