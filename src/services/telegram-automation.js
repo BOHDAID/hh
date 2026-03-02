@@ -16,6 +16,124 @@ const forcedJoins = new Map();
 let notificationChannelEntity = null;
 let notificationClient = null;
 
+// ============================================================
+// نظام الإحصائيات والتقارير
+// ============================================================
+const stats = {
+  autoPublish: {
+    totalSent: 0,
+    totalFailed: 0,
+    totalRetries: 0,
+    forcedJoins: 0,
+    forcedLeaves: 0,
+    sessionStartedAt: null,
+    history: [], // آخر 100 عملية { timestamp, groupId, groupTitle, status, error? }
+  },
+  broadcast: {
+    totalSent: 0,
+    totalFailed: 0,
+    lastRunAt: null,
+    history: [],
+  },
+  mentions: {
+    totalDetected: 0,
+    totalForwarded: 0,
+    history: [],
+  },
+  connection: {
+    connectedAt: null,
+    reconnects: 0,
+    lastActivity: null,
+  },
+};
+
+function recordStat(category, entry) {
+  if (!stats[category]) return;
+  stats[category].history.push({ ...entry, timestamp: Date.now() });
+  // الاحتفاظ بآخر 200 فقط
+  if (stats[category].history.length > 200) {
+    stats[category].history = stats[category].history.slice(-200);
+  }
+  stats[category].lastActivity = Date.now();
+  stats.connection.lastActivity = Date.now();
+}
+
+function getStats() {
+  const now = Date.now();
+  const oneHourAgo = now - 60 * 60 * 1000;
+  const oneDayAgo = now - 24 * 60 * 60 * 1000;
+
+  const apHistory = stats.autoPublish.history;
+  const lastHourAP = apHistory.filter(h => h.timestamp > oneHourAgo);
+  const lastDayAP = apHistory.filter(h => h.timestamp > oneDayAgo);
+
+  const bcHistory = stats.broadcast.history;
+  const lastDayBC = bcHistory.filter(h => h.timestamp > oneDayAgo);
+
+  const mnHistory = stats.mentions.history;
+  const lastDayMN = mnHistory.filter(h => h.timestamp > oneDayAgo);
+
+  // أكثر المجموعات نشاطاً
+  const groupCounts = {};
+  for (const h of lastDayAP) {
+    const key = h.groupTitle || h.groupId || 'unknown';
+    groupCounts[key] = (groupCounts[key] || 0) + 1;
+  }
+  const topGroups = Object.entries(groupCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name, count]) => ({ name, count }));
+
+  // معدل النجاح
+  const totalAttempts = stats.autoPublish.totalSent + stats.autoPublish.totalFailed;
+  const successRate = totalAttempts > 0 ? Math.round((stats.autoPublish.totalSent / totalAttempts) * 100) : 0;
+
+  // النشر النشط الحالي
+  const activeTasks = [];
+  for (const [taskId, task] of activeAutoPublish.entries()) {
+    activeTasks.push({
+      taskId,
+      groupsCount: task.groupIds?.length || 0,
+      intervalMinutes: task.intervalMinutes,
+      sentCount: typeof task.sentCount === 'function' ? task.sentCount() : 0,
+      startedAt: task.startedAt,
+      runningMinutes: Math.round((now - task.startedAt) / 60000),
+    });
+  }
+
+  return {
+    success: true,
+    autoPublish: {
+      totalSent: stats.autoPublish.totalSent,
+      totalFailed: stats.autoPublish.totalFailed,
+      successRate,
+      forcedJoins: stats.autoPublish.forcedJoins,
+      forcedLeaves: stats.autoPublish.forcedLeaves,
+      lastHour: { sent: lastHourAP.filter(h => h.status === 'sent').length, failed: lastHourAP.filter(h => h.status === 'failed').length },
+      lastDay: { sent: lastDayAP.filter(h => h.status === 'sent').length, failed: lastDayAP.filter(h => h.status === 'failed').length },
+      topGroups,
+      activeTasks,
+      recentHistory: apHistory.slice(-20).reverse(),
+    },
+    broadcast: {
+      totalSent: stats.broadcast.totalSent,
+      totalFailed: stats.broadcast.totalFailed,
+      lastRunAt: stats.broadcast.lastRunAt,
+      lastDay: { sent: lastDayBC.filter(h => h.status === 'sent').length, failed: lastDayBC.filter(h => h.status === 'failed').length },
+    },
+    mentions: {
+      totalDetected: stats.mentions.totalDetected,
+      totalForwarded: stats.mentions.totalForwarded,
+      lastDay: { detected: lastDayMN.length },
+    },
+    connection: {
+      ...stats.connection,
+      activeClients: activeClients.size,
+      forcedJoinsActive: forcedJoins.size,
+    },
+  };
+}
+
 function getSessionHash(sessionString) {
   return sessionString.substring(0, 20);
 }
@@ -405,11 +523,14 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
       await client.sendMessage(peer, { message });
       sentCount++;
       currentIndex++;
+      stats.autoPublish.totalSent++;
+      recordStat('autoPublish', { groupId, groupTitle: peer.title || groupId, status: 'sent' });
       console.log(`📤 Auto-publish [${taskId}]: Sent to group ${groupId} (${sentCount} total)`);
     } catch (err) {
       const errMsg = err.message || '';
       console.error(`❌ Auto-publish [${taskId}]: Failed for group ${groupId}:`, errMsg);
-      
+      stats.autoPublish.totalFailed++;
+      recordStat('autoPublish', { groupId, status: 'failed', error: errMsg.substring(0, 100) });
       // التعامل مع الاشتراك الإجباري
       if (errMsg.includes('CHAT_WRITE_FORBIDDEN') || errMsg.includes('CHANNEL_PRIVATE') || 
           errMsg.includes('cannot write') || errMsg.includes('not subscribed') ||
@@ -597,6 +718,10 @@ async function broadcast({ sessionString, message, blacklistIds = [], includeCon
     }
   }
 
+  stats.broadcast.totalSent += sentCount;
+  stats.broadcast.totalFailed += failedCount;
+  stats.broadcast.lastRunAt = Date.now();
+  recordStat('broadcast', { status: 'completed', sentCount, failedCount });
   console.log(`✅ Broadcast [${taskId}] complete: ${sentCount} sent, ${failedCount} failed`);
 
   return {
@@ -968,4 +1093,5 @@ export default {
   startMentionsMonitor,
   stopMentionsMonitor,
   getMentions,
+  getStats,
 };
