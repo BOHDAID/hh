@@ -132,7 +132,7 @@ serve(async (req: Request) => {
     // Update wallet
     const { data: updatedWallet, error: updateError } = await adminClient
       .from("wallets")
-      .update({ balance: newBalance, total_earned: totalEarned, updated_at: new Date().toISOString() })
+      .update({ balance: newBalance, total_earned: totalEarned })
       .eq("user_id", target_user_id)
       .select("id, balance, total_earned")
       .single();
