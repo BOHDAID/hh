@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
+import nodemailer from "npm:nodemailer@6.9.16";
 
 /**
  * ============================================================
@@ -350,31 +350,24 @@ ${products.map(p => `${p.name} (الكمية: ${p.quantity})\n${p.account_data}`
 © ${new Date().getFullYear()} ${storeName}
     `.trim();
 
-    console.log("📧 Initializing SMTP client...");
+    console.log("📧 Initializing SMTP transporter...");
     
-    const client = new SMTPClient({
-      connection: {
-        hostname: smtpHost,
-        port: smtpPort,
-        tls: true,
-        auth: {
-          username: smtpUser,
-          password: smtpPass,
-        },
-      },
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpPort === 465,
+      auth: { user: smtpUser, pass: smtpPass },
     });
 
     console.log("📧 Sending email via SMTP...");
 
-    await client.send({
+    await transporter.sendMail({
       from: `${storeName} <${senderEmail}>`,
       to: to_email,
       subject: `Order Delivered - #${order_number}`,
-      content: plainTextContent,
+      text: plainTextContent,
       html: emailHtml,
     });
-
-    await client.close();
 
     console.log("📧 Email sent successfully to:", to_email);
 
