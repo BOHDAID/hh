@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { invokeCloudFunction, invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
-import { supabase } from "@/integrations/supabase/client";
+import { getAuthClient } from "@/lib/supabaseClient";
 import GroupsSelector from "@/components/auto/GroupsSelector";
 import AutoPublishPanel from "@/components/auto/AutoPublishPanel";
 import BroadcastPanel from "@/components/auto/BroadcastPanel";
@@ -56,7 +56,8 @@ const AutoDashboard = () => {
   };
 
   const callAccountAction = async (action: string, extra: Record<string, unknown> = {}) => {
-    const { data: { session } } = await supabase.auth.getSession();
+    const authClient = getAuthClient();
+    const { data: { session } } = await authClient.auth.getSession();
     if (!session?.access_token) throw new Error("يجب تسجيل الدخول في الحساب أولاً");
 
     const { data, error } = await invokeCloudFunction<any>("osn-session", { action, ...extra }, session.access_token);

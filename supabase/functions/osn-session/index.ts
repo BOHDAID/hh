@@ -33,13 +33,13 @@ const getAuthenticatedUserId = async (req: Request): Promise<string | null> => {
   const token = getBearerToken(req);
   if (!token) return null;
 
-  const cloudUrl = Deno.env.get("SUPABASE_URL");
-  const cloudAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
-  if (!cloudUrl || !cloudAnonKey) {
-    throw new Error("Cloud auth configuration missing");
+  const externalUrl = Deno.env.get("EXTERNAL_SUPABASE_URL") || Deno.env.get("VITE_EXTERNAL_SUPABASE_URL");
+  const externalAnonKey = Deno.env.get("EXTERNAL_SUPABASE_ANON_KEY") || Deno.env.get("VITE_EXTERNAL_SUPABASE_ANON_KEY");
+  if (!externalUrl || !externalAnonKey) {
+    throw new Error("External auth configuration missing");
   }
 
-  const authClient = createClient(cloudUrl, cloudAnonKey, {
+  const authClient = createClient(externalUrl, externalAnonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
