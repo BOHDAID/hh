@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
+import { db } from "@/lib/supabaseClient";
 import GroupsSelector from "@/components/auto/GroupsSelector";
 import AutoPublishPanel from "@/components/auto/AutoPublishPanel";
 import BroadcastPanel from "@/components/auto/BroadcastPanel";
@@ -47,32 +48,33 @@ const AutoDashboard = () => {
   // Groups state
   const [selectedGroups, setSelectedGroups] = useState<TelegramGroup[]>([]);
 
-  // Auto-reconnect from saved session
+  // Auto-reconnect from saved session (database)
   useEffect(() => {
-    const saved = localStorage.getItem("tg_session");
-    const savedUser = localStorage.getItem("tg_user");
-    const savedGroups = localStorage.getItem("tg_groups");
-    
-    if (saved) {
+    const loadSession = async () => {
+      const { data: { user } } = await db.auth.getUser();
+      if (!user) return;
+
+      const { data } = await db.from("telegram_sessions").select("*").eq("user_id", user.id).maybeSingle();
+      if (!data?.session_string) return;
+
       setAutoConnecting(true);
-      callAction("tg-connect-session", { sessionString: saved })
-        .then(result => {
-          setLoggedIn(true);
-          setTelegramUser(result.user || (savedUser ? JSON.parse(savedUser) : null));
-          setActiveSession(saved);
-          setMode("groups");
-          if (savedGroups) {
-            try { setSelectedGroups(JSON.parse(savedGroups)); } catch {}
-          }
-        })
-        .catch(() => {
-          // Session expired or invalid, clear it
-          localStorage.removeItem("tg_session");
-          localStorage.removeItem("tg_user");
-          localStorage.removeItem("tg_groups");
-        })
-        .finally(() => setAutoConnecting(false));
-    }
+      try {
+        const result = await callAction("tg-connect-session", { sessionString: data.session_string });
+        setLoggedIn(true);
+        setTelegramUser(result.user || (data.telegram_user ? JSON.parse(data.telegram_user) : null));
+        setActiveSession(data.session_string);
+        setMode("groups");
+        if (data.selected_groups) {
+          try { setSelectedGroups(JSON.parse(data.selected_groups)); } catch {}
+        }
+      } catch {
+        // Session invalid - delete from DB
+        await db.from("telegram_sessions").delete().eq("user_id", user.id);
+      } finally {
+        setAutoConnecting(false);
+      }
+    };
+    loadSession();
   }, []);
 
   // Wizard state (instructions mode)
@@ -98,6 +100,19 @@ const AutoDashboard = () => {
     return data;
   };
 
+  // === Save to DB helper ===
+  const saveSessionToDB = async (sessionStr: string, user: TelegramUser | null, groups?: TelegramGroup[]) => {
+    const { data: { user: authUser } } = await db.auth.getUser();
+    if (!authUser) return;
+    await db.from("telegram_sessions").upsert({
+      user_id: authUser.id,
+      session_string: sessionStr,
+      telegram_user: user ? JSON.stringify(user) : null,
+      selected_groups: groups ? JSON.stringify(groups) : null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id" });
+  };
+
   // === Login ===
   const handleSessionLogin = async () => {
     if (!sessionInput.trim()) { toast.error("يرجى لصق Session String"); return; }
@@ -109,9 +124,8 @@ const AutoDashboard = () => {
       setTelegramUser(result.user || null);
       setActiveSession(sessionInput.trim());
       setMode("groups");
-      // حفظ الجلسة
-      localStorage.setItem("tg_session", sessionInput.trim());
-      if (result.user) localStorage.setItem("tg_user", JSON.stringify(result.user));
+      // حفظ في قاعدة البيانات
+      await saveSessionToDB(sessionInput.trim(), result.user || null);
       toast.success("تم الاتصال بنجاح!");
     } catch (err: any) {
       setLoginError(err.message);
@@ -121,16 +135,17 @@ const AutoDashboard = () => {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const { data: { user } } = await db.auth.getUser();
+    if (user) {
+      await db.from("telegram_sessions").delete().eq("user_id", user.id);
+    }
     setLoggedIn(false);
     setTelegramUser(null);
     setActiveSession("");
     setSessionInput("");
     setSelectedGroups([]);
     setMode("login");
-    localStorage.removeItem("tg_session");
-    localStorage.removeItem("tg_user");
-    localStorage.removeItem("tg_groups");
   };
 
   // === Instructions handlers ===
@@ -354,7 +369,7 @@ const AutoDashboard = () => {
     switch (mode) {
       case "login": return renderLogin();
       case "instructions": return renderInstructions();
-      case "groups": return <GroupsSelector sessionString={activeSession} selectedGroups={selectedGroups} onSave={(groups) => { setSelectedGroups(groups); localStorage.setItem("tg_groups", JSON.stringify(groups)); }} />;
+      case "groups": return <GroupsSelector sessionString={activeSession} selectedGroups={selectedGroups} onSave={(groups) => { setSelectedGroups(groups); saveSessionToDB(activeSession, telegramUser, groups); }} />;
       case "auto-publish": return <AutoPublishPanel sessionString={activeSession} selectedGroups={selectedGroups} />;
       case "broadcast": return <BroadcastPanel sessionString={activeSession} />;
     }
