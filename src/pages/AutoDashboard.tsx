@@ -1,438 +1,33 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Bot, ChevronRight, ChevronLeft, Home, Key, Send, Shield, CheckCircle2, ExternalLink, Copy, Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
+import { Bot, Home, Copy, Eye, EyeOff, ExternalLink, AlertCircle, CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { useAppData } from "@/components/AppInitializer";
 import { toast } from "sonner";
 
-type Step = "instructions" | "credentials" | "phone" | "otp" | "2fa" | "result";
-
-const STEPS_ORDER: Step[] = ["instructions", "credentials", "phone", "otp", "2fa", "result"];
+const TELEGRAM_TOOLS_URL = "https://telegram.tools/session-string-generator";
 
 const AutoDashboard = () => {
   const [collapsed, setCollapsed] = useState(false);
-  const { storeName } = useAppData();
-
-  // Wizard state
-  const [currentStep, setCurrentStep] = useState<Step>("instructions");
-  const [apiId, setApiId] = useState("");
-  const [apiHash, setApiHash] = useState("");
-  const [phone, setPhone] = useState("");
-  const [otpCode, setOtpCode] = useState("");
-  const [password2FA, setPassword2FA] = useState("");
   const [sessionString, setSessionString] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [showSession, setShowSession] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [needs2FA, setNeeds2FA] = useState(false);
-
-  const stepIndex = STEPS_ORDER.indexOf(currentStep);
-
-  const goNext = () => {
-    const nextIdx = stepIndex + 1;
-    if (nextIdx < STEPS_ORDER.length) {
-      // Skip 2FA step if not needed
-      if (STEPS_ORDER[nextIdx] === "2fa" && !needs2FA) {
-        setCurrentStep("result");
-      } else {
-        setCurrentStep(STEPS_ORDER[nextIdx]);
-      }
-    }
-  };
-
-  const goBack = () => {
-    const prevIdx = stepIndex - 1;
-    if (prevIdx >= 0) {
-      if (STEPS_ORDER[prevIdx] === "2fa" && !needs2FA) {
-        setCurrentStep("otp");
-      } else {
-        setCurrentStep(STEPS_ORDER[prevIdx]);
-      }
-    }
-  };
-
-  const resetWizard = () => {
-    setCurrentStep("instructions");
-    setApiId("");
-    setApiHash("");
-    setPhone("");
-    setOtpCode("");
-    setPassword2FA("");
-    setSessionString("");
-    setNeeds2FA(false);
-    setLoading(false);
-  };
-
-  const handleSendCode = async () => {
-    if (!apiId || !apiHash || !phone) {
-      toast.error("يرجى ملء جميع الحقول");
-      return;
-    }
-    setLoading(true);
-    // TODO: Call backend to send code via Telethon
-    // For now, simulate and move to next step
-    setTimeout(() => {
-      setLoading(false);
-      goNext();
-      toast.success("تم إرسال الرمز إلى حسابك على Telegram");
-    }, 1500);
-  };
-
-  const handleVerifyOTP = async () => {
-    if (!otpCode) {
-      toast.error("يرجى إدخال الرمز");
-      return;
-    }
-    setLoading(true);
-    // TODO: Call backend to verify OTP
-    // Simulate: randomly decide if 2FA is needed
-    setTimeout(() => {
-      setLoading(false);
-      // For demo, go to result. In production, backend tells us if 2FA is needed
-      setNeeds2FA(false); // Change based on backend response
-      setSessionString("1BVtsOKABu2HY9...(session string example)...");
-      goNext();
-    }, 1500);
-  };
-
-  const handleVerify2FA = async () => {
-    if (!password2FA) {
-      toast.error("يرجى إدخال كلمة المرور");
-      return;
-    }
-    setLoading(true);
-    // TODO: Call backend with 2FA password
-    setTimeout(() => {
-      setLoading(false);
-      setSessionString("1BVtsOKABu2HY9...(session string example)...");
-      setCurrentStep("result");
-    }, 1500);
-  };
+  const [saved, setSaved] = useState(false);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     toast.success("تم النسخ!");
   };
 
-  const renderStep = () => {
-    switch (currentStep) {
-      case "instructions":
-        return (
-          <div className="space-y-6 max-w-2xl">
-            <div className="space-y-2">
-              <h2 className="text-xl font-bold text-foreground">الخطوة 1: الحصول على API ID و API Hash</h2>
-              <p className="text-muted-foreground text-sm">
-                تحتاج أولاً إلى إنشاء تطبيق في بوابة Telegram للحصول على بيانات الاعتماد.
-              </p>
-            </div>
-
-            <div className="bg-muted/50 rounded-xl p-5 space-y-4 border border-border">
-              <h3 className="font-semibold text-foreground flex items-center gap-2">
-                <ExternalLink className="h-4 w-4 text-primary" />
-                التعليمات:
-              </h3>
-              <ol className="space-y-3 text-sm text-foreground/80 list-decimal list-inside">
-                <li>
-                  افتح الرابط التالي:{" "}
-                  <a href="https://my.telegram.org" target="_blank" rel="noopener noreferrer" className="text-primary underline font-medium">
-                    my.telegram.org
-                  </a>
-                </li>
-                <li>سجل دخولك برقم هاتفك المرتبط بـ Telegram (مع رمز الدولة مثل: +966).</li>
-                <li>سيصلك رمز تأكيد على تطبيق Telegram — أدخله في الموقع.</li>
-                <li>
-                  بعد الدخول، اضغط على{" "}
-                  <span className="font-semibold text-foreground">"API development tools"</span>.
-                </li>
-                <li>
-                  إذا طُلب منك إنشاء تطبيق جديد، املأ الحقول التالية:
-                  <ul className="mt-2 mr-4 space-y-1 list-disc list-inside text-muted-foreground">
-                    <li><strong>App title:</strong> أي اسم (مثلاً: MyBot)</li>
-                    <li><strong>Short name:</strong> أي اسم قصير (مثلاً: mybot)</li>
-                    <li><strong>Platform:</strong> اختر Desktop</li>
-                    <li>باقي الحقول اختيارية</li>
-                  </ul>
-                </li>
-                <li>
-                  بعد الإنشاء ستجد{" "}
-                  <span className="font-semibold text-primary">API ID</span> و{" "}
-                  <span className="font-semibold text-primary">API Hash</span>.
-                </li>
-                <li>انسخهما واضغط "التالي" لإدخالهما هنا.</li>
-              </ol>
-            </div>
-
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
-              <p className="text-sm text-amber-700 dark:text-amber-300">
-                <strong>تنبيه:</strong> لا تشارك API ID و API Hash مع أي شخص آخر. هذه البيانات خاصة بحسابك.
-              </p>
-            </div>
-
-            <Button onClick={goNext} className="gap-2">
-              التالي
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-          </div>
-        );
-
-      case "credentials":
-        return (
-          <div className="space-y-6 max-w-md">
-            <div className="space-y-2">
-              <h2 className="text-xl font-bold text-foreground">الخطوة 2: أدخل بيانات API</h2>
-              <p className="text-muted-foreground text-sm">أدخل البيانات التي حصلت عليها من my.telegram.org</p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="api-id">API ID</Label>
-                <Input
-                  id="api-id"
-                  placeholder="مثال: 12345678"
-                  value={apiId}
-                  onChange={(e) => setApiId(e.target.value)}
-                  dir="ltr"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="api-hash">API Hash</Label>
-                <Input
-                  id="api-hash"
-                  placeholder="مثال: a1b2c3d4e5f6..."
-                  value={apiHash}
-                  onChange={(e) => setApiHash(e.target.value)}
-                  dir="ltr"
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={goBack}>
-                <ChevronRight className="h-4 w-4 ml-1" />
-                رجوع
-              </Button>
-              <Button 
-                onClick={goNext} 
-                disabled={!apiId || !apiHash}
-                className="gap-2"
-              >
-                التالي
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        );
-
-      case "phone":
-        return (
-          <div className="space-y-6 max-w-md">
-            <div className="space-y-2">
-              <h2 className="text-xl font-bold text-foreground">الخطوة 3: رقم الهاتف</h2>
-              <p className="text-muted-foreground text-sm">أدخل رقم هاتفك المرتبط بحساب Telegram (مع رمز الدولة)</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="phone">رقم الهاتف</Label>
-              <Input
-                id="phone"
-                placeholder="+966512345678"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                dir="ltr"
-                type="tel"
-              />
-            </div>
-
-            <div className="bg-muted/50 rounded-lg p-4 border border-border">
-              <p className="text-xs text-muted-foreground">
-                سيتم إرسال رمز تحقق إلى حسابك على Telegram. تأكد من أنك تستطيع الوصول إلى التطبيق.
-              </p>
-            </div>
-
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={goBack}>
-                <ChevronRight className="h-4 w-4 ml-1" />
-                رجوع
-              </Button>
-              <Button 
-                onClick={handleSendCode} 
-                disabled={!phone || loading}
-                className="gap-2"
-              >
-                {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
-                إرسال الرمز
-              </Button>
-            </div>
-          </div>
-        );
-
-      case "otp":
-        return (
-          <div className="space-y-6 max-w-md">
-            <div className="space-y-2">
-              <h2 className="text-xl font-bold text-foreground">الخطوة 4: رمز التحقق</h2>
-              <p className="text-muted-foreground text-sm">أدخل الرمز الذي وصلك على Telegram</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="otp">رمز التحقق</Label>
-              <Input
-                id="otp"
-                placeholder="12345"
-                value={otpCode}
-                onChange={(e) => setOtpCode(e.target.value)}
-                dir="ltr"
-                className="text-center text-lg tracking-widest font-mono"
-              />
-            </div>
-
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={goBack}>
-                <ChevronRight className="h-4 w-4 ml-1" />
-                رجوع
-              </Button>
-              <Button 
-                onClick={handleVerifyOTP} 
-                disabled={!otpCode || loading}
-                className="gap-2"
-              >
-                {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="h-4 w-4" />
-                )}
-                تحقق
-              </Button>
-            </div>
-          </div>
-        );
-
-      case "2fa":
-        return (
-          <div className="space-y-6 max-w-md">
-            <div className="space-y-2">
-              <h2 className="text-xl font-bold text-foreground">الخطوة 5: التحقق بخطوتين</h2>
-              <p className="text-muted-foreground text-sm">حسابك محمي بكلمة مرور إضافية. أدخلها للمتابعة.</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="2fa">كلمة مرور التحقق بخطوتين</Label>
-              <div className="relative">
-                <Input
-                  id="2fa"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="أدخل كلمة المرور"
-                  value={password2FA}
-                  onChange={(e) => setPassword2FA(e.target.value)}
-                  dir="ltr"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={goBack}>
-                <ChevronRight className="h-4 w-4 ml-1" />
-                رجوع
-              </Button>
-              <Button 
-                onClick={handleVerify2FA} 
-                disabled={!password2FA || loading}
-                className="gap-2"
-              >
-                {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Shield className="h-4 w-4" />
-                )}
-                تأكيد
-              </Button>
-            </div>
-          </div>
-        );
-
-      case "result":
-        return (
-          <div className="space-y-6 max-w-2xl">
-            <div className="space-y-2">
-              <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
-                <CheckCircle2 className="h-6 w-6 text-green-500" />
-                تم بنجاح!
-              </h2>
-              <p className="text-muted-foreground text-sm">تم إنشاء Session String الخاص بك. احتفظ به في مكان آمن.</p>
-            </div>
-
-            <div className="bg-muted/50 rounded-xl p-5 border border-border space-y-3">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm font-semibold">Session String</Label>
-                <div className="flex gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowSession(!showSession)}
-                    className="gap-1 text-xs"
-                  >
-                    {showSession ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                    {showSession ? "إخفاء" : "عرض"}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => copyToClipboard(sessionString)}
-                    className="gap-1 text-xs"
-                  >
-                    <Copy className="h-3.5 w-3.5" />
-                    نسخ
-                  </Button>
-                </div>
-              </div>
-              <div className="bg-background rounded-lg p-3 font-mono text-xs break-all border border-border" dir="ltr">
-                {showSession ? sessionString : "••••••••••••••••••••••••••••••••••••••••"}
-              </div>
-            </div>
-
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
-              <div className="text-sm text-amber-700 dark:text-amber-300 space-y-1">
-                <p><strong>مهم جداً:</strong></p>
-                <ul className="list-disc list-inside space-y-1 text-xs">
-                  <li>احتفظ بـ Session String في مكان آمن — ستحتاجه لتشغيل النشر التلقائي.</li>
-                  <li>لا تشاركه مع أي شخص.</li>
-                  <li>إذا فقدته، ستحتاج إلى إنشاء واحد جديد.</li>
-                </ul>
-              </div>
-            </div>
-
-            <Button onClick={resetWizard} variant="outline" className="gap-2">
-              إنشاء جلسة جديدة
-            </Button>
-          </div>
-        );
+  const handleSave = () => {
+    if (!sessionString.trim()) {
+      toast.error("يرجى لصق Session String أولاً");
+      return;
     }
+    setSaved(true);
+    toast.success("تم حفظ Session String بنجاح!");
   };
-
-  // Stepper indicator
-  const visibleSteps = [
-    { key: "instructions", label: "التعليمات", icon: ExternalLink },
-    { key: "credentials", label: "بيانات API", icon: Key },
-    { key: "phone", label: "الهاتف", icon: Send },
-    { key: "otp", label: "الرمز", icon: Shield },
-    { key: "result", label: "النتيجة", icon: CheckCircle2 },
-  ];
 
   return (
     <div className="min-h-screen bg-background flex" dir="rtl">
@@ -456,41 +51,16 @@ const AutoDashboard = () => {
           )}
         </div>
 
-        {/* Stepper in sidebar */}
+        {/* Nav */}
         <nav className="flex-1 p-3 space-y-1">
-          {visibleSteps.map((step, idx) => {
-            const isCurrent = currentStep === step.key || 
-              (currentStep === "2fa" && step.key === "otp");
-            const isDone = STEPS_ORDER.indexOf(currentStep) > STEPS_ORDER.indexOf(step.key as Step);
-            const StepIcon = step.icon;
-            return (
-              <div
-                key={step.key}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg p-2.5 text-sm transition-colors",
-                  isCurrent && "bg-primary/10 text-primary font-medium",
-                  isDone && "text-green-600 dark:text-green-400",
-                  !isCurrent && !isDone && "text-muted-foreground"
-                )}
-              >
-                <div className={cn(
-                  "flex items-center justify-center h-7 w-7 rounded-full shrink-0 text-xs font-bold border-2 transition-colors",
-                  isCurrent && "border-primary bg-primary text-primary-foreground",
-                  isDone && "border-green-500 bg-green-500 text-white",
-                  !isCurrent && !isDone && "border-muted-foreground/30"
-                )}>
-                  {isDone ? (
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                  ) : collapsed ? (
-                    <StepIcon className="h-3.5 w-3.5" />
-                  ) : (
-                    idx + 1
-                  )}
-                </div>
-                {!collapsed && <span className="truncate">{step.label}</span>}
-              </div>
-            );
-          })}
+          <div className={cn(
+            "flex items-center gap-3 rounded-lg p-2.5 text-sm bg-primary/10 text-primary font-medium"
+          )}>
+            <div className="flex items-center justify-center h-7 w-7 rounded-full shrink-0 text-xs font-bold border-2 border-primary bg-primary text-primary-foreground">
+              1
+            </div>
+            {!collapsed && <span className="truncate">إنشاء Session</span>}
+          </div>
         </nav>
 
         {/* Footer */}
@@ -513,13 +83,124 @@ const AutoDashboard = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 p-6 md:p-10">
-        <div className="mb-8">
+      <main className="flex-1 p-6 md:p-10 space-y-8">
+        <div>
           <h1 className="text-2xl font-bold text-foreground">إنشاء Telegram Session</h1>
-          <p className="text-muted-foreground text-sm mt-1">اتبع الخطوات لإنشاء Session String لتشغيل النشر التلقائي</p>
+          <p className="text-muted-foreground text-sm mt-1">
+            استخدم الأداة أدناه لإنشاء Session String ثم الصقه في الحقل
+          </p>
         </div>
 
-        {renderStep()}
+        {/* Instructions */}
+        <div className="bg-muted/50 rounded-xl p-5 space-y-3 border border-border max-w-3xl">
+          <h3 className="font-semibold text-foreground flex items-center gap-2">
+            <ExternalLink className="h-4 w-4 text-primary" />
+            طريقة الاستخدام:
+          </h3>
+          <ol className="space-y-2 text-sm text-foreground/80 list-decimal list-inside">
+            <li>استخدم الأداة المدمجة أدناه (أو <a href={TELEGRAM_TOOLS_URL} target="_blank" rel="noopener noreferrer" className="text-primary underline">افتحها في تبويب جديد</a>).</li>
+            <li>اختر <strong>Telethon</strong> كنوع الجلسة.</li>
+            <li>أدخل <strong>API ID</strong> و <strong>API Hash</strong> (من <a href="https://my.telegram.org" target="_blank" rel="noopener noreferrer" className="text-primary underline">my.telegram.org</a>).</li>
+            <li>أدخل رقم هاتفك ثم رمز التحقق.</li>
+            <li>انسخ الـ <strong>Session String</strong> والصقه في الحقل بالأسفل.</li>
+          </ol>
+        </div>
+
+        {/* Embedded iframe */}
+        <div className="max-w-4xl">
+          <div className="rounded-xl border border-border overflow-hidden bg-background shadow-sm">
+            <div className="bg-muted/50 px-4 py-2 border-b border-border flex items-center justify-between">
+              <span className="text-xs text-muted-foreground font-medium">telegram.tools - Session String Generator</span>
+              <a href={TELEGRAM_TOOLS_URL} target="_blank" rel="noopener noreferrer">
+                <Button variant="ghost" size="sm" className="gap-1 text-xs h-7">
+                  <ExternalLink className="h-3 w-3" />
+                  فتح في تبويب جديد
+                </Button>
+              </a>
+            </div>
+            <iframe
+              src={TELEGRAM_TOOLS_URL}
+              className="w-full border-0"
+              style={{ height: "600px" }}
+              allow="clipboard-read; clipboard-write"
+              title="Telegram Session Generator"
+            />
+          </div>
+        </div>
+
+        {/* Paste Session String */}
+        <div className="max-w-2xl space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="session-string" className="text-base font-semibold">
+              الصق Session String هنا
+            </Label>
+            <div className="relative">
+              <Input
+                id="session-string"
+                placeholder="1BVtsOKABu2HY9..."
+                value={sessionString}
+                onChange={(e) => {
+                  setSessionString(e.target.value);
+                  setSaved(false);
+                }}
+                dir="ltr"
+                className="font-mono text-sm pr-20"
+              />
+              <div className="absolute left-2 top-1/2 -translate-y-1/2 flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => setShowSession(!showSession)}
+                  className="text-muted-foreground hover:text-foreground p-1"
+                >
+                  {showSession ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+                {sessionString && (
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(sessionString)}
+                    className="text-muted-foreground hover:text-foreground p-1"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+            {sessionString && !showSession && (
+              <p className="text-xs text-muted-foreground font-mono" dir="ltr">
+                {sessionString.substring(0, 10)}{"•".repeat(20)}
+              </p>
+            )}
+          </div>
+
+          <div className="flex gap-3">
+            <Button onClick={handleSave} disabled={!sessionString.trim() || saved} className="gap-2">
+              {saved ? <CheckCircle2 className="h-4 w-4" /> : null}
+              {saved ? "تم الحفظ" : "حفظ Session"}
+            </Button>
+          </div>
+
+          {saved && (
+            <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 flex items-start gap-3">
+              <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
+              <p className="text-sm text-green-700 dark:text-green-300">
+                تم حفظ Session String بنجاح! يمكنك الآن استخدامه في النشر التلقائي.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Warning */}
+        <div className="max-w-2xl bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 flex items-start gap-3">
+          <AlertCircle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+          <div className="text-sm text-amber-700 dark:text-amber-300 space-y-1">
+            <p><strong>تنبيه أمني:</strong></p>
+            <ul className="list-disc list-inside space-y-1 text-xs">
+              <li>لا تشارك Session String مع أي شخص.</li>
+              <li>Session String يمنح وصولاً كاملاً لحساب Telegram الخاص بك.</li>
+              <li>إذا شككت في تسريبه، قم بإنهاء جميع الجلسات من إعدادات Telegram.</li>
+            </ul>
+          </div>
+        </div>
       </main>
     </div>
   );
