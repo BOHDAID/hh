@@ -294,6 +294,7 @@ const ProductCard = ({
                 e.stopPropagation();
                 setDetailsOpen(true);
               }}
+              type="button"
             >
               <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
               <span className="hidden sm:inline">{hasVariants ? (isRTL ? "عرض الخيارات" : "View Options") : (isRTL ? "عرض التفاصيل" : "View Details")}</span>

@@ -66,41 +66,37 @@ const ProductDetailsModal = ({
   const [addingToCart, setAddingToCart] = useState(false);
 
   useEffect(() => {
-    if (open && product) {
-      fetchProductDetails();
-      setSelectedVariant(null);
-    }
-  }, [open, product]);
+    if (!open || !product?.id) return;
+    fetchProductDetails(product.id);
+    setSelectedVariant(null);
+  }, [open, product?.id]);
 
-  const fetchProductDetails = async () => {
-    if (!product) return;
-
+  const fetchProductDetails = async (productId: string) => {
     setLoading(true);
     try {
       // Get variants for this product
       const { data: variantsData } = await db
         .from("product_variants")
         .select("id, product_id, name, name_en, description, description_en, price, stock, image_url, is_active, is_unlimited, warranty_days, display_order, created_at, updated_at")
-        .eq("product_id", product.id)
+        .eq("product_id", productId)
         .eq("is_active", true)
         .order("display_order", { ascending: true });
 
       // For each variant, get actual stock using secure function
       if (variantsData && variantsData.length > 0) {
-      const variantsWithStock = await Promise.all(
+        const variantsWithStock = await Promise.all(
           variantsData.map(async (variant: any) => {
             // Check if variant is unlimited
             if (variant.is_unlimited) {
               return { ...variant, stock: -1 };
             }
-            
+
             // Use secure database function to get stock count
-            const { data: stockData } = await db
-              .rpc("get_variant_stock", {
-                p_product_id: product.id,
-                p_variant_id: variant.id,
-              });
-            
+            const { data: stockData } = await db.rpc("get_variant_stock", {
+              p_product_id: productId,
+              p_variant_id: variant.id,
+            });
+
             return { ...variant, stock: stockData || 0 };
           })
         );
@@ -110,11 +106,10 @@ const ProductDetailsModal = ({
       }
 
       // Get available accounts count (for products without variants)
-      const { data: stockData } = await db
-        .rpc("get_variant_stock", {
-          p_product_id: product.id,
-          p_variant_id: null,
-        });
+      const { data: stockData } = await db.rpc("get_variant_stock", {
+        p_product_id: productId,
+        p_variant_id: null,
+      });
 
       setStockCount(stockData || 0);
     } catch (error) {
@@ -349,7 +344,6 @@ const ProductDetailsModal = ({
                 <VariantImageGallery
                   variantId={selectedVariant.id}
                   variantImageUrl={selectedVariant.image_url}
-                  productImageUrl={product.image_url}
                 />
               )}
             </div>
