@@ -6,6 +6,7 @@ import ProductsSection from "@/components/ProductsSection";
 import ReviewsSection from "@/components/ReviewsSection";
 import Footer from "@/components/Footer";
 import NewArrivalsSection from "@/components/NewArrivalsSection";
+import TelegramPlansSection from "@/components/TelegramPlansSection";
 import UserSidebar from "@/components/user/UserSidebar";
 import FlashSaleBanner from "@/components/FlashSaleBanner";
 import { useTrackVisit } from "@/hooks/useTrackVisit";
@@ -44,6 +45,9 @@ const Index = () => {
         <StatsSection />
         <NewArrivalsSection />
         <ProductsSection />
+        <div id="telegram-plans">
+          <TelegramPlansSection />
+        </div>
         <ReviewsSection />
       </main>
       <Footer />
