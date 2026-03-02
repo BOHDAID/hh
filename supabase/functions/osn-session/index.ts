@@ -11,6 +11,8 @@ const ACCOUNT_SESSION_ACTIONS = new Set([
   "tg-save-account-session",
   "tg-get-account-session",
   "tg-delete-account-session",
+  "tg-save-mentions-channel",
+  "tg-get-mentions-channel",
 ]);
 
 const getBearerToken = (req: Request): string | null => {
@@ -268,6 +270,11 @@ serve(async (req) => {
         body.sessionString = reqBody.sessionString;
         break;
 
+      case "tg-create-mentions-channel":
+        endpoint = "/api/telegram-auto/create-mentions-channel";
+        body.sessionString = reqBody.sessionString;
+        break;
+
       case "tg-start-mentions-monitor":
         endpoint = "/api/telegram-auto/start-mentions-monitor";
         body.sessionString = reqBody.sessionString;
@@ -324,7 +331,7 @@ serve(async (req) => {
       case "tg-get-account-session": {
         const { data, error } = await sessionClient!
           .from("telegram_sessions")
-          .select("session_string, telegram_user, selected_groups, updated_at")
+          .select("session_string, telegram_user, selected_groups, mentions_channel_id, updated_at")
           .eq("user_id", accountUserId)
           .maybeSingle();
 
@@ -358,6 +365,48 @@ serve(async (req) => {
 
         return new Response(
           JSON.stringify({ success: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      case "tg-save-mentions-channel": {
+        const channelId = reqBody.mentionsChannelId || null;
+        const { error } = await sessionClient!
+          .from("telegram_sessions")
+          .update({ mentions_channel_id: channelId, updated_at: new Date().toISOString() })
+          .eq("user_id", accountUserId);
+
+        if (error) {
+          console.error("❌ Save mentions channel failed:", error);
+          return new Response(
+            JSON.stringify({ success: false, error: error.message }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      case "tg-get-mentions-channel": {
+        const { data, error } = await sessionClient!
+          .from("telegram_sessions")
+          .select("mentions_channel_id")
+          .eq("user_id", accountUserId)
+          .maybeSingle();
+
+        if (error) {
+          console.error("❌ Get mentions channel failed:", error);
+          return new Response(
+            JSON.stringify({ success: false, error: error.message }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        return new Response(
+          JSON.stringify({ success: true, mentionsChannelId: data?.mentions_channel_id || null }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }

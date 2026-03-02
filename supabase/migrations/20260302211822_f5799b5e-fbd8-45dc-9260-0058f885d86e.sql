@@ -1,0 +1,1 @@
+ALTER TABLE public.telegram_sessions ADD COLUMN mentions_channel_id text DEFAULT NULL;

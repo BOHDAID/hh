@@ -43,13 +43,19 @@ const TelegramProfileCard = ({ sessionString, initialUser, onLogout }: TelegramP
     return data;
   };
 
-  const fetchProfile = async () => {
+  const fetchProfile = async (retries = 2) => {
     setLoading(true);
     try {
       const result = await callAction("tg-get-profile", { sessionString });
       setProfile(result.profile);
     } catch (err: any) {
       console.error("Profile fetch failed:", err.message);
+      if (retries > 0 && (err.message?.includes("النوم") || err.message?.includes("sleep") || err.message?.includes("فارغ"))) {
+        // Server might be waking up, retry after delay
+        console.log(`⏳ Retrying profile fetch in 3s... (${retries} retries left)`);
+        setTimeout(() => fetchProfile(retries - 1), 3000);
+        return; // Don't set loading to false yet
+      }
       toast.error("تعذر تحميل البروفايل: " + err.message);
     } finally {
       setLoading(false);
@@ -204,7 +210,7 @@ const TelegramProfileCard = ({ sessionString, initialUser, onLogout }: TelegramP
           {/* Actions */}
           <div className="flex gap-2 pb-1">
             {!profile && !loading ? (
-              <Button variant="outline" size="sm" onClick={fetchProfile} disabled={loading} className="gap-1.5 text-xs">
+              <Button variant="outline" size="sm" onClick={() => fetchProfile()} disabled={loading} className="gap-1.5 text-xs">
                 <Edit3 className="h-3.5 w-3.5" />
                 تحميل البروفايل
               </Button>

@@ -433,9 +433,37 @@ async function deleteProfilePhoto({ sessionString }) {
 const activeMentionsMonitors = new Map();
 
 /**
- * جلب القنوات التي أنا أدمن فيها
+ * إنشاء قناة جديدة للمنشنات
  */
-async function fetchChannels({ sessionString }) {
+async function createMentionsChannel({ sessionString }) {
+  const client = await getOrCreateClient(sessionString);
+  
+  const result = await client.invoke(new Api.channels.CreateChannel({
+    title: '📢 مراقب المنشنات',
+    about: 'قناة تلقائية لتلقي إشعارات المنشنات والردود من المجموعات',
+    megagroup: false,
+    broadcast: true,
+  }));
+
+  const chat = result.chats?.[0];
+  if (!chat) throw new Error('فشل إنشاء القناة');
+
+  console.log(`✅ Created mentions channel: ${chat.id}`);
+  return {
+    success: true,
+    channel: {
+      id: chat.id?.toString(),
+      title: chat.title || '📢 مراقب المنشنات',
+      username: chat.username || null,
+      photo: null,
+    },
+  };
+}
+
+/**
+ * جلب القنوات التي أنا أدمن فيها - مع إنشاء تلقائي إذا لم توجد
+ */
+async function fetchChannels({ sessionString, autoCreate = true }) {
   const client = await getOrCreateClient(sessionString);
   const dialogs = await client.getDialogs({ limit: 500 });
   
@@ -443,10 +471,8 @@ async function fetchChannels({ sessionString }) {
   for (const dialog of dialogs) {
     const entity = dialog.entity;
     if (!entity) continue;
-    // فقط القنوات (وليس المجموعات)
     const isChannel = entity.className === 'Channel' && !entity.megagroup;
     if (!isChannel) continue;
-    // تحقق أن لدي صلاحية الإرسال (أدمن أو creator)
     if (!entity.creator && !entity.adminRights) continue;
 
     let photoUrl = null;
@@ -463,6 +489,17 @@ async function fetchChannels({ sessionString }) {
       username: entity.username || null,
       photo: photoUrl,
     });
+  }
+
+  // إذا لم توجد قنوات، أنشئ واحدة تلقائياً
+  if (channels.length === 0 && autoCreate) {
+    console.log('📢 No admin channels found, creating one automatically...');
+    try {
+      const created = await createMentionsChannel({ sessionString });
+      channels.push(created.channel);
+    } catch (err) {
+      console.error('❌ Failed to auto-create channel:', err.message);
+    }
   }
 
   console.log(`✅ Fetched ${channels.length} admin channels`);
@@ -634,6 +671,7 @@ export default {
   updateProfilePhoto,
   deleteProfilePhoto,
   fetchChannels,
+  createMentionsChannel,
   startMentionsMonitor,
   stopMentionsMonitor,
   getMentions,

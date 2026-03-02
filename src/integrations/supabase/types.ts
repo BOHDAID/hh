@@ -1454,6 +1454,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          mentions_channel_id: string | null
           selected_groups: Json | null
           session_string: string
           telegram_user: Json | null
@@ -1463,6 +1464,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          mentions_channel_id?: string | null
           selected_groups?: Json | null
           session_string: string
           telegram_user?: Json | null
@@ -1472,6 +1474,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          mentions_channel_id?: string | null
           selected_groups?: Json | null
           session_string?: string
           telegram_user?: Json | null

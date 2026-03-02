@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
-import { AtSign, Loader2, Play, Square, Hash, Search, ExternalLink, User, Clock, MessageCircle } from "lucide-react";
+import { AtSign, Loader2, Play, Square, Hash, ExternalLink, User, Clock, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
+import { invokeCloudFunction, invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
+import { getAuthClient } from "@/lib/supabaseClient";
 
 interface Channel {
   id: string;
@@ -24,18 +24,37 @@ interface MentionEvent {
 
 interface MentionsMonitorPanelProps {
   sessionString: string;
+  savedChannelId?: string | null;
 }
 
-const MentionsMonitorPanel = ({ sessionString }: MentionsMonitorPanelProps) => {
+const MentionsMonitorPanel = ({ sessionString, savedChannelId }: MentionsMonitorPanelProps) => {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(false);
-  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
+  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(savedChannelId || null);
   const [monitoring, setMonitoring] = useState(false);
   const [starting, setStarting] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [mentions, setMentions] = useState<MentionEvent[]>([]);
   const [taskId] = useState(`mentions-${Date.now()}`);
   const [fetched, setFetched] = useState(false);
+
+  // Pre-select saved channel
+  useEffect(() => {
+    if (savedChannelId) setSelectedChannelId(savedChannelId);
+  }, [savedChannelId]);
+
+  const callAccountAction = async (action: string, extra: Record<string, unknown> = {}) => {
+    const authClient = getAuthClient();
+    const { data: { session } } = await authClient.auth.getSession();
+    if (!session?.access_token) return;
+    await invokeCloudFunction<any>("osn-session", { action, ...extra }, session.access_token);
+  };
+
+  const saveChannelToAccount = async (channelId: string | null) => {
+    try {
+      await callAccountAction("tg-save-mentions-channel", { mentionsChannelId: channelId });
+    } catch {}
+  };
 
   const fetchChannels = async () => {
     setLoadingChannels(true);
@@ -46,14 +65,31 @@ const MentionsMonitorPanel = ({ sessionString }: MentionsMonitorPanelProps) => {
       });
       if (res.error) throw new Error(res.error.message);
       if (!res.data?.success) throw new Error(res.data?.error || "فشل جلب القنوات");
-      setChannels(res.data.channels || []);
+      const fetchedChannels = res.data.channels || [];
+      setChannels(fetchedChannels);
       setFetched(true);
-      toast.success(`تم جلب ${res.data.channels?.length || 0} قناة`);
+
+      // إذا كانت هناك قناة محفوظة، حددها تلقائياً
+      if (savedChannelId && fetchedChannels.some((c: Channel) => c.id === savedChannelId)) {
+        setSelectedChannelId(savedChannelId);
+      } else if (fetchedChannels.length === 1) {
+        // إذا قناة واحدة فقط (ربما أنشئت تلقائياً)، حددها
+        setSelectedChannelId(fetchedChannels[0].id);
+        saveChannelToAccount(fetchedChannels[0].id);
+      }
+
+      toast.success(`تم جلب ${fetchedChannels.length} قناة`);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
       setLoadingChannels(false);
     }
+  };
+
+  const handleSelectChannel = (channelId: string) => {
+    if (monitoring) return;
+    setSelectedChannelId(channelId);
+    saveChannelToAccount(channelId);
   };
 
   const startMonitoring = async () => {
@@ -125,6 +161,7 @@ const MentionsMonitorPanel = ({ sessionString }: MentionsMonitorPanelProps) => {
         <div className="text-center space-y-1">
           <p className="text-muted-foreground text-sm">مراقبة المنشنات والردود في المجموعات</p>
           <p className="text-muted-foreground/60 text-xs">سيتم إرسال إشعار للقناة المختارة عند أي منشن أو رد</p>
+          <p className="text-muted-foreground/60 text-xs">إذا لم تكن لديك قناة، سيتم إنشاء واحدة تلقائياً</p>
         </div>
         <Button onClick={fetchChannels} disabled={loadingChannels} className="gap-2">
           {loadingChannels ? <Loader2 className="h-4 w-4 animate-spin" /> : <Hash className="h-4 w-4" />}
@@ -151,14 +188,14 @@ const MentionsMonitorPanel = ({ sessionString }: MentionsMonitorPanelProps) => {
 
         {channels.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground text-sm">
-            لا توجد قنوات. تأكد أنك أدمن في قناة واحدة على الأقل.
+            لا توجد قنوات. جرب تحديث القائمة.
           </div>
         ) : (
           <div className="grid gap-2">
             {channels.map(ch => (
               <div
                 key={ch.id}
-                onClick={() => !monitoring && setSelectedChannelId(ch.id)}
+                onClick={() => handleSelectChannel(ch.id)}
                 className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
                   selectedChannelId === ch.id
                     ? "border-primary/50 bg-primary/5 ring-1 ring-primary/20"
