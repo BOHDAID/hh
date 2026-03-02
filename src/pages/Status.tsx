@@ -5,7 +5,8 @@ import Footer from "@/components/Footer";
 import { CheckCircle, XCircle, AlertCircle, RefreshCw, Globe, CreditCard, Coins, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/supabaseClient";
+import { invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
 import { motion } from "framer-motion";
 
 interface ServiceStatus {
@@ -47,7 +48,7 @@ const Status = () => {
 
     // Database check
     try {
-      const { error } = await supabase.from("categories").select("id").limit(1);
+      const { error } = await db.from("categories").select("id").limit(1);
       updated[1].status = error ? "down" : "operational";
     } catch {
       updated[1].status = "down";
@@ -55,7 +56,7 @@ const Status = () => {
 
     // Payment methods check
     try {
-      const { data, error } = await supabase.functions.invoke("payment-methods-status");
+      const { data, error } = await invokeCloudFunctionPublic<any>("payment-methods-status", {});
       if (!error && data) {
         updated[2].status = data.paypalEnabled ? "operational" : "down";
         updated[3].status = data.cryptoEnabled ? "operational" : "down";
