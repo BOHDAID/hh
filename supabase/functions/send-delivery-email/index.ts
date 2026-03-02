@@ -1,7 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
-import { encode } from "https://deno.land/std@0.190.0/encoding/base64.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,11 +8,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-function encodeBase64(str: string): string {
-  const encoder = new TextEncoder();
-  const bytes = encoder.encode(str);
-  return encode(bytes as unknown as ArrayBuffer);
-}
 
 interface DeliveryEmailRequest {
   to_email: string;
@@ -399,10 +393,8 @@ ${activationTextSection}
       from: `${storeName} <${senderEmail}>`,
       to: to_email,
       subject: emailSubject,
-      mimeContent: [
-        { mimeType: 'text/plain; charset="utf-8"', content: encodeBase64(plainTextContent), transferEncoding: "base64" },
-        { mimeType: 'text/html; charset="utf-8"', content: encodeBase64(emailHtml), transferEncoding: "base64" },
-      ],
+      content: plainTextContent,
+      html: emailHtml,
     });
 
     await client.close();
