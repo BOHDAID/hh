@@ -22,10 +22,12 @@ Deno.serve(async (req) => {
     if (authError || !user) return errorResponse("Unauthorized", 401);
 
     const body = await req.json();
-    const { plan_id, payment_method } = body;
+    const { plan_id, payment_method, sessions } = body;
 
     if (!plan_id || !isValidUUID(plan_id)) return errorResponse("Invalid plan_id");
     if (!payment_method) return errorResponse("Missing payment_method");
+
+    const sessionsCount = Math.max(1, Math.min(50, parseInt(sessions) || 1));
 
     // Fetch plan
     const { data: plan, error: planError } = await supabase
@@ -37,7 +39,13 @@ Deno.serve(async (req) => {
 
     if (planError || !plan) return errorResponse("Plan not found");
 
-    const amount = Number(plan.price);
+    // Calculate price: base + 35% for each extra session
+    const basePrice = Number(plan.price);
+    let amount = basePrice;
+    for (let i = 2; i <= sessionsCount; i++) {
+      amount += basePrice * 0.35;
+    }
+    amount = Math.round(amount * 100) / 100;
 
     if (payment_method === "wallet") {
       // Check wallet balance
@@ -81,7 +89,7 @@ Deno.serve(async (req) => {
           status: "active",
           starts_at: now.toISOString(),
           ends_at: endsAt.toISOString(),
-          max_sessions: plan.max_sessions,
+          max_sessions: sessionsCount,
           is_trial: false,
           trial_used: true,
         })

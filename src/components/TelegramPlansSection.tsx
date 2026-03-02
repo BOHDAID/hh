@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { motion, useMotionValue, useTransform, useSpring } from "framer-motion";
 import {
-  Crown, CheckCircle2, Clock, Loader2, Zap, Bot, Send, AtSign, BarChart3, Shield, Star, CreditCard, MessageSquare, Sparkles, PlusCircle
+  Crown, CheckCircle2, Loader2, Zap, Bot, Send, AtSign, BarChart3, Shield, Star, CreditCard, MessageSquare, Sparkles, PlusCircle, Minus, Plus
 } from "lucide-react";
 
 interface Plan {
@@ -28,8 +28,19 @@ const featureHighlights = [
   { icon: <BarChart3 className="h-5 w-5" />, label: "تقارير وإحصائيات", desc: "تقارير مفصلة عن أداء حساباتك" },
 ];
 
+const calculatePrice = (basePrice: number, sessions: number) => {
+  let total = basePrice;
+  for (let i = 2; i <= sessions; i++) {
+    total += basePrice * 0.35;
+  }
+  return Math.round(total * 100) / 100;
+};
+
 // 3D Tilt Plan Card Component
-const PlanCard = ({ plan, idx, onSubscribe }: { plan: Plan; idx: number; onSubscribe: (plan: Plan) => void }) => {
+const PlanCard = ({ plan, idx, onSubscribe, sessions, onSessionsChange }: { 
+  plan: Plan; idx: number; onSubscribe: (plan: Plan, sessions: number) => void;
+  sessions: number; onSessionsChange: (sessions: number) => void;
+}) => {
   const isPopular = idx === 1;
   const [isHovered, setIsHovered] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -37,8 +48,6 @@ const PlanCard = ({ plan, idx, onSubscribe }: { plan: Plan; idx: number; onSubsc
   const mouseY = useMotionValue(0.5);
   const rotateX = useSpring(useTransform(mouseY, [0, 1], [8, -8]), { stiffness: 300, damping: 30 });
   const rotateY = useSpring(useTransform(mouseX, [0, 1], [-8, 8]), { stiffness: 300, damping: 30 });
-  const shineX = useTransform(mouseX, [0, 1], [0, 100]);
-  const shineY = useTransform(mouseY, [0, 1], [0, 100]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!cardRef.current) return;
@@ -53,13 +62,13 @@ const PlanCard = ({ plan, idx, onSubscribe }: { plan: Plan; idx: number; onSubsc
     mouseY.set(0.5);
   }, [mouseX, mouseY]);
 
+  const totalPrice = calculatePrice(plan.price, sessions);
+
   return (
     <motion.div
       ref={cardRef}
       className={`relative rounded-2xl border p-6 space-y-4 transition-colors ${
-        isPopular
-          ? "border-primary bg-primary/5"
-          : "border-border bg-card"
+        isPopular ? "border-primary bg-primary/5" : "border-border bg-card"
       }`}
       onMouseMove={handleMouseMove}
       onMouseEnter={() => setIsHovered(true)}
@@ -77,38 +86,6 @@ const PlanCard = ({ plan, idx, onSubscribe }: { plan: Plan; idx: number; onSubsc
       }}
       transition={{ type: "spring", stiffness: 300, damping: 25 }}
     >
-      {/* Holographic Shine Effect */}
-      <motion.div
-        className="absolute inset-0 pointer-events-none z-10 rounded-2xl"
-        style={{
-          background: isHovered
-            ? `radial-gradient(circle at ${shineX.get()}% ${shineY.get()}%, hsl(var(--primary) / 0.15) 0%, transparent 60%)`
-            : "none",
-          opacity: isHovered ? 1 : 0,
-        }}
-      />
-
-      {/* Rainbow edge glow */}
-      {isHovered && (
-        <motion.div
-          className="absolute -inset-[1px] rounded-2xl pointer-events-none z-0"
-          style={{
-            background: "linear-gradient(135deg, hsl(var(--primary) / 0.4), hsl(280 80% 60% / 0.3), hsl(200 80% 60% / 0.3), hsl(var(--primary) / 0.4))",
-            backgroundSize: "300% 300%",
-          }}
-          animate={{ backgroundPosition: ["0% 0%", "100% 100%", "0% 0%"] }}
-          transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-        />
-      )}
-
-      <div className="absolute inset-[1px] rounded-2xl bg-card z-[1]" />
-
-      <motion.div
-        className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-secondary/20 opacity-0 pointer-events-none z-[2]"
-        animate={{ opacity: isHovered ? 1 : 0 }}
-        transition={{ duration: 0.3 }}
-      />
-
       {/* Content */}
       <div className="relative z-[3] space-y-4">
         {isPopular && (
@@ -117,23 +94,57 @@ const PlanCard = ({ plan, idx, onSubscribe }: { plan: Plan; idx: number; onSubsc
           </Badge>
         )}
         <h4 className="font-bold text-lg">{plan.name}</h4>
+        
+        {/* Session Selector */}
+        <div className="bg-muted/50 rounded-xl p-3 space-y-2">
+          <label className="text-xs text-muted-foreground font-medium">عدد الجلسات</label>
+          <div className="flex items-center justify-center gap-3">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 rounded-full"
+              onClick={(e) => { e.stopPropagation(); onSessionsChange(Math.max(1, sessions - 1)); }}
+              disabled={sessions <= 1}
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </Button>
+            <span className="text-xl font-bold text-primary min-w-[2rem] text-center">{sessions}</span>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 rounded-full"
+              onClick={(e) => { e.stopPropagation(); onSessionsChange(sessions + 1); }}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          {sessions > 1 && (
+            <p className="text-[10px] text-muted-foreground text-center">
+              +35% لكل جلسة إضافية
+            </p>
+          )}
+        </div>
+
+        {/* Price */}
         <div className="flex items-baseline gap-1">
           <motion.span
             className="text-3xl font-bold text-primary"
-            animate={{ scale: isHovered ? 1.1 : 1 }}
+            key={totalPrice}
+            initial={{ scale: 1.2, opacity: 0.7 }}
+            animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.2 }}
           >
-            ${plan.price}
+            ${totalPrice}
           </motion.span>
+          <span className="text-xs text-muted-foreground">/ {plan.duration_days} يوم</span>
         </div>
-        <div className="space-y-1">
-          <div className="text-sm text-muted-foreground flex items-center gap-1">
-            <Bot className="h-4 w-4" /> {plan.max_sessions} جلسة أساسية
+
+        {sessions > 1 && (
+          <div className="text-xs text-muted-foreground">
+            السعر الأساسي: ${plan.price} + {sessions - 1} جلسة إضافية
           </div>
-          <div className="text-xs text-muted-foreground flex items-center gap-1">
-            <PlusCircle className="h-3.5 w-3.5" /> +${plan.price_per_extra_session} لكل جلسة إضافية
-          </div>
-        </div>
+        )}
+
         <ul className="space-y-2">
           {plan.features.map((f, i) => (
             <li key={i} className="text-sm flex items-center gap-2">
@@ -144,7 +155,7 @@ const PlanCard = ({ plan, idx, onSubscribe }: { plan: Plan; idx: number; onSubsc
         <Button
           variant={isPopular ? "default" : "outline"}
           className="w-full gap-2"
-          onClick={() => onSubscribe(plan)}
+          onClick={() => onSubscribe(plan, sessions)}
         >
           <CreditCard className="h-4 w-4" /> اشترك الآن
         </Button>
@@ -160,6 +171,7 @@ const TelegramPlansSection = () => {
   const [startingTrial, setStartingTrial] = useState(false);
   const [hasSubscription, setHasSubscription] = useState(false);
   const [trialUsed, setTrialUsed] = useState(false);
+  const [planSessions, setPlanSessions] = useState<Record<string, number>>({});
 
   useEffect(() => {
     loadData();
@@ -174,11 +186,16 @@ const TelegramPlansSection = () => {
         .order("display_order");
 
       if (plansData) {
-        setPlans(plansData.map(p => ({
+        const mapped = plansData.map(p => ({
           ...p,
           price_per_extra_session: (p as any).price_per_extra_session ?? 5,
           features: Array.isArray(p.features) ? (p.features as string[]) : []
-        })));
+        }));
+        setPlans(mapped);
+        // Initialize sessions to 1 for each plan
+        const initial: Record<string, number> = {};
+        mapped.forEach(p => { initial[p.id] = 1; });
+        setPlanSessions(initial);
       }
 
       const authClient = getAuthClient();
@@ -247,7 +264,7 @@ const TelegramPlansSection = () => {
     }
   };
 
-  const handleSubscribe = async (plan: Plan) => {
+  const handleSubscribe = async (plan: Plan, sessions: number) => {
     const authClient = getAuthClient();
     const { data: { session } } = await authClient.auth.getSession();
     if (!session) {
@@ -255,17 +272,8 @@ const TelegramPlansSection = () => {
       navigate("/login?redirect=/#telegram-plans");
       return;
     }
-    // Navigate to checkout with plan info
-    navigate(`/checkout/plan-${plan.id}`, {
-      state: {
-        planData: {
-          id: plan.id,
-          name: plan.name,
-          price: plan.price,
-          duration_days: plan.duration_days,
-          max_sessions: plan.max_sessions,
-        }
-      }
+    navigate(`/checkout/plan-${plan.id}?sessions=${sessions}`, {
+      state: { sessions }
     });
   };
 
@@ -330,13 +338,18 @@ const TelegramPlansSection = () => {
         {/* Plans Grid */}
         {!hasSubscription && (
           <div>
-            <h3 className="text-xl font-bold text-center mb-6">اختر باقتك</h3>
+            <h3 className="text-xl font-bold text-center mb-2">اختر باقتك</h3>
+            <p className="text-sm text-muted-foreground text-center mb-6">
+              السعر الأساسي لجلسة واحدة — أضف جلسات إضافية بزيادة 35% لكل جلسة
+            </p>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {plans.map((plan, idx) => (
                 <PlanCard
                   key={plan.id}
                   plan={plan}
                   idx={idx}
+                  sessions={planSessions[plan.id] || 1}
+                  onSessionsChange={(s) => setPlanSessions(prev => ({ ...prev, [plan.id]: s }))}
                   onSubscribe={handleSubscribe}
                 />
               ))}
