@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { db } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -81,41 +80,41 @@ const AutoDashboardTab = () => {
   };
 
   const fetchPlans = async () => {
-    const { data } = await supabase.from("telegram_plans").select("*").order("display_order");
-    if (data) setPlans(data.map(p => ({
+    const { data } = await (db as any).from("telegram_plans").select("*").order("display_order");
+    if (data) setPlans(data.map((p: any) => ({
       ...p,
-      price_per_extra_session: (p as any).price_per_extra_session ?? 5,
+      price_per_extra_session: p.price_per_extra_session ?? 5,
       features: Array.isArray(p.features) ? (p.features as string[]) : []
     })));
   };
 
   const fetchSubscribers = async () => {
-    const { data: subs } = await supabase
+    const { data: subs } = await (db as any)
       .from("telegram_subscriptions").select("*").order("created_at", { ascending: false });
     if (!subs || subs.length === 0) { setSubscribers([]); return; }
 
-    const { data: plansData } = await supabase.from("telegram_plans").select("*");
-    const plansMap = new Map((plansData || []).map(p => [p.id, p]));
+    const { data: plansData } = await (db as any).from("telegram_plans").select("*");
+    const plansMap = new Map((plansData || []).map((p: any) => [p.id, p]));
 
-    const userIds = [...new Set(subs.map(s => s.user_id))];
+    const userIds = [...new Set(subs.map((s: any) => s.user_id))] as string[];
     const { data: profiles } = await db.from("profiles").select("user_id, email").in("user_id", userIds);
     const profileMap = new Map((profiles || []).map(p => [p.user_id, p.email]));
 
-    const { data: sessions } = await supabase
+    const { data: sessions } = await (db as any)
       .from("telegram_sessions").select("id, user_id, telegram_user, session_string").in("user_id", userIds);
 
     const sessionsMap = new Map<string, TelegramSession[]>();
-    (sessions || []).forEach(s => {
+    (sessions || []).forEach((s: any) => {
       if (!sessionsMap.has(s.user_id)) sessionsMap.set(s.user_id, []);
       sessionsMap.get(s.user_id)!.push(s);
     });
 
-    setSubscribers(subs.map(sub => {
-      const rawPlan = plansMap.get(sub.plan_id || "");
+    setSubscribers(subs.map((sub: any) => {
+      const rawPlan: any = plansMap.get(sub.plan_id || "");
       const plan = rawPlan ? {
         ...rawPlan,
-        price_per_extra_session: (rawPlan as any).price_per_extra_session ?? 5,
-        features: Array.isArray(rawPlan.features) ? (rawPlan.features as string[]) : []
+        price_per_extra_session: rawPlan.price_per_extra_session ?? 5,
+        features: Array.isArray(rawPlan.features) ? rawPlan.features : []
       } : null;
       return {
         subscription: { ...sub, plan_id: sub.plan_id || null, plan },
@@ -154,11 +153,11 @@ const AutoDashboardTab = () => {
     };
 
     if (editPlan) {
-      const { error } = await supabase.from("telegram_plans").update(data).eq("id", editPlan.id);
+      const { error } = await (db as any).from("telegram_plans").update(data).eq("id", editPlan.id);
       if (error) toast.error(error.message); else toast.success("تم تحديث الباقة");
     } else {
       const maxOrder = Math.max(...plans.map(p => p.display_order), 0);
-      const { error } = await supabase.from("telegram_plans").insert({ ...data, display_order: maxOrder + 1 });
+      const { error } = await (db as any).from("telegram_plans").insert({ ...data, display_order: maxOrder + 1 });
       if (error) toast.error(error.message); else toast.success("تم إضافة الباقة");
     }
     setSavingPlan(false);
@@ -168,7 +167,7 @@ const AutoDashboardTab = () => {
 
   const deletePlan = async (id: string) => {
     if (!confirm("هل تريد حذف هذه الباقة؟")) return;
-    const { error } = await supabase.from("telegram_plans").delete().eq("id", id);
+    const { error } = await (db as any).from("telegram_plans").delete().eq("id", id);
     if (error) toast.error(error.message); else { toast.success("تم الحذف"); fetchPlans(); }
   };
 
