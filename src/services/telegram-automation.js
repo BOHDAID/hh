@@ -396,9 +396,13 @@ async function updateProfilePhoto({ sessionString, photoBase64 }) {
   const base64Data = photoBase64.replace(/^data:image\/\w+;base64,/, '');
   const photoBuffer = Buffer.from(base64Data, 'base64');
   
+  // استخدام CustomFile لضمان التوافق مع GramJS
+  const { CustomFile } = await import('telegram/client/uploads.js');
+  const customFile = new CustomFile("profile_photo.jpg", photoBuffer.length, "", photoBuffer);
+  
   // رفع الصورة
   const file = await client.uploadFile({
-    file: photoBuffer,
+    file: customFile,
     workers: 1,
   });
   
