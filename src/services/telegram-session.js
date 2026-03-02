@@ -3,7 +3,7 @@
 // يولّد Session String مباشرة من السيرفر
 // ============================================================
 
-import { TelegramClient } from 'telegram';
+import { TelegramClient, Api } from 'telegram';
 import { StringSession } from 'telegram/sessions/index.js';
 
 // تخزين مؤقت للعمليات الجارية (apiId+phone → client)
@@ -76,12 +76,13 @@ async function verifyCode({ apiId, phone, code, phoneCodeHash }) {
   const hash = phoneCodeHash || pending.phoneCodeHash;
 
   try {
-    await client.invoke({
-      _: 'auth.signIn',
-      phoneNumber: phone,
-      phoneCodeHash: hash,
-      phoneCode: code,
-    });
+    await client.invoke(
+      new Api.auth.SignIn({
+        phoneNumber: phone,
+        phoneCodeHash: hash,
+        phoneCode: code,
+      })
+    );
 
     // نجح بدون 2FA
     const sessionString = client.session.save();
