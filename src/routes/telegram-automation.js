@@ -1,0 +1,106 @@
+// ============================================================
+// Telegram Automation Routes
+// /api/telegram-auto/*
+// ============================================================
+
+import express, { Router } from 'express';
+import telegramAuto from '../services/telegram-automation.js';
+
+const router = Router();
+router.use(express.json({ limit: '10mb' }));
+
+// Middleware: التحقق من السر
+router.use((req, res, next) => {
+  const incomingSecret = typeof req.body?.secret === 'string' ? req.body.secret.trim() : '';
+  const serverSecret = (process.env.QR_AUTOMATION_SECRET || '').trim();
+
+  if (!serverSecret) return res.status(500).json({ success: false, error: 'QR_AUTOMATION_SECRET not configured' });
+  if (!incomingSecret) return res.status(400).json({ success: false, error: 'Secret missing' });
+  if (incomingSecret !== serverSecret) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+  next();
+});
+
+// جلب المجموعات
+router.post('/fetch-groups', async (req, res) => {
+  try {
+    const { sessionString } = req.body;
+    if (!sessionString) return res.status(400).json({ success: false, error: 'sessionString مطلوب' });
+    const result = await telegramAuto.fetchGroups({ sessionString });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Fetch groups error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// جلب جهات الاتصال
+router.post('/fetch-contacts', async (req, res) => {
+  try {
+    const { sessionString } = req.body;
+    if (!sessionString) return res.status(400).json({ success: false, error: 'sessionString مطلوب' });
+    const result = await telegramAuto.fetchContacts({ sessionString });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Fetch contacts error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// بدء النشر التلقائي
+router.post('/start-auto-publish', async (req, res) => {
+  try {
+    const { sessionString, groupIds, message, intervalMinutes, taskId } = req.body;
+    if (!sessionString || !groupIds?.length || !message) {
+      return res.status(400).json({ success: false, error: 'sessionString, groupIds, message مطلوبة' });
+    }
+    const result = await telegramAuto.startAutoPublish({ sessionString, groupIds, message, intervalMinutes, taskId });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Auto-publish error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// إيقاف النشر التلقائي
+router.post('/stop-auto-publish', async (req, res) => {
+  try {
+    const { taskId } = req.body;
+    if (!taskId) return res.status(400).json({ success: false, error: 'taskId مطلوب' });
+    const result = await telegramAuto.stopAutoPublish({ taskId });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Stop auto-publish error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// حالة النشر التلقائي
+router.post('/auto-publish-status', async (req, res) => {
+  try {
+    const { taskId } = req.body;
+    if (!taskId) return res.status(400).json({ success: false, error: 'taskId مطلوب' });
+    const result = await telegramAuto.getAutoPublishStatus({ taskId });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Auto-publish status error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// البث
+router.post('/broadcast', async (req, res) => {
+  try {
+    const { sessionString, message, blacklistIds, taskId } = req.body;
+    if (!sessionString || !message) {
+      return res.status(400).json({ success: false, error: 'sessionString, message مطلوبة' });
+    }
+    const result = await telegramAuto.broadcast({ sessionString, message, blacklistIds, taskId });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Broadcast error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+export default router;
