@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Home, Package, Wallet, User, MessageCircle, ShoppingCart, Settings, X, Menu, LogOut, PackagePlus, HeadphonesIcon, Heart } from "lucide-react";
+import { Home, Package, Wallet, User, MessageCircle, ShoppingCart, Settings, X, Menu, LogOut, PackagePlus, HeadphonesIcon, Heart, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
@@ -29,6 +29,7 @@ const UserSidebar = ({ open, onClose, onOpen }: UserSidebarProps) => {
     { to: "/support", label: t('common.support'), icon: HeadphonesIcon },
     { to: "/profile", label: t('common.profile'), icon: User },
     { to: "/contact", label: t('common.contactUs'), icon: MessageCircle },
+    { to: "/auto-dashboard", label: isRTL ? "لوحة تحكم Telegram" : "Telegram Dashboard", icon: Bot },
   ];
 
   useEffect(() => {
