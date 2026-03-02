@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthClient } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { motion, useMotionValue, useTransform, useSpring } from "framer-motion";
 import {
   Crown, CheckCircle2, Clock, Loader2, Zap, Bot, Send, AtSign, BarChart3, Shield, Star, CreditCard, MessageSquare, Sparkles, PlusCircle
 } from "lucide-react";
@@ -27,6 +28,131 @@ const featureHighlights = [
   { icon: <BarChart3 className="h-5 w-5" />, label: "تقارير وإحصائيات", desc: "تقارير مفصلة عن أداء حساباتك" },
 ];
 
+// 3D Tilt Plan Card Component
+const PlanCard = ({ plan, idx, onSubscribe }: { plan: Plan; idx: number; onSubscribe: (plan: Plan) => void }) => {
+  const isPopular = idx === 1;
+  const [isHovered, setIsHovered] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const mouseX = useMotionValue(0.5);
+  const mouseY = useMotionValue(0.5);
+  const rotateX = useSpring(useTransform(mouseY, [0, 1], [8, -8]), { stiffness: 300, damping: 30 });
+  const rotateY = useSpring(useTransform(mouseX, [0, 1], [-8, 8]), { stiffness: 300, damping: 30 });
+  const shineX = useTransform(mouseX, [0, 1], [0, 100]);
+  const shineY = useTransform(mouseY, [0, 1], [0, 100]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!cardRef.current) return;
+    const rect = cardRef.current.getBoundingClientRect();
+    mouseX.set((e.clientX - rect.left) / rect.width);
+    mouseY.set((e.clientY - rect.top) / rect.height);
+  }, [mouseX, mouseY]);
+
+  const handleMouseLeave = useCallback(() => {
+    setIsHovered(false);
+    mouseX.set(0.5);
+    mouseY.set(0.5);
+  }, [mouseX, mouseY]);
+
+  return (
+    <motion.div
+      ref={cardRef}
+      className={`relative rounded-2xl border p-6 space-y-4 transition-colors ${
+        isPopular
+          ? "border-primary bg-primary/5"
+          : "border-border bg-card"
+      }`}
+      onMouseMove={handleMouseMove}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={handleMouseLeave}
+      style={{
+        rotateX: isHovered ? rotateX : 0,
+        rotateY: isHovered ? rotateY : 0,
+        transformPerspective: 800,
+        transformStyle: "preserve-3d",
+      }}
+      whileHover={{
+        boxShadow: "0 25px 50px -12px hsl(var(--primary) / 0.25)",
+        borderColor: "hsl(var(--primary) / 0.4)",
+        scale: 1.03,
+      }}
+      transition={{ type: "spring", stiffness: 300, damping: 25 }}
+    >
+      {/* Holographic Shine Effect */}
+      <motion.div
+        className="absolute inset-0 pointer-events-none z-10 rounded-2xl"
+        style={{
+          background: isHovered
+            ? `radial-gradient(circle at ${shineX.get()}% ${shineY.get()}%, hsl(var(--primary) / 0.15) 0%, transparent 60%)`
+            : "none",
+          opacity: isHovered ? 1 : 0,
+        }}
+      />
+
+      {/* Rainbow edge glow */}
+      {isHovered && (
+        <motion.div
+          className="absolute -inset-[1px] rounded-2xl pointer-events-none z-0"
+          style={{
+            background: "linear-gradient(135deg, hsl(var(--primary) / 0.4), hsl(280 80% 60% / 0.3), hsl(200 80% 60% / 0.3), hsl(var(--primary) / 0.4))",
+            backgroundSize: "300% 300%",
+          }}
+          animate={{ backgroundPosition: ["0% 0%", "100% 100%", "0% 0%"] }}
+          transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+        />
+      )}
+
+      <div className="absolute inset-[1px] rounded-2xl bg-card z-[1]" />
+
+      <motion.div
+        className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-secondary/20 opacity-0 pointer-events-none z-[2]"
+        animate={{ opacity: isHovered ? 1 : 0 }}
+        transition={{ duration: 0.3 }}
+      />
+
+      {/* Content */}
+      <div className="relative z-[3] space-y-4">
+        {isPopular && (
+          <Badge className="absolute -top-9 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground gap-1">
+            <Crown className="h-3 w-3" /> الأكثر شعبية
+          </Badge>
+        )}
+        <h4 className="font-bold text-lg">{plan.name}</h4>
+        <div className="flex items-baseline gap-1">
+          <motion.span
+            className="text-3xl font-bold text-primary"
+            animate={{ scale: isHovered ? 1.1 : 1 }}
+            transition={{ duration: 0.2 }}
+          >
+            ${plan.price}
+          </motion.span>
+        </div>
+        <div className="space-y-1">
+          <div className="text-sm text-muted-foreground flex items-center gap-1">
+            <Bot className="h-4 w-4" /> {plan.max_sessions} جلسة أساسية
+          </div>
+          <div className="text-xs text-muted-foreground flex items-center gap-1">
+            <PlusCircle className="h-3.5 w-3.5" /> +${plan.price_per_extra_session} لكل جلسة إضافية
+          </div>
+        </div>
+        <ul className="space-y-2">
+          {plan.features.map((f, i) => (
+            <li key={i} className="text-sm flex items-center gap-2">
+              <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" /> {f}
+            </li>
+          ))}
+        </ul>
+        <Button
+          variant={isPopular ? "default" : "outline"}
+          className="w-full gap-2"
+          onClick={() => onSubscribe(plan)}
+        >
+          <CreditCard className="h-4 w-4" /> اشترك الآن
+        </Button>
+      </div>
+    </motion.div>
+  );
+};
+
 const TelegramPlansSection = () => {
   const navigate = useNavigate();
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -41,7 +167,6 @@ const TelegramPlansSection = () => {
 
   const loadData = async () => {
     try {
-      // Fetch plans
       const { data: plansData } = await supabase
         .from("telegram_plans")
         .select("*")
@@ -56,7 +181,6 @@ const TelegramPlansSection = () => {
         })));
       }
 
-      // Check user subscription
       const authClient = getAuthClient();
       const { data: { session } } = await authClient.auth.getSession();
       if (session) {
@@ -123,6 +247,28 @@ const TelegramPlansSection = () => {
     }
   };
 
+  const handleSubscribe = async (plan: Plan) => {
+    const authClient = getAuthClient();
+    const { data: { session } } = await authClient.auth.getSession();
+    if (!session) {
+      toast.error("يجب تسجيل الدخول أولاً");
+      navigate("/login?redirect=/#telegram-plans");
+      return;
+    }
+    // Navigate to checkout with plan info
+    navigate(`/checkout/plan-${plan.id}`, {
+      state: {
+        planData: {
+          id: plan.id,
+          name: plan.name,
+          price: plan.price,
+          duration_days: plan.duration_days,
+          max_sessions: plan.max_sessions,
+        }
+      }
+    });
+  };
+
   if (loading || plans.length === 0) return null;
 
   return (
@@ -186,51 +332,14 @@ const TelegramPlansSection = () => {
           <div>
             <h3 className="text-xl font-bold text-center mb-6">اختر باقتك</h3>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {plans.map((plan, idx) => {
-                const isPopular = idx === 1;
-                return (
-                  <div
-                    key={plan.id}
-                    className={`relative rounded-2xl border p-6 space-y-4 transition-all hover:shadow-lg ${
-                      isPopular
-                        ? "border-primary bg-primary/5 shadow-md scale-[1.02]"
-                        : "border-border bg-card"
-                    }`}
-                  >
-                    {isPopular && (
-                      <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground gap-1">
-                        <Crown className="h-3 w-3" /> الأكثر شعبية
-                      </Badge>
-                    )}
-                    <h4 className="font-bold text-lg">{plan.name}</h4>
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-3xl font-bold text-primary">${plan.price}</span>
-                    </div>
-                    <div className="space-y-1">
-                      <div className="text-sm text-muted-foreground flex items-center gap-1">
-                        <Bot className="h-4 w-4" /> {plan.max_sessions} جلسة أساسية
-                      </div>
-                      <div className="text-xs text-muted-foreground flex items-center gap-1">
-                        <PlusCircle className="h-3.5 w-3.5" /> +${plan.price_per_extra_session} لكل جلسة إضافية
-                      </div>
-                    </div>
-                    <ul className="space-y-2">
-                      {plan.features.map((f, i) => (
-                        <li key={i} className="text-sm flex items-center gap-2">
-                          <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" /> {f}
-                        </li>
-                      ))}
-                    </ul>
-                    <Button
-                      variant={isPopular ? "default" : "outline"}
-                      className="w-full gap-2"
-                      onClick={() => toast.info("سيتم إضافة الدفع قريباً")}
-                    >
-                      <CreditCard className="h-4 w-4" /> اشترك الآن
-                    </Button>
-                  </div>
-                );
-              })}
+              {plans.map((plan, idx) => (
+                <PlanCard
+                  key={plan.id}
+                  plan={plan}
+                  idx={idx}
+                  onSubscribe={handleSubscribe}
+                />
+              ))}
             </div>
           </div>
         )}

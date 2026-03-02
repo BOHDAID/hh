@@ -45,8 +45,11 @@ const Checkout = () => {
   const { toast } = useToast();
 
   const isCartCheckout = productId === "cart";
+  const isPlanCheckout = productId?.startsWith("plan-") ?? false;
+  const planId = isPlanCheckout ? productId!.replace("plan-", "") : null;
 
   const [product, setProduct] = useState<Product | null>(null);
+  const [planData, setPlanData] = useState<{ id: string; name: string; price: number; duration_days: number; max_sessions: number } | null>(null);
   const [cartItems, setCartItems] = useState<Array<{ product: Product; quantity: number; variant_id: string | null }>>([]);
   const [quantity, setQuantity] = useState(1);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
@@ -153,8 +156,44 @@ const Checkout = () => {
         setStockCount(999); // Cart items already validated
       }
 
+      // Plan checkout mode - load plan as virtual product
+      if (isPlanCheckout && planId) {
+        const { data: planRow, error: planErr } = await db
+          .from("telegram_plans")
+          .select("*")
+          .eq("id", planId)
+          .eq("is_active", true)
+          .single();
+
+        if (planErr || !planRow) {
+          toast({ title: "خطأ", description: "لم يتم العثور على الباقة", variant: "destructive" });
+          navigate("/");
+          return;
+        }
+
+        setPlanData({
+          id: planRow.id,
+          name: planRow.name,
+          price: Number(planRow.price),
+          duration_days: planRow.duration_days,
+          max_sessions: planRow.max_sessions,
+        });
+
+        // Create virtual product for UI compatibility
+        setProduct({
+          id: planRow.id,
+          name: `اشتراك: ${planRow.name}`,
+          price: Number(planRow.price),
+          image_url: null,
+          product_type: "subscription",
+          warranty_days: planRow.duration_days,
+          description: `باقة ${planRow.name} - ${planRow.duration_days} يوم - ${planRow.max_sessions} جلسة`,
+        });
+        setStockCount(999999); // Always available
+      }
+
       // Single product checkout
-      if (productId && !isCartCheckout) {
+      if (productId && !isCartCheckout && !isPlanCheckout) {
         const { data: productData, error } = await db
           .from("products")
           .select("*")
@@ -489,8 +528,27 @@ const Checkout = () => {
           throw new Error("رصيد المحفظة غير كافي");
         }
 
+        // Plan subscription via wallet
+        if (isPlanCheckout && planData) {
+          const response = await invokeCloudFunction<{ success: boolean; subscription?: any; error?: string }>(
+            "process-plan-subscription",
+            { plan_id: planData.id, payment_method: "wallet" },
+            session.access_token
+          );
+
+          if (response.error) throw new Error(response.error.message || "Failed to process subscription");
+          const result = response.data;
+          if (!result || !result.success) throw new Error(result?.error || "Unknown error");
+
+          toast({
+            title: "تم تفعيل الاشتراك بنجاح! 🎉",
+            description: `تم تفعيل باقة ${planData.name}`,
+          });
+          navigate("/auto-dashboard");
+          return;
+        }
+
         // Create order with wallet payment via Cloud function
-        // process-order handles: wallet deduction, transaction recording, order completion, and delivery
         const orderItems = isCartCheckout
           ? cartItems.map(ci => ({ product_id: ci.product.id, quantity: ci.quantity, variant_id: ci.variant_id }))
           : [{ product_id: product!.id, quantity, variant_id: variantId || null }];
@@ -519,8 +577,6 @@ const Checkout = () => {
           description: "تم خصم المبلغ من رصيدك وإتمام الطلب",
         });
 
-        // Ensure delivery happens immediately (accounts + email) for wallet payments
-        // Some external deployments may not auto-complete delivery inside process-order.
         try {
           await invokeCloudFunction<{ success?: boolean; error?: string }>(
             "complete-payment",
@@ -531,7 +587,6 @@ const Checkout = () => {
           console.warn("complete-payment failed (will retry on invoice page):", e);
         }
 
-        // Clear cart after successful purchase
         if (isCartCheckout) {
           await db.from("cart_items").delete().eq("user_id", user.id);
           window.dispatchEvent(new Event('cart-updated'));
@@ -541,9 +596,39 @@ const Checkout = () => {
         return;
       }
 
+      // For plan subscriptions with non-wallet payment, create pending order
+      if (isPlanCheckout && planData) {
+        const response = await invokeCloudFunction<{ success: boolean; order?: { id: string; order_number: string }; error?: string }>(
+          "process-plan-subscription",
+          { plan_id: planData.id, payment_method: paymentMethod },
+          session.access_token
+        );
+
+        if (response.error) throw new Error(response.error.message || "Failed to create order");
+        const result = response.data;
+        if (!result || !result.success || !result.order) throw new Error(result?.error || "Unknown error");
+
+        const orderId = result.order.id;
+
+        // Redirect to appropriate payment gateway (same logic as product checkout)
+        if (paymentMethod === "paypal") {
+          // Handle PayPal for plan
+          const paypalRes = await invokeCloudFunction<{ success: boolean; approval_url?: string; error?: string }>(
+            "paypal-create",
+            { order_id: orderId, amount: totalAmount },
+            session.access_token
+          );
+          if (paypalRes.error || !paypalRes.data?.success) throw new Error(paypalRes.data?.error || "PayPal error");
+          if (paypalRes.data.approval_url) window.location.href = paypalRes.data.approval_url;
+          return;
+        }
+
+        // For other gateways, navigate to order page
+        navigate(`/order/${orderId}`);
+        return;
+      }
+
        // First create the order via Cloud
-       // NOTE: process-order currently supports only: wallet | manual
-       // For PayPal/Crypto/LemonSqueezy we create a manual order first, then redirect to the gateway.
        const manualItems = isCartCheckout
          ? cartItems.map(ci => ({ product_id: ci.product.id, quantity: ci.quantity, variant_id: ci.variant_id }))
          : [{ product_id: product!.id, quantity, variant_id: variantId || null }];
