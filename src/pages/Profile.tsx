@@ -16,6 +16,8 @@ import {
   Calendar,
   AlertCircle
 } from "lucide-react";
+import SecurityLog from "@/components/SecurityLog";
+import { invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
 import { useTranslation } from "react-i18next";
 
 interface ProfileData {
@@ -296,6 +298,13 @@ const Profile = () => {
             </div>
           </div>
         </div>
+
+        {/* Security Log */}
+        {user && (
+          <div className="mt-6">
+            <SecurityLog userId={user.id} />
+          </div>
+        )}
       </div>
     </UserLayout>
   );

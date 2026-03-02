@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,6 +76,15 @@ const Login = () => {
         variant: "destructive",
       });
     } else {
+      // Track login session
+      const { data: { session } } = await authClient.auth.getSession();
+      if (session?.user) {
+        invokeCloudFunctionPublic("track-login", {
+          user_id: session.user.id,
+          user_agent: navigator.userAgent,
+        }).catch(() => {}); // fire and forget
+      }
+      
       toast({
         title: t('auth.loginSuccess'),
         description: t('auth.welcomeMessage'),
