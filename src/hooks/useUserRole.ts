@@ -22,6 +22,7 @@ export type TabType =
   | "flash_sales"
   | "policies"
   | "logs"
+  | "activity_logs"
   | "activation_codes";
 
 // Role permissions map
@@ -45,6 +46,7 @@ export const rolePermissions: Record<AppRole, TabType[]> = {
     "flash_sales",
     "policies",
     "logs",
+    "activity_logs",
     "activation_codes",
   ],
   full_access: [

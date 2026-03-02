@@ -37,6 +37,7 @@ import {
   FileText,
   Languages,
   Bot,
+  Activity,
 } from "lucide-react";
 import {
   Dialog,
@@ -71,6 +72,7 @@ import CouponsTab from "@/components/admin/CouponsTab";
 import FlashSalesTab from "@/components/admin/FlashSalesTab";
 import PoliciesTab from "@/components/admin/PoliciesTab";
 import LogsTab from "@/components/admin/LogsTab";
+import ActivityLogsTab from "@/components/admin/ActivityLogsTab";
 import ActivationCodesTab from "@/components/admin/ActivationCodesTab";
 
 interface Product {
@@ -581,6 +583,7 @@ const Admin = () => {
     { id: "flash_sales", label: "العروض المحدودة", icon: <Ticket className="h-4 w-4 md:h-5 md:w-5" /> },
     { id: "policies", label: "السياسات", icon: <FileText className="h-4 w-4 md:h-5 md:w-5" /> },
     { id: "logs", label: "السجلات", icon: <BarChart3 className="h-4 w-4 md:h-5 md:w-5" /> },
+    { id: "activity_logs", label: "سجل الأنشطة", icon: <Activity className="h-4 w-4 md:h-5 md:w-5" /> },
     { id: "activation_codes", label: "أكواد التفعيل", icon: <Bot className="h-4 w-4 md:h-5 md:w-5" /> },
   ];
 
@@ -702,6 +705,9 @@ const Admin = () => {
 
         {/* Activation Codes Tab */}
         {activeTab === "activation_codes" && hasPermission("activation_codes") && <ActivationCodesTab />}
+
+        {/* Activity Logs Tab */}
+        {activeTab === "activity_logs" && hasPermission("activity_logs") && <ActivityLogsTab />}
 
         {/* Products Tab */}
         {activeTab === "products" && hasPermission("products") && (
