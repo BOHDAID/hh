@@ -230,35 +230,98 @@ async function getAutoPublishStatus({ taskId }) {
 }
 
 /**
- * بث رسالة خاصة لجميع جهات الاتصال (مع استثناء blacklist)
+ * جلب الأشخاص الذين راسلوني (من المحادثات الخاصة)
  */
-async function broadcast({ sessionString, message, blacklistIds = [], taskId }) {
+async function fetchDialogs({ sessionString }) {
   const client = await getOrCreateClient(sessionString);
   
-  // جلب جميع جهات الاتصال
-  const result = await client.invoke(new Api.contacts.GetContacts({ hash: BigInt(0) }));
+  const dialogs = await client.getDialogs({ limit: 500 });
+  const users = [];
+  const seenIds = new Set();
+
+  for (const dialog of dialogs) {
+    // فقط المحادثات الخاصة (وليس مجموعات أو قنوات)
+    if (!dialog.isUser) continue;
+    const entity = dialog.entity;
+    if (!entity || entity.bot || entity.deleted || entity.self) continue;
+    
+    const idStr = entity.id?.toString();
+    if (seenIds.has(idStr)) continue;
+    seenIds.add(idStr);
+
+    let photoUrl = null;
+    try {
+      const buf = await client.downloadProfilePhoto(entity, { isBig: false });
+      if (buf) photoUrl = `data:image/jpeg;base64,${Buffer.from(buf).toString('base64')}`;
+    } catch {}
+
+    users.push({
+      id: idStr,
+      firstName: entity.firstName || '',
+      lastName: entity.lastName || '',
+      username: entity.username || null,
+      phone: entity.phone || null,
+      photo: photoUrl,
+    });
+  }
+
+  return { success: true, users };
+}
+
+/**
+ * بث رسالة خاصة لجميع الأشخاص الذين راسلوني + اختيارياً جهات الاتصال (مع استثناء blacklist)
+ */
+async function broadcast({ sessionString, message, blacklistIds = [], includeContacts = false, taskId }) {
+  const client = await getOrCreateClient(sessionString);
   
   const blacklistSet = new Set(blacklistIds.map(String));
+  const sentIds = new Set();
   let sentCount = 0;
   let failedCount = 0;
   const errors = [];
 
-  if (result.users) {
-    for (const user of result.users) {
-      if (user.bot || user.deleted || user.self) continue;
-      if (blacklistSet.has(user.id?.toString())) continue;
+  // 1) جلب الأشخاص من المحادثات الخاصة (الذين كلموني)
+  const dialogs = await client.getDialogs({ limit: 500 });
+  for (const dialog of dialogs) {
+    if (!dialog.isUser) continue;
+    const entity = dialog.entity;
+    if (!entity || entity.bot || entity.deleted || entity.self) continue;
+    
+    const idStr = entity.id?.toString();
+    if (blacklistSet.has(idStr) || sentIds.has(idStr)) continue;
+    sentIds.add(idStr);
 
-      try {
-        await client.sendMessage(user, { message });
-        sentCount++;
-        console.log(`📤 Broadcast [${taskId}]: Sent to ${user.firstName || user.id}`);
-        
-        // تأخير بسيط لتجنب الحظر
-        await new Promise(r => setTimeout(r, 1500));
-      } catch (err) {
-        failedCount++;
-        errors.push({ userId: user.id?.toString(), error: err.message });
-        console.error(`❌ Broadcast [${taskId}]: Failed for ${user.id}:`, err.message);
+    try {
+      await client.sendMessage(entity, { message });
+      sentCount++;
+      console.log(`📤 Broadcast [${taskId}]: Sent to ${entity.firstName || entity.id}`);
+      await new Promise(r => setTimeout(r, 1500));
+    } catch (err) {
+      failedCount++;
+      errors.push({ userId: idStr, error: err.message });
+      console.error(`❌ Broadcast [${taskId}]: Failed for ${idStr}:`, err.message);
+    }
+  }
+
+  // 2) اختيارياً: جلب جهات الاتصال أيضاً
+  if (includeContacts) {
+    const result = await client.invoke(new Api.contacts.GetContacts({ hash: BigInt(0) }));
+    if (result.users) {
+      for (const user of result.users) {
+        if (user.bot || user.deleted || user.self) continue;
+        const idStr = user.id?.toString();
+        if (blacklistSet.has(idStr) || sentIds.has(idStr)) continue;
+        sentIds.add(idStr);
+
+        try {
+          await client.sendMessage(user, { message });
+          sentCount++;
+          console.log(`📤 Broadcast [${taskId}]: Sent to contact ${user.firstName || user.id}`);
+          await new Promise(r => setTimeout(r, 1500));
+        } catch (err) {
+          failedCount++;
+          errors.push({ userId: idStr, error: err.message });
+        }
       }
     }
   }
@@ -383,6 +446,7 @@ setInterval(() => {
 export default {
   fetchGroups,
   fetchContacts,
+  fetchDialogs,
   startAutoPublish,
   stopAutoPublish,
   getAutoPublishStatus,

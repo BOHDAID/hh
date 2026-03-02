@@ -227,7 +227,14 @@ serve(async (req) => {
         body.sessionString = reqBody.sessionString;
         body.message = reqBody.message;
         body.blacklistIds = reqBody.blacklistIds;
+        body.includeContacts = reqBody.includeContacts;
         body.taskId = reqBody.taskId;
+        break;
+
+      // === Telegram Dialogs ===
+      case "tg-fetch-dialogs":
+        endpoint = "/api/telegram-auto/fetch-dialogs";
+        body.sessionString = reqBody.sessionString;
         break;
 
       // === Telegram Profile ===

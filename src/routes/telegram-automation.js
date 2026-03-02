@@ -88,14 +88,27 @@ router.post('/auto-publish-status', async (req, res) => {
   }
 });
 
+// جلب الأشخاص من المحادثات (الذين كلموني)
+router.post('/fetch-dialogs', async (req, res) => {
+  try {
+    const { sessionString } = req.body;
+    if (!sessionString) return res.status(400).json({ success: false, error: 'sessionString مطلوب' });
+    const result = await telegramAuto.fetchDialogs({ sessionString });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Fetch dialogs error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // البث
 router.post('/broadcast', async (req, res) => {
   try {
-    const { sessionString, message, blacklistIds, taskId } = req.body;
+    const { sessionString, message, blacklistIds, includeContacts, taskId } = req.body;
     if (!sessionString || !message) {
       return res.status(400).json({ success: false, error: 'sessionString, message مطلوبة' });
     }
-    const result = await telegramAuto.broadcast({ sessionString, message, blacklistIds, taskId });
+    const result = await telegramAuto.broadcast({ sessionString, message, blacklistIds, includeContacts, taskId });
     res.json(result);
   } catch (err) {
     console.error('❌ Broadcast error:', err.message);
