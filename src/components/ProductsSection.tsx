@@ -239,7 +239,7 @@ const ProductsSection = () => {
           {!loading && filteredProducts.length > 0 && (
             <motion.div 
               className={viewMode === "grid" 
-                ? "grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+                ? "grid gap-4 sm:gap-5 grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
                 : "grid gap-3 grid-cols-1"
               }
               initial={{ opacity: 0 }}
