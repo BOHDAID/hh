@@ -10,16 +10,29 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return errorResponse("Missing authorization", 401);
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    // Cloud DB for plans & subscriptions
+    const cloudUrl = Deno.env.get("SUPABASE_URL")!;
+    const cloudServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const cloudDb = createClient(cloudUrl, cloudServiceKey);
 
-    // Verify user
-    const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+    // External DB for auth verification & wallets
+    const extUrl = Deno.env.get("EXTERNAL_SUPABASE_URL") || Deno.env.get("VITE_EXTERNAL_SUPABASE_URL") || "";
+    const extAnonKey = Deno.env.get("EXTERNAL_SUPABASE_ANON_KEY") || Deno.env.get("VITE_EXTERNAL_SUPABASE_ANON_KEY") || "";
+    const extServiceKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") || "";
+
+    if (!extUrl || !extAnonKey) {
+      return errorResponse("External database not configured", 500);
+    }
+
+    // Verify user against EXTERNAL database (where the token was issued)
+    const userClient = createClient(extUrl, extAnonKey, {
       global: { headers: { Authorization: authHeader } },
     });
     const { data: { user }, error: authError } = await userClient.auth.getUser();
     if (authError || !user) return errorResponse("Unauthorized", 401);
+
+    // External DB admin client for wallets
+    const extDb = extServiceKey ? createClient(extUrl, extServiceKey) : createClient(extUrl, extAnonKey);
 
     const body = await req.json();
     const { plan_id, payment_method, sessions } = body;
@@ -29,8 +42,8 @@ Deno.serve(async (req) => {
 
     const sessionsCount = Math.max(1, Math.min(50, parseInt(sessions) || 1));
 
-    // Fetch plan
-    const { data: plan, error: planError } = await supabase
+    // Fetch plan from Cloud DB
+    const { data: plan, error: planError } = await cloudDb
       .from("telegram_plans")
       .select("*")
       .eq("id", plan_id)
@@ -48,8 +61,8 @@ Deno.serve(async (req) => {
     amount = Math.round(amount * 100) / 100;
 
     if (payment_method === "wallet") {
-      // Check wallet balance
-      const { data: wallet } = await supabase
+      // Check wallet balance from EXTERNAL DB
+      const { data: wallet } = await extDb
         .from("wallets")
         .select("id, balance")
         .eq("user_id", user.id)
@@ -59,29 +72,29 @@ Deno.serve(async (req) => {
         return errorResponse("رصيد المحفظة غير كافي");
       }
 
-      // Deduct from wallet
+      // Deduct from wallet in EXTERNAL DB
       const newBalance = Number(wallet.balance) - amount;
-      const { error: walletError } = await supabase
+      const { error: walletError } = await extDb
         .from("wallets")
         .update({ balance: newBalance, updated_at: new Date().toISOString() })
         .eq("id", wallet.id);
 
       if (walletError) return errorResponse("Failed to deduct wallet balance");
 
-      // Record wallet transaction
-      await supabase.from("wallet_transactions").insert({
+      // Record wallet transaction in EXTERNAL DB
+      await extDb.from("wallet_transactions").insert({
         wallet_id: wallet.id,
         type: "purchase",
         amount: -amount,
-        description: `اشتراك باقة: ${plan.name}`,
+        description: `اشتراك باقة: ${plan.name} (${sessionsCount} جلسة)`,
         status: "completed",
       });
 
-      // Create subscription
+      // Create subscription in CLOUD DB
       const now = new Date();
       const endsAt = new Date(now.getTime() + plan.duration_days * 24 * 60 * 60 * 1000);
 
-      const { data: subscription, error: subError } = await supabase
+      const { data: subscription, error: subError } = await cloudDb
         .from("telegram_subscriptions")
         .insert({
           user_id: user.id,
@@ -105,9 +118,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    // For non-wallet payments, create a pending order
+    // For non-wallet payments, create a pending order in EXTERNAL DB
     const orderNumber = `SUB-${Date.now().toString(36).toUpperCase()}`;
-    const { data: order, error: orderError } = await supabase
+    const { data: order, error: orderError } = await extDb
       .from("orders")
       .insert({
         user_id: user.id,
@@ -127,6 +140,7 @@ Deno.serve(async (req) => {
       order: { id: order.id, order_number: order.order_number },
       plan_id: plan.id,
       amount,
+      sessions: sessionsCount,
     });
 
   } catch (err) {

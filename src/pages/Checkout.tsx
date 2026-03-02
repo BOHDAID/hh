@@ -614,7 +614,13 @@ const Checkout = () => {
 
       // For plan subscriptions with non-wallet payment, create pending order
       if (isPlanCheckout && planData) {
-        const response = await invokeCloudFunction<{ success: boolean; order?: { id: string; order_number: string }; error?: string }>(
+        const response = await invokeCloudFunction<{ 
+          success: boolean; 
+          order?: { id: string; order_number: string }; 
+          subscription?: any;
+          message?: string;
+          error?: string 
+        }>(
           "process-plan-subscription",
           { plan_id: planData.id, payment_method: paymentMethod, sessions: planData.max_sessions },
           session.access_token
@@ -622,13 +628,24 @@ const Checkout = () => {
 
         if (response.error) throw new Error(response.error.message || "Failed to create order");
         const result = response.data;
-        if (!result || !result.success || !result.order) throw new Error(result?.error || "Unknown error");
+        if (!result || !result.success) throw new Error(result?.error || "Unknown error");
 
+        // Wallet payments create subscription directly (no order)
+        if (result.subscription) {
+          toast({
+            title: "تم بنجاح!",
+            description: result.message || "تم تفعيل الاشتراك بنجاح!",
+          });
+          navigate("/auto-dashboard");
+          return;
+        }
+
+        // Other payment methods create an order first
+        if (!result.order) throw new Error("Missing order data");
         const orderId = result.order.id;
 
-        // Redirect to appropriate payment gateway (same logic as product checkout)
+        // Redirect to appropriate payment gateway
         if (paymentMethod === "paypal") {
-          // Handle PayPal for plan
           const paypalRes = await invokeCloudFunction<{ success: boolean; approval_url?: string; error?: string }>(
             "paypal-create",
             { order_id: orderId, amount: totalAmount },
