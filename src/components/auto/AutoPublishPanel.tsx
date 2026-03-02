@@ -18,9 +18,10 @@ interface TelegramGroup {
 interface AutoPublishPanelProps {
   sessionString: string;
   selectedGroups: TelegramGroup[];
+  mentionsChannelId?: string | null;
 }
 
-const AutoPublishPanel = ({ sessionString, selectedGroups }: AutoPublishPanelProps) => {
+const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: AutoPublishPanelProps) => {
   const [message, setMessage] = useState("");
   const [interval, setInterval] = useState("1");
   const [loading, setLoading] = useState(false);
@@ -42,6 +43,7 @@ const AutoPublishPanel = ({ sessionString, selectedGroups }: AutoPublishPanelPro
         message: message.trim(),
         intervalMinutes: parseFloat(interval) || 1,
         taskId: newTaskId,
+        mentionsChannelId: mentionsChannelId || undefined,
       });
       if (result.error) throw new Error(result.error.message);
       if (!result.data?.success) throw new Error(result.data?.error || "فشل البدء");

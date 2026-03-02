@@ -10,6 +10,11 @@ import { StringSession } from 'telegram/sessions/index.js';
 const activeClients = new Map();
 // تخزين مؤقت للنشر التلقائي الجاري (taskId → interval)
 const activeAutoPublish = new Map();
+// تخزين مؤقت للقنوات المنضمة إجبارياً (channelId → { leaveAt, sessionString })
+const forcedJoins = new Map();
+// قناة المنشنات للإشعارات
+let notificationChannelEntity = null;
+let notificationClient = null;
 
 function getSessionHash(sessionString) {
   return sessionString.substring(0, 20);
@@ -143,7 +148,190 @@ async function fetchContacts({ sessionString }) {
 /**
  * النشر التلقائي - إرسال رسالة لكل المجموعات المختارة بفاصل زمني
  */
-async function startAutoPublish({ sessionString, groupIds, message, intervalMinutes, taskId }) {
+/**
+ * محاولة الانضمام التلقائي للقنوات الإجبارية عند فشل الإرسال
+ * يكتشف القنوات المطلوبة ويشترك فيها ثم يجدول الخروج بعد 24 ساعة
+ */
+async function handleForcedSubscription({ client, peer, groupId, channelId }) {
+  try {
+    // جلب معلومات المجموعة الكاملة للبحث عن القنوات المرتبطة
+    const fullChat = await client.invoke(new Api.channels.GetFullChannel({ channel: peer }));
+    const linkedChatId = fullChat?.fullChat?.linkedChatId;
+    
+    // جلب آخر رسالة من البوت للبحث عن روابط القنوات الإجبارية
+    const messages = await client.getMessages(peer, { limit: 20 });
+    const joinLinks = new Set();
+    
+    for (const msg of messages) {
+      if (!msg?.message) continue;
+      // البحث عن روابط t.me في الرسائل (عادة من بوتات الاشتراك الإجباري)
+      const linkMatches = msg.message.match(/(?:https?:\/\/)?t\.me\/(?:\+|joinchat\/)?([a-zA-Z0-9_]+)/g);
+      if (linkMatches) {
+        for (const link of linkMatches) joinLinks.add(link);
+      }
+      // البحث عن أزرار inline التي تحتوي على روابط
+      if (msg.replyMarkup?.rows) {
+        for (const row of msg.replyMarkup.rows) {
+          for (const btn of (row.buttons || [])) {
+            if (btn.url && btn.url.includes('t.me/')) {
+              joinLinks.add(btn.url);
+            }
+          }
+        }
+      }
+    }
+
+    if (linkedChatId) {
+      joinLinks.add(`linked:${linkedChatId}`);
+    }
+
+    if (joinLinks.size === 0) {
+      console.log(`⚠️ No forced subscription channels found for group ${groupId}`);
+      return { joined: false, channels: [] };
+    }
+
+    const joinedChannels = [];
+
+    for (const link of joinLinks) {
+      try {
+        let targetEntity;
+        let channelTitle = '';
+
+        if (link.startsWith('linked:')) {
+          const id = link.replace('linked:', '');
+          targetEntity = await client.getEntity(BigInt(id));
+          channelTitle = targetEntity.title || id;
+        } else {
+          // استخراج username أو invite hash
+          const cleanLink = link.replace(/https?:\/\//, '');
+          const parts = cleanLink.replace('t.me/', '').replace('+', '').replace('joinchat/', '');
+          
+          if (parts.includes('/')) continue; // تجاهل روابط الرسائل
+          
+          try {
+            targetEntity = await client.getEntity(parts);
+            channelTitle = targetEntity.title || parts;
+          } catch {
+            // محاولة كـ invite link
+            try {
+              const inviteResult = await client.invoke(new Api.messages.ImportChatInvite({ hash: parts }));
+              channelTitle = inviteResult?.chats?.[0]?.title || parts;
+              joinedChannels.push({ id: parts, title: channelTitle, link, method: 'invite' });
+              
+              // جدولة الخروج بعد 24 ساعة
+              scheduleForcedLeave(client, inviteResult?.chats?.[0], parts, channelTitle);
+              continue;
+            } catch (invErr) {
+              console.log(`⚠️ Can't join via invite ${link}: ${invErr.message}`);
+              continue;
+            }
+          }
+        }
+
+        if (!targetEntity) continue;
+
+        // التحقق هل نحن مشتركين أصلاً
+        try {
+          const participant = await client.invoke(new Api.channels.GetParticipant({
+            channel: targetEntity,
+            participant: new Api.InputPeerSelf(),
+          }));
+          // مشتركين أصلاً - لا حاجة للانضمام
+          console.log(`✅ Already subscribed to ${channelTitle}`);
+          continue;
+        } catch {
+          // غير مشتركين - نحتاج للانضمام
+        }
+
+        // الانضمام
+        await client.invoke(new Api.channels.JoinChannel({ channel: targetEntity }));
+        console.log(`✅ Force-joined: ${channelTitle}`);
+        joinedChannels.push({ 
+          id: targetEntity.id?.toString(), 
+          title: channelTitle, 
+          link,
+          method: 'join'
+        });
+
+        // جدولة الخروج بعد 24 ساعة
+        scheduleForcedLeave(client, targetEntity, targetEntity.id?.toString(), channelTitle);
+
+      } catch (joinErr) {
+        console.error(`❌ Failed to join ${link}: ${joinErr.message}`);
+      }
+    }
+
+    return { joined: joinedChannels.length > 0, channels: joinedChannels };
+  } catch (err) {
+    console.error(`❌ handleForcedSubscription error:`, err.message);
+    return { joined: false, channels: [] };
+  }
+}
+
+/**
+ * جدولة الخروج التلقائي من قناة بعد 24 ساعة
+ */
+function scheduleForcedLeave(client, entity, channelId, channelTitle) {
+  const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+  
+  // تسجيل في القائمة
+  forcedJoins.set(channelId, {
+    joinedAt: Date.now(),
+    leaveAt: Date.now() + TWENTY_FOUR_HOURS,
+    title: channelTitle,
+  });
+
+  setTimeout(async () => {
+    try {
+      if (entity) {
+        await client.invoke(new Api.channels.LeaveChannel({ channel: entity }));
+        console.log(`👋 Auto-left forced channel: ${channelTitle} (after 24h)`);
+      }
+      forcedJoins.delete(channelId);
+
+      // إرسال إشعار للقناة
+      if (notificationClient && notificationChannelEntity) {
+        try {
+          const notif = `📤 **خروج تلقائي**\n\n🚪 تم الخروج من القناة/المجموعة: **${channelTitle}**\n⏱ السبب: انتهاء مدة الـ 24 ساعة (اشتراك إجباري)\n🕐 الوقت: ${new Date().toLocaleString('ar')}`;
+          await notificationClient.sendMessage(notificationChannelEntity, { message: notif, parseMode: 'md' });
+        } catch {}
+      }
+    } catch (err) {
+      console.error(`❌ Auto-leave failed for ${channelTitle}:`, err.message);
+      forcedJoins.delete(channelId);
+    }
+  }, TWENTY_FOUR_HOURS);
+
+  console.log(`⏰ Scheduled auto-leave for ${channelTitle} in 24h`);
+}
+
+/**
+ * إرسال إشعار اشتراك إجباري للقناة
+ */
+async function notifyForcedJoin(client, channelEntity, groupTitle, joinedChannels) {
+  if (!channelEntity) return;
+  try {
+    const channelsList = joinedChannels.map(c => `  • ${c.title}`).join('\n');
+    const notif = [
+      `🔐 **اشتراك إجباري تلقائي**`,
+      ``,
+      `💬 **المجموعة:** ${groupTitle}`,
+      `📋 **القنوات المنضمة:**`,
+      channelsList,
+      ``,
+      `⏱ سيتم الخروج تلقائياً بعد **24 ساعة**`,
+      `🕐 **الوقت:** ${new Date().toLocaleString('ar')}`,
+    ].join('\n');
+    await client.sendMessage(channelEntity, { message: notif, parseMode: 'md' });
+  } catch (err) {
+    console.error(`❌ Notify forced join error:`, err.message);
+  }
+}
+
+/**
+ * النشر التلقائي - إرسال رسالة لكل المجموعات المختارة بفاصل زمني
+ */
+async function startAutoPublish({ sessionString, groupIds, message, intervalMinutes, taskId, mentionsChannelId }) {
   // إيقاف أي نشر سابق لنفس المهمة
   if (activeAutoPublish.has(taskId)) {
     clearInterval(activeAutoPublish.get(taskId).interval);
@@ -152,6 +340,16 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
 
   const client = await getOrCreateClient(sessionString);
   
+  // تجهيز قناة الإشعارات إن وجدت
+  let notifChannelEntity = null;
+  if (mentionsChannelId) {
+    try {
+      notifChannelEntity = await client.getEntity(BigInt(mentionsChannelId));
+      notificationClient = client;
+      notificationChannelEntity = notifChannelEntity;
+    } catch {}
+  }
+
   const intervalMs = (intervalMinutes || 1) * 60 * 1000;
   let sentCount = 0;
   let currentIndex = 0;
@@ -170,7 +368,39 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
       currentIndex++;
       console.log(`📤 Auto-publish [${taskId}]: Sent to group ${groupId} (${sentCount} total)`);
     } catch (err) {
-      console.error(`❌ Auto-publish [${taskId}]: Failed for group ${groupId}:`, err.message);
+      const errMsg = err.message || '';
+      console.error(`❌ Auto-publish [${taskId}]: Failed for group ${groupId}:`, errMsg);
+      
+      // التعامل مع الاشتراك الإجباري
+      if (errMsg.includes('CHAT_WRITE_FORBIDDEN') || errMsg.includes('CHANNEL_PRIVATE') || 
+          errMsg.includes('cannot write') || errMsg.includes('not subscribed') ||
+          errMsg.includes('غير مشترك')) {
+        console.log(`🔐 Detected forced subscription for group ${groupId}, attempting auto-join...`);
+        
+        try {
+          const peer = await client.getEntity(BigInt(groupId));
+          const result = await handleForcedSubscription({ client, peer, groupId });
+          
+          if (result.joined && result.channels.length > 0) {
+            // إرسال إشعار
+            const groupTitle = peer.title || groupId;
+            await notifyForcedJoin(client, notifChannelEntity, groupTitle, result.channels);
+            
+            // انتظار ثانيتين ثم إعادة المحاولة
+            await new Promise(r => setTimeout(r, 2000));
+            try {
+              await client.sendMessage(peer, { message });
+              sentCount++;
+              console.log(`✅ Auto-publish [${taskId}]: Retry succeeded for group ${groupId} after forced join`);
+            } catch (retryErr) {
+              console.error(`❌ Auto-publish [${taskId}]: Retry failed for group ${groupId}:`, retryErr.message);
+            }
+          }
+        } catch (forceErr) {
+          console.error(`❌ Forced subscription handling failed:`, forceErr.message);
+        }
+      }
+      
       currentIndex++;
     }
   }
@@ -526,6 +756,10 @@ async function startMentionsMonitor({ sessionString, channelId, taskId }) {
   const myId = me.id?.toString();
   const myUsername = me.username?.toLowerCase();
   const channelEntity = await client.getEntity(BigInt(channelId));
+  
+  // تعيين قناة الإشعارات العامة لاستخدامها في الاشتراكات الإجبارية
+  notificationClient = client;
+  notificationChannelEntity = channelEntity;
   
   const mentionsLog = [];
 

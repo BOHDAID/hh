@@ -212,6 +212,7 @@ serve(async (req) => {
         body.message = reqBody.message;
         body.intervalMinutes = reqBody.intervalMinutes;
         body.taskId = reqBody.taskId;
+        body.mentionsChannelId = reqBody.mentionsChannelId;
         break;
 
       case "tg-stop-auto-publish":
