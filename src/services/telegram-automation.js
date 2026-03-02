@@ -66,15 +66,7 @@ async function fetchGroups({ sessionString }) {
     
     if (!isGroup || isChannel) continue;
 
-    let photoUrl = null;
-    try {
-      if (entity.photo) {
-        const photoBuffer = await client.downloadProfilePhoto(entity, { isBig: false });
-        if (photoBuffer) {
-          photoUrl = `data:image/jpeg;base64,${Buffer.from(photoBuffer).toString('base64')}`;
-        }
-      }
-    } catch {}
+    const photoUrl = null; // تخطي الصور لتسريع الجلب
 
     groups.push({
       id: entity.id?.toString(),
