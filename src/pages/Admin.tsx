@@ -38,6 +38,7 @@ import {
   Languages,
   Bot,
   Activity,
+  Radio,
 } from "lucide-react";
 import {
   Dialog,
@@ -74,6 +75,7 @@ import PoliciesTab from "@/components/admin/PoliciesTab";
 import LogsTab from "@/components/admin/LogsTab";
 import ActivityLogsTab from "@/components/admin/ActivityLogsTab";
 import ActivationCodesTab from "@/components/admin/ActivationCodesTab";
+import AutoDashboardTab from "@/components/admin/AutoDashboardTab";
 
 interface Product {
   id: string;
@@ -585,6 +587,7 @@ const Admin = () => {
     { id: "logs", label: "السجلات", icon: <BarChart3 className="h-4 w-4 md:h-5 md:w-5" /> },
     { id: "activity_logs", label: "سجل الأنشطة", icon: <Activity className="h-4 w-4 md:h-5 md:w-5" /> },
     { id: "activation_codes", label: "أكواد التفعيل", icon: <Bot className="h-4 w-4 md:h-5 md:w-5" /> },
+    { id: "auto_dashboard", label: "النشر التلقائي", icon: <Radio className="h-4 w-4 md:h-5 md:w-5" /> },
   ];
 
   // Filter sidebar items based on user permissions
@@ -705,6 +708,9 @@ const Admin = () => {
 
         {/* Activation Codes Tab */}
         {activeTab === "activation_codes" && hasPermission("activation_codes") && <ActivationCodesTab />}
+
+        {/* Auto Dashboard Tab */}
+        {activeTab === "auto_dashboard" && hasPermission("auto_dashboard") && <AutoDashboardTab />}
 
         {/* Activity Logs Tab */}
         {activeTab === "activity_logs" && hasPermission("activity_logs") && <ActivityLogsTab />}
