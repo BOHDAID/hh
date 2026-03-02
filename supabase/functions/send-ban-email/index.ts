@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
+import nodemailer from "npm:nodemailer@6.9.16";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -219,22 +219,21 @@ body{margin:0;padding:0;background-color:#f4f4f8;}
       ? `${storeName}\n\nمرحباً ${displayName}،\n\nنأسف لإبلاغك بأنه تم إيقاف حسابك.${ban_reason ? `\n\nالسبب: ${ban_reason}` : ''}\n\nإذا كنت تعتقد أن هذا خطأ، تواصل معنا على: ${supportEmail}\n\n© ${currentYear} ${storeName}`
       : `${storeName}\n\nمرحباً ${displayName}،\n\nتم إعادة تفعيل حسابك بنجاح! يمكنك الآن تسجيل الدخول والتسوق.\n\nشكراً لتفهمك!\n\n© ${currentYear} ${storeName}`;
 
-    const client = new SMTPClient({
-      connection: {
-        hostname: smtpHost, port: smtpPort, tls: true,
-        auth: { username: smtpUser, password: smtpPass },
-      },
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpPort === 465,
+      auth: { user: smtpUser, pass: smtpPass },
     });
 
-    await client.send({
+    await transporter.sendMail({
       from: `${storeName} <${senderEmail}>`,
       to: to_email,
       subject: emailSubject,
-      content: plainTextContent,
+      text: plainTextContent,
       html: emailHtml,
     });
 
-    await client.close();
     console.log("Ban notification email sent successfully to:", to_email);
 
     return new Response(

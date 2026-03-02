@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
+import nodemailer from "npm:nodemailer@6.9.16";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -220,22 +220,21 @@ ${admin_notes ? `ملاحظة: ${admin_notes}` : ''}
 © ${currentYear} ${storeName}
     `.trim();
 
-    const client = new SMTPClient({
-      connection: {
-        hostname: smtpHost, port: smtpPort, tls: true,
-        auth: { username: smtpUser, password: smtpPass },
-      },
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpPort === 465,
+      auth: { user: smtpUser, pass: smtpPass },
     });
 
-    await client.send({
+    await transporter.sendMail({
       from: `${storeName} <${senderEmail}>`,
       to: to_email,
       subject: `🎉 تم توفير المنتج: ${product_name}`,
-      content: plainTextContent,
+      text: plainTextContent,
       html: emailHtml,
     });
 
-    await client.close();
     console.log("📧 Request fulfilled email sent successfully to:", to_email);
 
     return new Response(

@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
+import nodemailer from "npm:nodemailer@6.9.16";
 
 // ============================================================
 // STANDALONE Edge Function: send-ban-email
@@ -51,7 +51,7 @@ const handler = async (req: Request): Promise<Response> => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  let client: SMTPClient | null = null;
+  
 
   try {
     // Initialize Supabase client with service role for accessing all settings
@@ -235,30 +235,20 @@ const handler = async (req: Request): Promise<Response> => {
       ? `${storeName}\n\nمرحباً ${user_name || "عزيزي العميل"},\n\nنأسف لإبلاغك بأنه تم إيقاف حسابك.${ban_reason ? `\n\nالسبب: ${ban_reason}` : ''}\n\nإذا كنت تعتقد أن هذا خطأ، يرجى التواصل معنا على: ${supportEmail}`
       : `${storeName}\n\nمرحباً ${user_name || "عزيزي العميل"},\n\nتم إعادة تفعيل حسابك. يمكنك الآن تسجيل الدخول والتسوق مرة أخرى.\n\nشكراً لتفهمك!`;
 
-    // Initialize SMTP client
-    client = new SMTPClient({
-      connection: {
-        hostname: smtpHost,
-        port: smtpPort,
-        tls: true,
-        auth: {
-          username: smtpUser,
-          password: smtpPass,
-        },
-      },
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpPort === 465,
+      auth: { user: smtpUser, pass: smtpPass },
     });
 
-    // Send email with proper Base64 encoding
-    await client.send({
+    await transporter.sendMail({
       from: `${storeName} <${senderEmail}>`,
       to: to_email,
       subject: emailSubject,
-      content: plainTextContent,
+      text: plainTextContent,
       html: emailHtml,
     });
-
-    await client.close();
-    client = null;
 
     console.log("Ban notification email sent successfully to:", to_email);
 
@@ -280,13 +270,6 @@ const handler = async (req: Request): Promise<Response> => {
         headers: { "Content-Type": "application/json", ...corsHeaders },
       }
     );
-  } finally {
-    // Ensure SMTP connection is closed even when send() throws
-    try {
-      if (client) await client.close();
-    } catch (closeErr) {
-      console.error("Error closing SMTP client:", closeErr);
-    }
   }
 };
 
