@@ -64,23 +64,38 @@ const AppInitializer = ({ children }: { children: ReactNode }) => {
     setCartCount(count || 0);
   };
 
+  const fetchBrandingSettings = async () => {
+    const { data } = await db
+      .from("site_settings")
+      .select("key, value")
+      .in("key", ["store_name", "store_logo_url", "maintenance_mode", "maintenance_message"]);
+
+    // Reset defaults first to avoid stale UI when settings are removed
+    setStoreName("");
+    setStoreLogo(null);
+    setMaintenanceMode(false);
+    setMaintenanceMessage("");
+
+    if (data) {
+      for (const s of data) {
+        if (s.key === "store_name" && s.value) setStoreName(s.value);
+        if (s.key === "store_logo_url" && s.value) setStoreLogo(s.value);
+        if (s.key === "maintenance_mode") {
+          const normalized = String(s.value ?? "").toLowerCase();
+          setMaintenanceMode(["true", "1", "yes", "on"].includes(normalized));
+        }
+        if (s.key === "maintenance_message" && s.value) setMaintenanceMessage(s.value);
+      }
+    }
+  };
+
   useEffect(() => {
     const init = async () => {
       // Fetch branding + auth session in parallel
-      const [brandingRes, sessionRes] = await Promise.all([
-        db.from("site_settings").select("key, value").in("key", ["store_name", "store_logo_url", "maintenance_mode", "maintenance_message"]),
+      const [, sessionRes] = await Promise.all([
+        fetchBrandingSettings(),
         authClient.auth.getSession(),
       ]);
-
-      // Set branding
-      if (brandingRes.data) {
-        for (const s of brandingRes.data) {
-          if (s.key === "store_name" && s.value) setStoreName(s.value);
-          if (s.key === "store_logo_url" && s.value) setStoreLogo(s.value);
-          if (s.key === "maintenance_mode") setMaintenanceMode(s.value === "true");
-          if (s.key === "maintenance_message" && s.value) setMaintenanceMessage(s.value);
-        }
-      }
 
       // Set user + fetch user data
       const session = sessionRes.data.session;
@@ -111,9 +126,16 @@ const AppInitializer = ({ children }: { children: ReactNode }) => {
     const handleCartUpdate = () => refreshCart();
     window.addEventListener("cart-updated", handleCartUpdate);
 
+    // Listen for settings updates (e.g. maintenance mode toggled from admin)
+    const handleSiteSettingsUpdated = () => {
+      fetchBrandingSettings();
+    };
+    window.addEventListener("site-settings-updated", handleSiteSettingsUpdated);
+
     return () => {
       subscription.unsubscribe();
       window.removeEventListener("cart-updated", handleCartUpdate);
+      window.removeEventListener("site-settings-updated", handleSiteSettingsUpdated);
     };
   }, []);
 
