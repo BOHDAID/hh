@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { db, getAuthClient, isExternalConfigured } from "@/lib/supabaseClient";
+import { supabase as cloudDb } from "@/integrations/supabase/client";
 import { invokeCloudFunction, invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -158,7 +159,8 @@ const Checkout = () => {
 
       // Plan checkout mode - load plan as virtual product
       if (isPlanCheckout && planId) {
-        const { data: planRow, error: planErr } = await db
+        // Plans are stored in Lovable Cloud DB, not external
+        const { data: planRow, error: planErr } = await cloudDb
           .from("telegram_plans")
           .select("*")
           .eq("id", planId)
@@ -171,23 +173,37 @@ const Checkout = () => {
           return;
         }
 
+        // Get sessions count from URL params or location state
+        const urlParams = new URLSearchParams(location.search);
+        const sessionsFromUrl = parseInt(urlParams.get("sessions") || "1", 10);
+        const stateData = location.state as any;
+        const sessionsCount = stateData?.sessions || sessionsFromUrl || 1;
+
+        // Calculate price: base + 35% for each extra session
+        const basePrice = Number(planRow.price);
+        let totalPlanPrice = basePrice;
+        for (let i = 2; i <= sessionsCount; i++) {
+          totalPlanPrice += basePrice * 0.35;
+        }
+        totalPlanPrice = Math.round(totalPlanPrice * 100) / 100;
+
         setPlanData({
           id: planRow.id,
           name: planRow.name,
-          price: Number(planRow.price),
+          price: totalPlanPrice,
           duration_days: planRow.duration_days,
-          max_sessions: planRow.max_sessions,
+          max_sessions: sessionsCount,
         });
 
         // Create virtual product for UI compatibility
         setProduct({
           id: planRow.id,
-          name: `اشتراك: ${planRow.name}`,
-          price: Number(planRow.price),
+          name: `اشتراك: ${planRow.name} (${sessionsCount} جلسة)`,
+          price: totalPlanPrice,
           image_url: null,
           product_type: "subscription",
           warranty_days: planRow.duration_days,
-          description: `باقة ${planRow.name} - ${planRow.duration_days} يوم - ${planRow.max_sessions} جلسة`,
+          description: `باقة ${planRow.name} - ${planRow.duration_days} يوم - ${sessionsCount} جلسة`,
         });
         setStockCount(999999); // Always available
       }
@@ -600,7 +616,7 @@ const Checkout = () => {
       if (isPlanCheckout && planData) {
         const response = await invokeCloudFunction<{ success: boolean; order?: { id: string; order_number: string }; error?: string }>(
           "process-plan-subscription",
-          { plan_id: planData.id, payment_method: paymentMethod },
+          { plan_id: planData.id, payment_method: paymentMethod, sessions: planData.max_sessions },
           session.access_token
         );
 
