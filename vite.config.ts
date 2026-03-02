@@ -54,4 +54,28 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  optimizeDeps: {
+    exclude: [
+      "puppeteer",
+      "puppeteer-extra",
+      "puppeteer-extra-plugin-stealth",
+      "telegram",
+      "express",
+      "imap",
+      "mailparser",
+    ],
+  },
+  build: {
+    rollupOptions: {
+      external: [
+        "puppeteer",
+        "puppeteer-extra",
+        "puppeteer-extra-plugin-stealth",
+        "telegram",
+        "express",
+        "imap",
+        "mailparser",
+      ],
+    },
+  },
 }));
