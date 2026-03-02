@@ -240,7 +240,7 @@ const ProductsSection = () => {
             <motion.div 
               className={viewMode === "grid" 
                 ? "grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
-                : "grid gap-4 grid-cols-1"
+                : "grid gap-2 grid-cols-1 sm:grid-cols-2"
               }
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -272,6 +272,7 @@ const ProductsSection = () => {
                     warranty_days={product.warranty_days || undefined}
                     sales_count={product.sales_count || 0}
                     average_rating={product.average_rating || 0}
+                    compact={viewMode === "list"}
                   />
                 </motion.div>
               ))}
