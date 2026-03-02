@@ -164,17 +164,56 @@ async function handleForcedSubscription({ client, peer, groupId, channelId }) {
     
     for (const msg of messages) {
       if (!msg?.message) continue;
-      // البحث عن روابط t.me في الرسائل (عادة من بوتات الاشتراك الإجباري)
+      
+      // البحث عن روابط t.me في الرسائل
       const linkMatches = msg.message.match(/(?:https?:\/\/)?t\.me\/(?:\+|joinchat\/)?([a-zA-Z0-9_]+)/g);
       if (linkMatches) {
         for (const link of linkMatches) joinLinks.add(link);
       }
+      
+      // البحث عن @username في النص (مثل @x_f_r) - نمط بوتات الاشتراك الإجباري
+      const usernameMatches = msg.message.match(/@([a-zA-Z][a-zA-Z0-9_]{3,})/g);
+      if (usernameMatches) {
+        for (const uMatch of usernameMatches) {
+          const username = uMatch.replace('@', '');
+          // تجاهل اليوزرنيمات القصيرة جداً أو الشائعة (بوتات)
+          if (username.length >= 4 && !username.toLowerCase().endsWith('bot')) {
+            joinLinks.add(`t.me/${username}`);
+          }
+        }
+      }
+
+      // البحث في entities الرسالة عن mentions مباشرة
+      if (msg.entities) {
+        for (const entity of msg.entities) {
+          // MessageEntityMention = @username
+          if (entity.className === 'MessageEntityMention') {
+            const mention = msg.message.substring(entity.offset, entity.offset + entity.length);
+            const username = mention.replace('@', '');
+            if (username.length >= 4 && !username.toLowerCase().endsWith('bot')) {
+              joinLinks.add(`t.me/${username}`);
+            }
+          }
+          // MessageEntityTextUrl = رابط مخفي في النص
+          if (entity.className === 'MessageEntityTextUrl' && entity.url?.includes('t.me/')) {
+            joinLinks.add(entity.url);
+          }
+        }
+      }
+      
       // البحث عن أزرار inline التي تحتوي على روابط
       if (msg.replyMarkup?.rows) {
         for (const row of msg.replyMarkup.rows) {
           for (const btn of (row.buttons || [])) {
             if (btn.url && btn.url.includes('t.me/')) {
               joinLinks.add(btn.url);
+            }
+            // أزرار callback قد تحتوي على معلومات القناة
+            if (btn.text && btn.text.includes('@')) {
+              const btnUsername = btn.text.match(/@([a-zA-Z][a-zA-Z0-9_]{3,})/);
+              if (btnUsername && !btnUsername[1].toLowerCase().endsWith('bot')) {
+                joinLinks.add(`t.me/${btnUsername[1]}`);
+              }
             }
           }
         }
