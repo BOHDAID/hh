@@ -4,6 +4,7 @@ import { db, getAuthClient, isExternalConfigured } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import UserLayout from "@/components/user/UserLayout";
+import CartRecommendations from "@/components/CartRecommendations";
 import { 
   Loader2, 
   ShoppingCart, 
@@ -290,6 +291,16 @@ const Cart = () => {
                 </span>
               </div>
             </div>
+
+            {/* Smart Recommendations */}
+            <CartRecommendations
+              cartProductIds={cartItems.map(item => item.product_id)}
+              userId={user.id}
+              onAddedToCart={() => {
+                // Refresh cart
+                window.dispatchEvent(new Event("cart-updated"));
+              }}
+            />
 
             {/* Checkout Button */}
             <Button
