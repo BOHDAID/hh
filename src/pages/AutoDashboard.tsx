@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Bot, Home, LogIn, BookOpen, Users, Send, MessageSquare, ChevronLeft, ChevronRight, User, CheckCircle2, Loader2, AlertCircle, Key, ExternalLink, Eye, EyeOff, Copy, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -42,9 +42,38 @@ const AutoDashboard = () => {
   const [telegramUser, setTelegramUser] = useState<TelegramUser | null>(null);
   const [loginError, setLoginError] = useState("");
   const [activeSession, setActiveSession] = useState("");
+  const [autoConnecting, setAutoConnecting] = useState(false);
 
   // Groups state
   const [selectedGroups, setSelectedGroups] = useState<TelegramGroup[]>([]);
+
+  // Auto-reconnect from saved session
+  useEffect(() => {
+    const saved = localStorage.getItem("tg_session");
+    const savedUser = localStorage.getItem("tg_user");
+    const savedGroups = localStorage.getItem("tg_groups");
+    
+    if (saved) {
+      setAutoConnecting(true);
+      callAction("tg-connect-session", { sessionString: saved })
+        .then(result => {
+          setLoggedIn(true);
+          setTelegramUser(result.user || (savedUser ? JSON.parse(savedUser) : null));
+          setActiveSession(saved);
+          setMode("groups");
+          if (savedGroups) {
+            try { setSelectedGroups(JSON.parse(savedGroups)); } catch {}
+          }
+        })
+        .catch(() => {
+          // Session expired or invalid, clear it
+          localStorage.removeItem("tg_session");
+          localStorage.removeItem("tg_user");
+          localStorage.removeItem("tg_groups");
+        })
+        .finally(() => setAutoConnecting(false));
+    }
+  }, []);
 
   // Wizard state (instructions mode)
   type Step = "credentials" | "phone" | "otp" | "2fa" | "result";
@@ -80,6 +109,9 @@ const AutoDashboard = () => {
       setTelegramUser(result.user || null);
       setActiveSession(sessionInput.trim());
       setMode("groups");
+      // حفظ الجلسة
+      localStorage.setItem("tg_session", sessionInput.trim());
+      if (result.user) localStorage.setItem("tg_user", JSON.stringify(result.user));
       toast.success("تم الاتصال بنجاح!");
     } catch (err: any) {
       setLoginError(err.message);
@@ -96,6 +128,9 @@ const AutoDashboard = () => {
     setSessionInput("");
     setSelectedGroups([]);
     setMode("login");
+    localStorage.removeItem("tg_session");
+    localStorage.removeItem("tg_user");
+    localStorage.removeItem("tg_groups");
   };
 
   // === Instructions handlers ===
@@ -184,6 +219,15 @@ const AutoDashboard = () => {
             </div>
           </div>
           <Button variant="outline" onClick={handleLogout}>قطع الاتصال</Button>
+        </div>
+      );
+    }
+
+    if (autoConnecting) {
+      return (
+        <div className="flex flex-col items-center justify-center py-16 space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground text-sm">جاري إعادة الاتصال...</p>
         </div>
       );
     }
@@ -310,7 +354,7 @@ const AutoDashboard = () => {
     switch (mode) {
       case "login": return renderLogin();
       case "instructions": return renderInstructions();
-      case "groups": return <GroupsSelector sessionString={activeSession} selectedGroups={selectedGroups} onSave={setSelectedGroups} />;
+      case "groups": return <GroupsSelector sessionString={activeSession} selectedGroups={selectedGroups} onSave={(groups) => { setSelectedGroups(groups); localStorage.setItem("tg_groups", JSON.stringify(groups)); }} />;
       case "auto-publish": return <AutoPublishPanel sessionString={activeSession} selectedGroups={selectedGroups} />;
       case "broadcast": return <BroadcastPanel sessionString={activeSession} />;
     }
