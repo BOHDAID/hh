@@ -144,6 +144,40 @@ async function verify2FA({ apiId, phone, password }) {
   };
 }
 
+/**
+ * التحقق من Session String عبر الاتصال الفعلي بتليجرام
+ * يُرجع معلومات الحساب إذا نجح
+ */
+async function connectSession({ apiId, apiHash, sessionString }) {
+  const stringSession = new StringSession(sessionString);
+  const client = new TelegramClient(stringSession, parseInt(apiId), apiHash, {
+    connectionRetries: 3,
+    deviceModel: 'Angel Store Bot',
+    systemVersion: 'Linux',
+    appVersion: '1.0.0',
+  });
+
+  await client.connect();
+
+  // جلب معلومات الحساب
+  const me = await client.getMe();
+
+  await client.disconnect();
+
+  console.log(`✅ Session validated for ${me.phone || me.username || me.id}`);
+
+  return {
+    success: true,
+    user: {
+      id: me.id?.toString(),
+      firstName: me.firstName || '',
+      lastName: me.lastName || '',
+      username: me.username || '',
+      phone: me.phone || '',
+    },
+  };
+}
+
 // تنظيف الجلسات المعلقة بعد 10 دقائق
 setInterval(() => {
   const now = Date.now();
@@ -162,4 +196,5 @@ export default {
   sendCode,
   verifyCode,
   verify2FA,
+  connectSession,
 };

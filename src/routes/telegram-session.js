@@ -84,4 +84,21 @@ router.post('/verify-2fa', async (req, res) => {
   }
 });
 
+// التحقق من Session String والاتصال الفعلي
+router.post('/connect-session', async (req, res) => {
+  try {
+    const { apiId, apiHash, sessionString } = req.body;
+
+    if (!apiId || !apiHash || !sessionString) {
+      return res.status(400).json({ success: false, error: 'apiId, apiHash, sessionString مطلوبة' });
+    }
+
+    const result = await telegramSession.connectSession({ apiId, apiHash, sessionString });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Connect session error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 export default router;
