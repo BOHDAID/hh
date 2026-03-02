@@ -114,6 +114,13 @@ serve(async (req) => {
         body.password = reqBody.password;
         break;
 
+      case "tg-connect-session":
+        endpoint = "/api/telegram-session/connect-session";
+        body.apiId = reqBody.apiId;
+        body.apiHash = reqBody.apiHash;
+        body.sessionString = reqBody.sessionString;
+        break;
+
       default:
         return new Response(
           JSON.stringify({ success: false, error: `إجراء غير معروف: ${action}` }),
