@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { motion, useMotionValue, useTransform, useSpring } from "framer-motion";
 import ProductDetailsModal from "./ProductDetailsModal";
 import WishlistButton from "./WishlistButton";
+import LiveViewers from "./LiveViewers";
 import { useTranslation } from "react-i18next";
 
 interface ProductCardProps {
@@ -266,9 +267,14 @@ const ProductCard = ({
         >
           {title}
         </motion.h3>
-        <p className="mb-2 sm:mb-5 text-xs sm:text-sm text-muted-foreground line-clamp-2 sm:line-clamp-3 leading-relaxed hidden sm:block">
+        <p className="mb-2 sm:mb-3 text-xs sm:text-sm text-muted-foreground line-clamp-2 sm:line-clamp-3 leading-relaxed hidden sm:block">
           {description}
         </p>
+
+        {/* Live Viewers */}
+        <div className="mb-2 sm:mb-3">
+          <LiveViewers productId={id} salesCount={sales_count} />
+        </div>
 
         <div className="flex items-center justify-between flex-wrap gap-2">
           {/* Show price based on variants */}

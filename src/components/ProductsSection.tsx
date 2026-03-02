@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useRef } from "react";
 import { db } from "@/lib/supabaseClient";
-import { PackageX, Sparkles, Search, X } from "lucide-react";
+import { PackageX, Sparkles, Search, X, LayoutGrid, List } from "lucide-react";
 import { motion, useInView, AnimatePresence } from "framer-motion";
 import { ProductGridSkeleton } from "@/components/ProductCardSkeleton";
 import { useTranslation } from "react-i18next";
@@ -67,6 +67,7 @@ const ProductsSection = () => {
   const isRTL = i18n.language === 'ar';
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "-50px" });
 
@@ -160,26 +161,46 @@ const ProductsSection = () => {
           ))}
         </motion.div>
 
-        {/* Search Bar */}
+        {/* Search Bar + View Toggle */}
         <motion.div
           className="max-w-xl mx-auto mb-10"
           initial={{ opacity: 0, y: 10 }}
           animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 }}
           transition={{ delay: 0.4, duration: 0.4 }}
         >
-          <div className="relative">
-            <Search className="absolute top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground start-4" />
-            <Input
-              placeholder={isRTL ? "ابحث عن منتج..." : "Search for a product..."}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="ps-12 h-12 text-base rounded-full border-2 border-border/50 focus:border-primary/50"
-            />
-            {searchQuery && (
-              <button onClick={() => setSearchQuery("")} className="absolute top-1/2 -translate-y-1/2 end-4">
-                <X className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
-              </button>
-            )}
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground start-4" />
+              <Input
+                placeholder={isRTL ? "ابحث عن منتج..." : "Search for a product..."}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="ps-12 h-12 text-base rounded-full border-2 border-border/50 focus:border-primary/50"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery("")} className="absolute top-1/2 -translate-y-1/2 end-4">
+                  <X className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
+                </button>
+              )}
+            </div>
+            <div className="flex gap-1 bg-muted rounded-full p-1 h-12">
+              <Button
+                variant={viewMode === "grid" ? "default" : "ghost"}
+                size="icon"
+                className="rounded-full h-10 w-10"
+                onClick={() => setViewMode("grid")}
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={viewMode === "list" ? "default" : "ghost"}
+                size="icon"
+                className="rounded-full h-10 w-10"
+                onClick={() => setViewMode("list")}
+              >
+                <List className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </motion.div>
 
@@ -217,7 +238,10 @@ const ProductsSection = () => {
         <AnimatePresence mode="wait">
           {!loading && filteredProducts.length > 0 && (
             <motion.div 
-              className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+              className={viewMode === "grid" 
+                ? "grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+                : "grid gap-4 grid-cols-1"
+              }
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
