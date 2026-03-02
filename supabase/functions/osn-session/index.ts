@@ -93,7 +93,7 @@ serve(async (req) => {
 
     const needsAccountSessionAccess = ACCOUNT_SESSION_ACTIONS.has(action);
     let accountUserId: string | null = null;
-    let externalClient: ReturnType<typeof createClient> | null = null;
+    let sessionClient: ReturnType<typeof createClient> | null = null;
 
     if (needsAccountSessionAccess) {
       accountUserId = await getAuthenticatedUserId(req);
@@ -104,14 +104,17 @@ serve(async (req) => {
         );
       }
 
-      if (!EXTERNAL_SUPABASE_URL || !EXTERNAL_SUPABASE_SERVICE_ROLE_KEY) {
+      // Use Lovable Cloud DB (where telegram_sessions table exists)
+      const cloudUrl = Deno.env.get("SUPABASE_URL");
+      const cloudServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      if (!cloudUrl || !cloudServiceKey) {
         return new Response(
-          JSON.stringify({ success: false, error: "إعدادات قاعدة البيانات الخارجية غير مكتملة" }),
+          JSON.stringify({ success: false, error: "إعدادات قاعدة بيانات Cloud غير مكتملة" }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-      externalClient = createClient(EXTERNAL_SUPABASE_URL, EXTERNAL_SUPABASE_SERVICE_ROLE_KEY, {
+      sessionClient = createClient(cloudUrl, cloudServiceKey, {
         auth: { persistSession: false, autoRefreshToken: false },
       });
     }
@@ -236,7 +239,7 @@ serve(async (req) => {
           );
         }
 
-        const { error } = await externalClient!
+        const { error } = await sessionClient!
           .from("telegram_sessions")
           .upsert(
             {
@@ -264,7 +267,7 @@ serve(async (req) => {
       }
 
       case "tg-get-account-session": {
-        const { data, error } = await externalClient!
+        const { data, error } = await sessionClient!
           .from("telegram_sessions")
           .select("session_string, telegram_user, selected_groups, updated_at")
           .eq("user_id", accountUserId)
@@ -285,7 +288,7 @@ serve(async (req) => {
       }
 
       case "tg-delete-account-session": {
-        const { error } = await externalClient!
+        const { error } = await sessionClient!
           .from("telegram_sessions")
           .delete()
           .eq("user_id", accountUserId);
