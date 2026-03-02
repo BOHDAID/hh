@@ -13,16 +13,19 @@ import CryptoSelector from "@/components/checkout/CryptoSelector";
 import CouponInput from "@/components/CouponInput";
 import { SmallPayPalIcon, SmallCryptoIcon, SmallWalletIcon, SmallLemonIcon, SmallCryptomusIcon, SmallOxaPayIcon, SmallSellAuthIcon, SmallIvnoIcon } from "@/components/checkout/PaymentIcons";
 import PayPalSmartButtons from "@/components/checkout/PayPalSmartButtons";
+import SmartUpsell from "@/components/checkout/SmartUpsell";
 
 interface Product {
   id: string;
   name: string;
+  name_en?: string | null;
   description?: string | null;
   price: number;
   image_url: string | null;
   product_type: string;
   warranty_days: number;
   requires_activation?: boolean | null;
+  category_id?: string | null;
 }
 
 interface SelectedVariant {
@@ -1154,6 +1157,32 @@ const Checkout = () => {
               </div>
             )}
 
+            {/* Smart Upsell - Personalized recommendation */}
+            <SmartUpsell
+              cartProductIds={isCartCheckout 
+                ? cartItems.map(i => i.product.id) 
+                : product ? [product.id] : []
+              }
+              currentCategoryId={product?.category_id}
+              onAddToOrder={(upsellProduct, discountedPrice) => {
+                // Add to cart for the user
+                if (user) {
+                  db.from("cart_items")
+                    .upsert({
+                      user_id: user.id,
+                      product_id: upsellProduct.id,
+                      quantity: 1,
+                    }, { onConflict: "user_id,product_id" })
+                    .then(() => {
+                      window.dispatchEvent(new Event("cart-updated"));
+                      toast({
+                        title: "تمت الإضافة! 🎉",
+                        description: `تم إضافة "${upsellProduct.name}" بخصم 15%`,
+                      });
+                    });
+                }
+              }}
+            />
 
             {/* Proceed Button - Hide when PayPal buttons are shown */}
             {!showPayPalButtons && (
