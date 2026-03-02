@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
-  Crown, CheckCircle2, Clock, Loader2, Zap, Bot, Send, AtSign, BarChart3, Shield, Star, CreditCard, MessageSquare, Sparkles
+  Crown, CheckCircle2, Clock, Loader2, Zap, Bot, Send, AtSign, BarChart3, Shield, Star, CreditCard, MessageSquare, Sparkles, PlusCircle
 } from "lucide-react";
 
 interface Plan {
@@ -15,6 +15,7 @@ interface Plan {
   duration_days: number;
   price: number;
   max_sessions: number;
+  price_per_extra_session: number;
   features: string[];
   is_active: boolean;
 }
@@ -50,6 +51,7 @@ const TelegramPlansSection = () => {
       if (plansData) {
         setPlans(plansData.map(p => ({
           ...p,
+          price_per_extra_session: (p as any).price_per_extra_session ?? 5,
           features: Array.isArray(p.features) ? (p.features as string[]) : []
         })));
       }
@@ -204,8 +206,13 @@ const TelegramPlansSection = () => {
                     <div className="flex items-baseline gap-1">
                       <span className="text-3xl font-bold text-primary">${plan.price}</span>
                     </div>
-                    <div className="text-sm text-muted-foreground flex items-center gap-1">
-                      <Bot className="h-4 w-4" /> {plan.max_sessions} جلسة
+                    <div className="space-y-1">
+                      <div className="text-sm text-muted-foreground flex items-center gap-1">
+                        <Bot className="h-4 w-4" /> {plan.max_sessions} جلسة أساسية
+                      </div>
+                      <div className="text-xs text-muted-foreground flex items-center gap-1">
+                        <PlusCircle className="h-3.5 w-3.5" /> +${plan.price_per_extra_session} لكل جلسة إضافية
+                      </div>
                     </div>
                     <ul className="space-y-2">
                       {plan.features.map((f, i) => (

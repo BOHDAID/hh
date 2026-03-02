@@ -1461,6 +1461,7 @@ export type Database = {
           max_sessions: number
           name: string
           price: number
+          price_per_extra_session: number
           updated_at: string
         }
         Insert: {
@@ -1473,6 +1474,7 @@ export type Database = {
           max_sessions?: number
           name: string
           price?: number
+          price_per_extra_session?: number
           updated_at?: string
         }
         Update: {
@@ -1485,6 +1487,7 @@ export type Database = {
           max_sessions?: number
           name?: string
           price?: number
+          price_per_extra_session?: number
           updated_at?: string
         }
         Relationships: []
