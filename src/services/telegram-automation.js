@@ -34,7 +34,9 @@ async function getOrCreateClient(sessionString) {
     2040,
     'b18441a1ff607e10a989891a5462e627',
     {
-      connectionRetries: 3,
+      connectionRetries: 10,
+      retryDelay: 2000,
+      autoReconnect: true,
       deviceModel: 'ninto Store Bot',
       systemVersion: 'Linux',
       appVersion: '1.0.0',
@@ -614,7 +616,20 @@ async function startMentionsMonitor({ sessionString, channelId, taskId }) {
 
   client.addEventHandler(handler, new NewMessage({}));
   
-  activeMentionsMonitors.set(taskId, { handler, client, mentionsLog });
+  // Auto-reconnect on disconnect/timeout
+  const reconnectInterval = setInterval(async () => {
+    try {
+      if (!client.connected) {
+        console.log(`🔄 Reconnecting mentions monitor [${taskId}]...`);
+        await client.connect();
+        console.log(`✅ Reconnected mentions monitor [${taskId}]`);
+      }
+    } catch (err) {
+      console.error(`❌ Reconnect failed [${taskId}]:`, err.message);
+    }
+  }, 30000); // check every 30s
+  
+  activeMentionsMonitors.set(taskId, { handler, client, mentionsLog, reconnectInterval });
   console.log(`✅ Mentions monitor started [${taskId}]`);
   
   return { success: true, message: 'تم بدء مراقبة المنشنات والردود' };
@@ -625,7 +640,8 @@ async function startMentionsMonitor({ sessionString, channelId, taskId }) {
  */
 async function stopMentionsMonitor({ taskId }) {
   if (activeMentionsMonitors.has(taskId)) {
-    const { handler, client } = activeMentionsMonitors.get(taskId);
+    const { handler, client, reconnectInterval } = activeMentionsMonitors.get(taskId);
+    try { if (reconnectInterval) clearInterval(reconnectInterval); } catch {}
     try { client.removeEventHandler(handler); } catch {}
     activeMentionsMonitors.delete(taskId);
     console.log(`🛑 Mentions monitor stopped [${taskId}]`);
