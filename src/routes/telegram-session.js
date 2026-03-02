@@ -13,21 +13,21 @@ const router = Router();
 // مهم: لازم Parsing للـ JSON قبل قراءة req.body
 router.use(express.json());
 
-// Middleware: secret verification
+// Middleware: التحقق من السر
 router.use((req, res, next) => {
   const incomingSecret = typeof req.body?.secret === 'string' ? req.body.secret.trim() : '';
   const serverSecret = (process.env.QR_AUTOMATION_SECRET || '').trim();
 
   if (!serverSecret) {
-    return res.status(500).json({ success: false, error: 'QR_AUTOMATION_SECRET not configured on server' });
+    return res.status(500).json({ success: false, error: 'لم يتم تكوين QR_AUTOMATION_SECRET على السيرفر' });
   }
 
   if (!incomingSecret) {
-    return res.status(400).json({ success: false, error: 'Missing secret in request body' });
+    return res.status(400).json({ success: false, error: 'السر مفقود في الطلب' });
   }
 
   if (incomingSecret !== serverSecret) {
-    return res.status(401).json({ success: false, error: 'Unauthorized' });
+    return res.status(401).json({ success: false, error: 'غير مصرح' });
   }
 
   next();
