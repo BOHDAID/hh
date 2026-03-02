@@ -30,7 +30,9 @@ async function sendCode({ apiId, apiHash, phone }) {
 
   const stringSession = new StringSession('');
   const client = new TelegramClient(stringSession, parseInt(apiId), apiHash, {
-    connectionRetries: 3,
+    connectionRetries: 10,
+    retryDelay: 2000,
+    autoReconnect: true,
     deviceModel: 'ninto Store Bot',
     systemVersion: 'Linux',
     appVersion: '1.0.0',
@@ -152,7 +154,9 @@ async function connectSession({ sessionString }) {
   const stringSession = new StringSession(sessionString);
   // قيم افتراضية — Session String يكفي للاتصال
   const client = new TelegramClient(stringSession, 2040, 'b18441a1ff607e10a989891a5462e627', {
-    connectionRetries: 3,
+    connectionRetries: 10,
+    retryDelay: 2000,
+    autoReconnect: true,
     deviceModel: 'ninto Store Bot',
     systemVersion: 'Linux',
     appVersion: '1.0.0',
