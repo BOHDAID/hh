@@ -23,6 +23,7 @@ interface ProductCardProps {
   warranty_days?: number;
   sales_count?: number;
   average_rating?: number;
+  compact?: boolean;
 }
 
 const ProductCard = ({
@@ -38,6 +39,7 @@ const ProductCard = ({
   warranty_days,
   sales_count,
   average_rating,
+  compact = false,
 }: ProductCardProps) => {
   const { t, i18n } = useTranslation();
   const isRTL = i18n.language === 'ar';
@@ -154,6 +156,57 @@ const ProductCard = ({
     setAddingToCart(false);
   };
 
+  if (compact) {
+    return (
+      <>
+        <motion.div
+          className="group relative overflow-hidden rounded-xl bg-card border border-border/50 flex flex-row items-center gap-3 p-2 cursor-pointer hover:border-primary/30 transition-colors"
+          whileHover={{ scale: 1.01 }}
+          onClick={() => setDetailsOpen(true)}
+        >
+          {/* Small image */}
+          <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden bg-muted/30 flex-shrink-0">
+            {image ? (
+              <img src={image} alt={title} loading="lazy" className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center bg-muted">
+                <Package className="h-6 w-6 text-muted-foreground/30" />
+              </div>
+            )}
+          </div>
+
+          {/* Info */}
+          <div className="flex-1 min-w-0">
+            <h3 className="text-xs sm:text-sm font-bold text-foreground truncate">{title}</h3>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-sm font-extrabold text-primary">{hasVariants ? minPrice : price} <span className="text-[10px] text-muted-foreground">{currency}</span></span>
+              {category && <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">{category}</span>}
+            </div>
+            <LiveViewers productId={id} salesCount={sales_count} />
+          </div>
+
+          {/* Action */}
+          <Button
+            variant="hero"
+            size="sm"
+            className="gap-1 rounded-lg px-2 sm:px-3 text-[10px] sm:text-xs h-7 sm:h-8 shrink-0"
+            onClick={(e) => { e.stopPropagation(); setDetailsOpen(true); }}
+            type="button"
+          >
+            <Eye className="h-3 w-3" />
+            <span>{isRTL ? "عرض" : "View"}</span>
+          </Button>
+        </motion.div>
+
+        <ProductDetailsModal
+          open={detailsOpen}
+          onOpenChange={setDetailsOpen}
+          product={{ id, name: title, description, price, image_url: image, category, platform, warranty_days, sales_count, average_rating }}
+        />
+      </>
+    );
+  }
+
   return (
     <motion.div 
       ref={cardRef}
@@ -176,7 +229,7 @@ const ProductCard = ({
     >
       {/* Holographic Shine Effect */}
       <motion.div 
-        className="absolute inset-0 pointer-events-none z-10 rounded-2xl sm:rounded-3xl"
+        className="absolute inset-0 pointer-events-none z-10 rounded-xl sm:rounded-2xl"
         style={{
           background: isHovered 
             ? `radial-gradient(circle at ${shineX.get()}% ${shineY.get()}%, hsl(var(--primary) / 0.15) 0%, transparent 60%)`
@@ -188,22 +241,18 @@ const ProductCard = ({
       {/* Rainbow edge glow */}
       {isHovered && (
         <motion.div 
-          className="absolute -inset-[1px] rounded-2xl sm:rounded-3xl pointer-events-none z-0"
+          className="absolute -inset-[1px] rounded-xl sm:rounded-2xl pointer-events-none z-0"
           style={{
             background: "linear-gradient(135deg, hsl(var(--primary) / 0.4), hsl(280 80% 60% / 0.3), hsl(200 80% 60% / 0.3), hsl(var(--primary) / 0.4))",
             backgroundSize: "300% 300%",
           }}
-          animate={{ 
-            backgroundPosition: ["0% 0%", "100% 100%", "0% 0%"],
-          }}
+          animate={{ backgroundPosition: ["0% 0%", "100% 100%", "0% 0%"] }}
           transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
         />
       )}
 
-      {/* Card inner bg to cover rainbow border */}
-      <div className="absolute inset-[1px] rounded-2xl sm:rounded-3xl bg-card z-[1]" />
+      <div className="absolute inset-[1px] rounded-xl sm:rounded-2xl bg-card z-[1]" />
 
-      {/* Glow Effect */}
       <motion.div 
         className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-secondary/20 opacity-0 pointer-events-none z-[2]"
         animate={{ opacity: isHovered ? 1 : 0 }}
@@ -224,26 +273,21 @@ const ProductCard = ({
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted/50 to-muted">
-            <motion.div
-              animate={{ rotate: isHovered ? 360 : 0 }}
-              transition={{ duration: 0.8 }}
-            >
-              <Package className="h-16 w-16 text-muted-foreground/30" />
+            <motion.div animate={{ rotate: isHovered ? 360 : 0 }} transition={{ duration: 0.8 }}>
+              <Package className="h-12 w-12 text-muted-foreground/30" />
             </motion.div>
           </div>
         )}
         
-        {/* Overlay gradient */}
         <motion.div 
           className="absolute inset-0 bg-gradient-to-t from-background via-background/20 to-transparent"
           animate={{ opacity: isHovered ? 1 : 0.5 }}
           transition={{ duration: 0.3 }}
         />
         
-        {/* Category Badge */}
         {category && (
           <motion.span 
-            className="absolute top-4 right-4 rounded-full bg-primary px-4 py-1.5 text-xs font-bold text-primary-foreground shadow-lg"
+            className="absolute top-2 right-2 rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground shadow-lg"
             initial={{ x: 20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             transition={{ delay: 0.1 }}
@@ -252,8 +296,7 @@ const ProductCard = ({
           </motion.span>
         )}
 
-        {/* Floating Sparkle */}
-        <div className="absolute top-4 left-4">
+        <div className="absolute top-2 left-2">
           <WishlistButton productId={id} />
         </div>
       </div>
@@ -267,7 +310,6 @@ const ProductCard = ({
         >
           {title}
         </motion.h3>
-        {/* Live Viewers */}
         <div className="mb-1.5">
           <LiveViewers productId={id} salesCount={sales_count} />
         </div>
