@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Eye } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { supabase } from "@/integrations/supabase/client";
 
 interface LiveViewersProps {
   productId: string;
@@ -12,31 +13,35 @@ const LiveViewers = ({ productId, salesCount = 0 }: LiveViewersProps) => {
   const { i18n } = useTranslation();
   const isRTL = i18n.language === "ar";
   const [viewers, setViewers] = useState(0);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   useEffect(() => {
-    // More realistic: use product ID hash + time-of-day pattern
-    const hash = productId.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-    const hour = new Date().getHours();
-    // Peak hours: 18-23, low: 3-8
-    const hourMultiplier = hour >= 18 ? 1.5 : hour >= 12 ? 1.2 : hour >= 8 ? 0.8 : 0.4;
+    // Use Supabase Realtime Presence for real viewer tracking
+    const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     
-    const popularity = Math.min(Math.max(salesCount, 1), 200);
-    const base = Math.max(1, Math.round(Math.sqrt(popularity) * hourMultiplier));
-    const seed = (hash + Math.floor(Date.now() / 30000)) % 7;
-    setViewers(Math.max(1, base + seed));
+    const channel = supabase.channel(`product-viewers-${productId}`, {
+      config: { presence: { key: uniqueId } },
+    });
 
-    const interval = setInterval(() => {
-      setViewers(prev => {
-        const rand = Math.random();
-        // 60% no change, 25% +1, 15% -1
-        if (rand < 0.6) return prev;
-        const change = rand < 0.85 ? 1 : -1;
-        return Math.max(1, Math.min(prev + change, base + 8));
+    channel
+      .on("presence", { event: "sync" }, () => {
+        const state = channel.presenceState();
+        const count = Object.keys(state).length;
+        setViewers(count);
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await channel.track({ product_id: productId, joined_at: new Date().toISOString() });
+        }
       });
-    }, 8000 + Math.random() * 12000);
 
-    return () => clearInterval(interval);
-  }, [productId, salesCount]);
+    channelRef.current = channel;
+
+    return () => {
+      channel.untrack();
+      supabase.removeChannel(channel);
+    };
+  }, [productId]);
 
   if (viewers < 2) return null;
 
@@ -50,7 +55,7 @@ const LiveViewers = ({ productId, salesCount = 0 }: LiveViewersProps) => {
         animate={{ scale: [1, 1.3, 1] }}
         transition={{ repeat: Infinity, duration: 1.5 }}
       >
-        <Eye className="h-3 w-3 text-orange-500" />
+        <Eye className="h-3 w-3 text-green-500" />
       </motion.div>
       <AnimatePresence mode="wait">
         <motion.span
@@ -61,7 +66,8 @@ const LiveViewers = ({ productId, salesCount = 0 }: LiveViewersProps) => {
           transition={{ duration: 0.2 }}
           className="font-medium"
         >
-          {isRTL 
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse mr-1" />
+          {isRTL
             ? `${viewers} يشاهدون الآن`
             : `${viewers} viewing now`
           }
