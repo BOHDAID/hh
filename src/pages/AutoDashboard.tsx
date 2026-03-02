@@ -16,6 +16,7 @@ import AutoPublishPanel from "@/components/auto/AutoPublishPanel";
 import BroadcastPanel from "@/components/auto/BroadcastPanel";
 import MentionsMonitorPanel from "@/components/auto/MentionsMonitorPanel";
 import StatsPanel from "@/components/auto/StatsPanel";
+import SubscriptionGate from "@/components/auto/SubscriptionGate";
 
 interface TelegramUser {
   id: string;
@@ -38,6 +39,7 @@ const AutoDashboard = () => {
   // Auth state
   const [loggedIn, setLoggedIn] = useState(false);
   const [telegramUser, setTelegramUser] = useState<TelegramUser | null>(null);
+  const [maxSessions, setMaxSessions] = useState(1);
   const [activeSession, setActiveSession] = useState("");
   const [autoConnecting, setAutoConnecting] = useState(false);
 
@@ -213,10 +215,8 @@ const AutoDashboard = () => {
   ) : null;
 
   // ============ LOGGED IN VIEW ============
-  if (loggedIn) {
-    return (
+  const loggedInView = (
       <div className="min-h-screen bg-background" dir="rtl">
-        {/* Top bar */}
         <header className="sticky top-0 z-30 bg-card/80 backdrop-blur-md border-b border-border">
           <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -232,81 +232,35 @@ const AutoDashboard = () => {
             </Link>
           </div>
         </header>
-
         <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-          {/* Profile Card */}
-          <TelegramProfileCard
-            sessionString={activeSession}
-            initialUser={telegramUser}
-            onLogout={handleLogout}
-          />
-
-          {/* Tabs */}
+          <TelegramProfileCard sessionString={activeSession} initialUser={telegramUser} onLogout={handleLogout} />
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-5 h-11">
-              <TabsTrigger value="groups" className="gap-1.5 text-xs sm:text-sm">
-                <Users className="h-4 w-4" /> <span className="hidden sm:inline">المجموعات</span>
-              </TabsTrigger>
-              <TabsTrigger value="auto-publish" className="gap-1.5 text-xs sm:text-sm">
-                <Send className="h-4 w-4" /> <span className="hidden sm:inline">النشر</span>
-              </TabsTrigger>
-              <TabsTrigger value="broadcast" className="gap-1.5 text-xs sm:text-sm">
-                <MessageSquare className="h-4 w-4" /> <span className="hidden sm:inline">رسائل خاص</span>
-              </TabsTrigger>
-              <TabsTrigger value="mentions" className="gap-1.5 text-xs sm:text-sm">
-                <AtSign className="h-4 w-4" /> <span className="hidden sm:inline">المنشنات</span>
-              </TabsTrigger>
-              <TabsTrigger value="stats" className="gap-1.5 text-xs sm:text-sm">
-                <BarChart3 className="h-4 w-4" /> <span className="hidden sm:inline">التقارير</span>
-              </TabsTrigger>
+              <TabsTrigger value="groups" className="gap-1.5 text-xs sm:text-sm"><Users className="h-4 w-4" /> <span className="hidden sm:inline">المجموعات</span></TabsTrigger>
+              <TabsTrigger value="auto-publish" className="gap-1.5 text-xs sm:text-sm"><Send className="h-4 w-4" /> <span className="hidden sm:inline">النشر</span></TabsTrigger>
+              <TabsTrigger value="broadcast" className="gap-1.5 text-xs sm:text-sm"><MessageSquare className="h-4 w-4" /> <span className="hidden sm:inline">رسائل خاص</span></TabsTrigger>
+              <TabsTrigger value="mentions" className="gap-1.5 text-xs sm:text-sm"><AtSign className="h-4 w-4" /> <span className="hidden sm:inline">المنشنات</span></TabsTrigger>
+              <TabsTrigger value="stats" className="gap-1.5 text-xs sm:text-sm"><BarChart3 className="h-4 w-4" /> <span className="hidden sm:inline">التقارير</span></TabsTrigger>
             </TabsList>
-
             <TabsContent value="groups" className="mt-4">
-              <GroupsSelector
-                sessionString={activeSession}
-                selectedGroups={selectedGroups}
-                onSave={async (groups) => {
-                  setSelectedGroups(groups);
-                  try {
-                    await saveSessionToAccount(activeSession, telegramUser, groups);
-                    toast.success("تم حفظ المجموعات في الحساب");
-                  } catch (err: any) {
-                    toast.error(err.message || "تعذر حفظ المجموعات");
-                  }
-                }}
-              />
+              <GroupsSelector sessionString={activeSession} selectedGroups={selectedGroups} onSave={async (groups) => { setSelectedGroups(groups); try { await saveSessionToAccount(activeSession, telegramUser, groups); toast.success("تم حفظ المجموعات في الحساب"); } catch (err: any) { toast.error(err.message || "تعذر حفظ المجموعات"); } }} />
             </TabsContent>
-
-            <TabsContent value="auto-publish" className="mt-4">
-              <AutoPublishPanel sessionString={activeSession} selectedGroups={selectedGroups} mentionsChannelId={savedMentionsChannelId} />
-            </TabsContent>
-
-            <TabsContent value="broadcast" className="mt-4">
-              <BroadcastPanel sessionString={activeSession} />
-            </TabsContent>
-
-            <TabsContent value="mentions" className="mt-4">
-              <MentionsMonitorPanel sessionString={activeSession} savedChannelId={savedMentionsChannelId} />
-            </TabsContent>
-
-            <TabsContent value="stats" className="mt-4">
-              <StatsPanel />
-            </TabsContent>
+            <TabsContent value="auto-publish" className="mt-4"><AutoPublishPanel sessionString={activeSession} selectedGroups={selectedGroups} mentionsChannelId={savedMentionsChannelId} /></TabsContent>
+            <TabsContent value="broadcast" className="mt-4"><BroadcastPanel sessionString={activeSession} /></TabsContent>
+            <TabsContent value="mentions" className="mt-4"><MentionsMonitorPanel sessionString={activeSession} savedChannelId={savedMentionsChannelId} /></TabsContent>
+            <TabsContent value="stats" className="mt-4"><StatsPanel /></TabsContent>
           </Tabs>
         </main>
       </div>
-    );
-  }
+  );
 
   // ============ NOT LOGGED IN VIEW ============
-  if (autoConnecting) {
-    return (
+  const connectingView = (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center" dir="rtl">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
         <p className="text-muted-foreground text-sm">جاري إعادة الاتصال...</p>
       </div>
-    );
-  }
+  );
 
   // Instructions wizard renderer
   const renderInstructions = () => {
@@ -400,7 +354,7 @@ const AutoDashboard = () => {
     }
   };
 
-  return (
+  const innerContent = (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4" dir="rtl">
       <div className="w-full max-w-lg space-y-6">
         {/* Logo */}
@@ -458,6 +412,12 @@ const AutoDashboard = () => {
         </div>
       </div>
     </div>
+  );
+
+  return (
+    <SubscriptionGate onSubscriptionLoaded={(sub, max) => setMaxSessions(max)}>
+      {loggedIn ? loggedInView : (autoConnecting ? connectingView : innerContent)}
+    </SubscriptionGate>
   );
 };
 

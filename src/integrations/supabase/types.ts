@@ -1450,6 +1450,45 @@ export type Database = {
         }
         Relationships: []
       }
+      telegram_plans: {
+        Row: {
+          created_at: string
+          display_order: number | null
+          duration_days: number
+          features: Json | null
+          id: string
+          is_active: boolean | null
+          max_sessions: number
+          name: string
+          price: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number | null
+          duration_days: number
+          features?: Json | null
+          id?: string
+          is_active?: boolean | null
+          max_sessions?: number
+          name: string
+          price?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_order?: number | null
+          duration_days?: number
+          features?: Json | null
+          id?: string
+          is_active?: boolean | null
+          max_sessions?: number
+          name?: string
+          price?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       telegram_sessions: {
         Row: {
           created_at: string
@@ -1482,6 +1521,56 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      telegram_subscriptions: {
+        Row: {
+          created_at: string
+          ends_at: string
+          id: string
+          is_trial: boolean
+          max_sessions: number
+          plan_id: string | null
+          starts_at: string
+          status: string
+          trial_used: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          ends_at: string
+          id?: string
+          is_trial?: boolean
+          max_sessions?: number
+          plan_id?: string | null
+          starts_at?: string
+          status?: string
+          trial_used?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          ends_at?: string
+          id?: string
+          is_trial?: boolean
+          max_sessions?: number
+          plan_id?: string | null
+          starts_at?: string
+          status?: string
+          trial_used?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "telegram_subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "telegram_plans"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ticket_messages: {
         Row: {
