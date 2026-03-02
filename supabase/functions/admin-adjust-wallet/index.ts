@@ -46,14 +46,15 @@ serve(async (req: Request) => {
       );
     }
 
-    // Check if user is admin
-    const { data: roleData } = await userClient
+    // Check if user has wallet-management access (admin or full_access)
+    const { data: roleRows, error: roleError } = await userClient
       .from("user_roles")
       .select("role")
       .eq("user_id", userData.user.id)
-      .maybeSingle();
+      .in("role", ["admin", "full_access"])
+      .limit(1);
 
-    if (!roleData || roleData.role !== "admin") {
+    if (roleError || !roleRows || roleRows.length === 0) {
       return new Response(
         JSON.stringify({ error: "Admin access required" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
