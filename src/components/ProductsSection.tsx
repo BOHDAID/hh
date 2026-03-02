@@ -1,12 +1,13 @@
 import ProductCard from "@/components/ProductCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { db } from "@/lib/supabaseClient";
 import { PackageX, Sparkles, Search, X } from "lucide-react";
 import { motion, useInView, AnimatePresence } from "framer-motion";
 import { ProductGridSkeleton } from "@/components/ProductCardSkeleton";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
 
 interface Product {
   id: string;
@@ -32,57 +33,54 @@ interface Category {
   name_en: string | null;
 }
 
+const fetchCategories = async (): Promise<Category[]> => {
+  const { data } = await db.from('categories').select('*');
+  return data || [];
+};
+
+const fetchProducts = async (): Promise<Product[]> => {
+  const { data } = await db
+    .from('products')
+    .select('*, categories(name, name_en)')
+    .eq('is_active', true)
+    .order('created_at', { ascending: false }) as { data: Product[] | null };
+
+  if (!data) return [];
+
+  const productsWithStock = await Promise.all(
+    data.map(async (product) => {
+      const { data: variants } = await db
+        .from('product_variants')
+        .select('id', { count: 'exact' })
+        .eq('product_id', product.id)
+        .eq('is_active', true);
+
+      const hasVariants = variants && variants.length > 0;
+      return { ...product, available_stock: 999, has_variants: hasVariants };
+    })
+  );
+  return productsWithStock;
+};
+
 const ProductsSection = () => {
   const { t, i18n } = useTranslation();
   const isRTL = i18n.language === 'ar';
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [loading, setLoading] = useState(true);
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "-50px" });
 
-  useEffect(() => {
-    fetchCategories();
-    fetchProducts();
-  }, []);
+  const { data: categories = [] } = useQuery({
+    queryKey: ['categories'],
+    queryFn: fetchCategories,
+    staleTime: 30 * 60 * 1000, // 30 minutes
+  });
 
-  const fetchCategories = async () => {
-    const { data } = await db.from('categories').select('*');
-    if (data) setCategories(data);
-  };
-
-  const fetchProducts = async () => {
-    setLoading(true);
-    const { data } = await db
-      .from('products')
-      .select('*, categories(name, name_en)')
-      .eq('is_active', true)
-      .order('created_at', { ascending: false }) as { data: Product[] | null };
-    
-    if (data) {
-      const productsWithStock = await Promise.all(
-        data.map(async (product) => {
-          const { data: variants, count: variantCount } = await db
-            .from('product_variants')
-            .select('id', { count: 'exact' })
-            .eq('product_id', product.id)
-            .eq('is_active', true);
-          
-          const hasVariants = variants && variants.length > 0;
-          
-          if (hasVariants) {
-            return { ...product, available_stock: 999, has_variants: true };
-          } else {
-            return { ...product, available_stock: 999, has_variants: false };
-          }
-        })
-      );
-      setProducts(productsWithStock);
-    }
-    setLoading(false);
-  };
+  const { data: products = [], isLoading: loading } = useQuery({
+    queryKey: ['products'],
+    queryFn: fetchProducts,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
 
   const filteredProducts = products.filter(p => {
     const matchesCat = activeCategory === "all" || p.category_id === activeCategory;
