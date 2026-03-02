@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Users, Loader2, RefreshCw, Check, Search } from "lucide-react";
+import { Users, Loader2, RefreshCw, Check, Search, Pencil, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -30,6 +30,7 @@ const GroupsSelector = ({ sessionString, selectedGroups, onSave }: GroupsSelecto
   const [selected, setSelected] = useState<Set<string>>(new Set(selectedGroups.map(g => g.id)));
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
+  const [editMode, setEditMode] = useState(false);
 
   const fetchGroups = async () => {
     setLoading(true);
@@ -42,6 +43,7 @@ const GroupsSelector = ({ sessionString, selectedGroups, onSave }: GroupsSelecto
       if (!result.data?.success) throw new Error(result.data?.error || "فشل الجلب");
       setGroups(result.data.groups || []);
       setFetched(true);
+      setEditMode(true);
       toast.success(`تم جلب ${result.data.groups?.length || 0} مجموعة`);
     } catch (err: any) {
       toast.error(err.message);
@@ -68,20 +70,94 @@ const GroupsSelector = ({ sessionString, selectedGroups, onSave }: GroupsSelecto
   };
 
   const handleSave = () => {
-    const savedGroups = groups.filter(g => selected.has(g.id));
+    const allGroups = fetched ? groups : selectedGroups;
+    const savedGroups = allGroups.filter(g => selected.has(g.id));
     onSave(savedGroups);
+    setEditMode(false);
     toast.success(`تم حفظ ${savedGroups.length} مجموعة`);
   };
 
-  const filtered = groups.filter(g =>
-    g.title.toLowerCase().includes(search.toLowerCase()) ||
-    (g.username && g.username.toLowerCase().includes(search.toLowerCase()))
-  );
+  const removeGroup = (id: string) => {
+    const updated = selectedGroups.filter(g => g.id !== id);
+    setSelected(new Set(updated.map(g => g.id)));
+    onSave(updated);
+  };
 
-  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
-  const pageGroups = filtered.slice(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE);
+  // Show saved groups view
+  if (!editMode && selectedGroups.length > 0 && !fetched) {
+    const savedSearch = search.toLowerCase();
+    const filteredSaved = selectedGroups.filter(g =>
+      g.title.toLowerCase().includes(savedSearch) ||
+      (g.username && g.username.toLowerCase().includes(savedSearch))
+    );
 
-  if (!fetched) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-primary" />
+            <h3 className="font-semibold text-foreground">المجموعات المحفوظة ({selectedGroups.length})</h3>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => { setEditMode(true); fetchGroups(); }} disabled={loading} className="gap-2">
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pencil className="h-4 w-4" />}
+              تعديل
+            </Button>
+          </div>
+        </div>
+
+        {selectedGroups.length > 5 && (
+          <div className="relative">
+            <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="بحث في المجموعات المحفوظة..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="pr-9"
+            />
+          </div>
+        )}
+
+        <div className="space-y-2">
+          {filteredSaved.map(group => (
+            <div
+              key={group.id}
+              className="flex items-center gap-3 p-3 rounded-xl border border-primary/20 bg-primary/5 transition-all"
+            >
+              <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center shrink-0 overflow-hidden">
+                {group.photo ? (
+                  <img src={group.photo} alt="" className="h-10 w-10 rounded-full object-cover" />
+                ) : (
+                  <Users className="h-5 w-5 text-muted-foreground" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm text-foreground truncate">{group.title}</p>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  {group.username && <span dir="ltr">@{group.username}</span>}
+                  <span className="bg-muted px-1.5 py-0.5 rounded text-[10px]">
+                    {group.type === "channel" ? "قناة" : group.type === "supergroup" ? "مجموعة كبيرة" : "مجموعة"}
+                  </span>
+                  {group.participantsCount > 0 && <span>{group.participantsCount} عضو</span>}
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                onClick={() => removeGroup(group.id)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Show fetch button if no saved groups and not fetched
+  if (!fetched && selectedGroups.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 space-y-4">
         <Users className="h-12 w-12 text-muted-foreground/50" />
@@ -93,6 +169,15 @@ const GroupsSelector = ({ sessionString, selectedGroups, onSave }: GroupsSelecto
       </div>
     );
   }
+
+  // Edit mode / fetched groups list
+  const filtered = groups.filter(g =>
+    g.title.toLowerCase().includes(search.toLowerCase()) ||
+    (g.username && g.username.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+  const pageGroups = filtered.slice(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE);
 
   return (
     <div className="space-y-4">
@@ -110,6 +195,11 @@ const GroupsSelector = ({ sessionString, selectedGroups, onSave }: GroupsSelecto
         <Button variant="outline" size="icon" onClick={fetchGroups} disabled={loading}>
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
         </Button>
+        {selectedGroups.length > 0 && (
+          <Button variant="ghost" size="sm" onClick={() => { setEditMode(false); setFetched(false); setSearch(""); }}>
+            إلغاء
+          </Button>
+        )}
       </div>
 
       {/* معلومات */}
