@@ -35,7 +35,7 @@ async function getOrCreateClient(sessionString) {
     'b18441a1ff607e10a989891a5462e627',
     {
       connectionRetries: 3,
-      deviceModel: 'Angel Store Bot',
+      deviceModel: 'ninto Store Bot',
       systemVersion: 'Linux',
       appVersion: '1.0.0',
     }
