@@ -45,6 +45,13 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background" dir="rtl">
+      {/* Admin banner when maintenance is active */}
+      {maintenanceMode && isAdmin && (
+        <div className="bg-destructive text-destructive-foreground text-center py-2 px-4 text-sm font-medium flex items-center justify-center gap-2">
+          <Construction className="h-4 w-4" />
+          <span>وضع الصيانة مفعّل - أنت تشاهد المتجر كمسؤول. الزوار يرون صفحة الصيانة.</span>
+        </div>
+      )}
       <Header onMenuClick={isLoggedIn ? () => setSidebarOpen(!sidebarOpen) : undefined} />
       
       {isLoggedIn && (
