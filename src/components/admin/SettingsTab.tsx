@@ -82,7 +82,7 @@ const SettingsTab = () => {
   // جميع المفاتيح التي يجب أن تكون موجودة دائماً في state (حتى لو فارغة)
   const allRequiredKeys = [
     // هوية المتجر
-    "store_name", "store_logo_url", "store_favicon_url", "support_email", "default_currency",
+    "store_name", "store_url", "store_logo_url", "store_favicon_url", "support_email", "default_currency",
     // قسم الهيرو (عربي + إنجليزي)
     "hero_badge", "hero_title1", "hero_title2", "hero_title3", "hero_subtitle", "hero_subtitle_desc",
     "hero_badge_en", "hero_title1_en", "hero_title2_en", "hero_title3_en", "hero_subtitle_en", "hero_subtitle_desc_en",
@@ -536,6 +536,7 @@ const SettingsTab = () => {
               </CardHeader>
               <CardContent className="space-y-5">
                 {renderSettingInput("اسم المتجر", "store_name", "متجر رقمي", { description: "يظهر في تبويب المتصفح وعنوان الصفحة" })}
+                {renderSettingInput("رابط الموقع (Domain)", "store_url", "https://yourstore.com", { dir: "ltr", description: "رابط موقعك الكامل بدون / في النهاية. يُستخدم في روابط الإيصالات والتقييمات في بوت تليجرام" })}
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">شعار المتجر</Label>
                   <ImageUpload

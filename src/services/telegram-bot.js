@@ -146,7 +146,13 @@ async function getStoreUrl() {
     .select('value')
     .eq('key', 'store_url')
     .maybeSingle();
-  return data?.value || null;
+  const url = data?.value || null;
+  // Validate: must start with https:// and contain only ASCII
+  if (url && /^https?:\/\/[a-zA-Z0-9._\-\/:#?&=%]+$/.test(url)) {
+    return url.replace(/\/+$/, ''); // remove trailing slash
+  }
+  console.warn('⚠️ store_url is missing or invalid:', url);
+  return null;
 }
 
 // ============================================================
