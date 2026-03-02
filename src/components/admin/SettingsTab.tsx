@@ -93,6 +93,8 @@ const SettingsTab = () => {
     "discord_invite", "twitter_username", "whatsapp_number",
     // إعدادات عامة
     "on_demand_message", "site_name", "site_description",
+    // وضع الصيانة
+    "maintenance_mode", "maintenance_message",
   ];
 
   const fetchSettings = async () => {
@@ -576,6 +578,43 @@ const SettingsTab = () => {
                 </div>
                </CardContent>
            </MotionCard>
+
+            {/* Maintenance Mode */}
+            <MotionCard
+              custom={1}
+              initial="hidden"
+              animate="visible"
+              variants={cardVariants}
+              className="border-border/50 bg-card/50 backdrop-blur-sm"
+            >
+              <CardHeader className="pb-4">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2.5 rounded-xl ${settings.maintenance_mode === "true" ? "bg-destructive/10" : "bg-muted/50"}`}>
+                    <XCircle className={`h-5 w-5 ${settings.maintenance_mode === "true" ? "text-destructive" : "text-muted-foreground"}`} />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg">وضع الصيانة</CardTitle>
+                    <CardDescription>إغلاق المتجر مؤقتاً مع رسالة مخصصة</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="flex items-center justify-between p-4 rounded-xl border border-border/50 bg-background/50">
+                  <div>
+                    <p className="font-medium text-sm">تفعيل وضع الصيانة</p>
+                    <p className="text-xs text-muted-foreground">الزوار سيرون صفحة "المتجر مغلق" - الأدمن يقدر يدخل عادي</p>
+                  </div>
+                  <Button
+                    variant={settings.maintenance_mode === "true" ? "destructive" : "outline"}
+                    size="sm"
+                    onClick={() => updateSetting("maintenance_mode", settings.maintenance_mode === "true" ? "false" : "true")}
+                  >
+                    {settings.maintenance_mode === "true" ? "🔴 مفعّل - إيقاف" : "تفعيل"}
+                  </Button>
+                </div>
+                {renderSettingInput("رسالة الصيانة", "maintenance_message", "نقوم بأعمال صيانة وتحديثات. سنعود قريباً!", { description: "الرسالة التي تظهر للزوار أثناء الإغلاق" })}
+              </CardContent>
+            </MotionCard>
 
             {/* Hero Section Settings */}
             <MotionCard 

@@ -11,6 +11,8 @@ interface AppContext {
   walletBalance: number | null;
   cartCount: number;
   refreshCart: () => void;
+  maintenanceMode: boolean;
+  maintenanceMessage: string;
 }
 
 const AppDataContext = createContext<AppContext>({
@@ -21,6 +23,8 @@ const AppDataContext = createContext<AppContext>({
   walletBalance: null,
   cartCount: 0,
   refreshCart: () => {},
+  maintenanceMode: false,
+  maintenanceMessage: "",
 });
 
 export const useAppData = () => useContext(AppDataContext);
@@ -33,6 +37,8 @@ const AppInitializer = ({ children }: { children: ReactNode }) => {
   const [storeLogo, setStoreLogo] = useState<string | null>(null);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [cartCount, setCartCount] = useState(0);
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [maintenanceMessage, setMaintenanceMessage] = useState("");
 
   const authClient = isExternalConfigured ? getAuthClient() : db;
 
@@ -62,7 +68,7 @@ const AppInitializer = ({ children }: { children: ReactNode }) => {
     const init = async () => {
       // Fetch branding + auth session in parallel
       const [brandingRes, sessionRes] = await Promise.all([
-        db.from("site_settings").select("key, value").in("key", ["store_name", "store_logo_url"]),
+        db.from("site_settings").select("key, value").in("key", ["store_name", "store_logo_url", "maintenance_mode", "maintenance_message"]),
         authClient.auth.getSession(),
       ]);
 
@@ -71,6 +77,8 @@ const AppInitializer = ({ children }: { children: ReactNode }) => {
         for (const s of brandingRes.data) {
           if (s.key === "store_name" && s.value) setStoreName(s.value);
           if (s.key === "store_logo_url" && s.value) setStoreLogo(s.value);
+          if (s.key === "maintenance_mode") setMaintenanceMode(s.value === "true");
+          if (s.key === "maintenance_message" && s.value) setMaintenanceMessage(s.value);
         }
       }
 
@@ -133,7 +141,7 @@ const AppInitializer = ({ children }: { children: ReactNode }) => {
 
       {ready && (
         <AppDataContext.Provider
-          value={{ user, isAdmin, storeName, storeLogo, walletBalance, cartCount, refreshCart }}
+          value={{ user, isAdmin, storeName, storeLogo, walletBalance, cartCount, refreshCart, maintenanceMode, maintenanceMessage }}
         >
           {children}
         </AppDataContext.Provider>
