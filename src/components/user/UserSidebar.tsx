@@ -29,6 +29,7 @@ const UserSidebar = ({ open, onClose, onOpen }: UserSidebarProps) => {
     { to: "/support", label: t('common.support'), icon: HeadphonesIcon },
     { to: "/profile", label: t('common.profile'), icon: User },
     { to: "/contact", label: t('common.contactUs'), icon: MessageCircle },
+    { to: "/auto-dashboard", label: isRTL ? "النشر التلقائي" : "Auto Publishing", icon: Settings },
   ];
 
   useEffect(() => {
