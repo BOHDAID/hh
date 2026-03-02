@@ -1,19 +1,19 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Bot, Home, LogIn, BookOpen, Users, Send, MessageSquare, ChevronLeft, ChevronRight, User, CheckCircle2, Loader2, AlertCircle, Key, ExternalLink, Eye, EyeOff, Copy, Shield } from "lucide-react";
+import { Bot, Home, LogIn, BookOpen, Users, Send, MessageSquare, User, CheckCircle2, Loader2, AlertCircle, Key, ExternalLink, Eye, EyeOff, Copy, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { invokeCloudFunction, invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
 import { getAuthClient } from "@/lib/supabaseClient";
+import TelegramProfileCard from "@/components/auto/TelegramProfileCard";
 import GroupsSelector from "@/components/auto/GroupsSelector";
 import AutoPublishPanel from "@/components/auto/AutoPublishPanel";
 import BroadcastPanel from "@/components/auto/BroadcastPanel";
-
-type Mode = "login" | "instructions" | "groups" | "auto-publish" | "broadcast";
 
 interface TelegramUser {
   id: string;
@@ -33,20 +33,23 @@ interface TelegramGroup {
 }
 
 const AutoDashboard = () => {
-  const [collapsed, setCollapsed] = useState(false);
-  const [mode, setMode] = useState<Mode>("login");
+  // Auth state
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [telegramUser, setTelegramUser] = useState<TelegramUser | null>(null);
+  const [activeSession, setActiveSession] = useState("");
+  const [autoConnecting, setAutoConnecting] = useState(false);
 
   // Login state
   const [sessionInput, setSessionInput] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
-  const [loggedIn, setLoggedIn] = useState(false);
-  const [telegramUser, setTelegramUser] = useState<TelegramUser | null>(null);
   const [loginError, setLoginError] = useState("");
-  const [activeSession, setActiveSession] = useState("");
-  const [autoConnecting, setAutoConnecting] = useState(false);
+  const [showLoginMode, setShowLoginMode] = useState<"login" | "instructions">("login");
 
   // Groups state
   const [selectedGroups, setSelectedGroups] = useState<TelegramGroup[]>([]);
+
+  // Active tab
+  const [activeTab, setActiveTab] = useState("groups");
 
   const callAction = async (action: string, extra: Record<string, unknown> = {}) => {
     const { data, error } = await invokeCloudFunctionPublic<any>("osn-session", { action, ...extra });
@@ -59,7 +62,6 @@ const AutoDashboard = () => {
     const authClient = getAuthClient();
     const { data: { session } } = await authClient.auth.getSession();
     if (!session?.access_token) throw new Error("يجب تسجيل الدخول في الحساب أولاً");
-
     const { data, error } = await invokeCloudFunction<any>("osn-session", { action, ...extra }, session.access_token);
     if (error) throw new Error(error.message);
     if (data && !data.success) throw new Error(data.error || "فشل غير متوقع");
@@ -69,16 +71,11 @@ const AutoDashboard = () => {
   const parseStoredJson = <T,>(value: unknown, fallback: T): T => {
     if (value === null || value === undefined) return fallback;
     if (typeof value === "string") {
-      try {
-        return JSON.parse(value) as T;
-      } catch {
-        return fallback;
-      }
+      try { return JSON.parse(value) as T; } catch { return fallback; }
     }
     return value as T;
   };
 
-  // === Save to account helper ===
   const saveSessionToAccount = async (sessionStr: string, user: TelegramUser | null, groups?: TelegramGroup[]) => {
     if (!sessionStr) return;
     await callAccountAction("tg-save-account-session", {
@@ -88,60 +85,36 @@ const AutoDashboard = () => {
     });
   };
 
-  // Auto-reconnect from saved session (account storage)
+  // Auto-reconnect
   useEffect(() => {
     let mounted = true;
-
     const loadSession = async () => {
       setAutoConnecting(true);
       try {
         const data = await callAccountAction("tg-get-account-session");
         const saved = data?.session;
         if (!saved?.session_string || !mounted) return;
-
         try {
           const result = await callAction("tg-connect-session", { sessionString: saved.session_string });
           if (!mounted) return;
-
           const savedUser = parseStoredJson<TelegramUser | null>(saved.telegram_user, null);
           const savedGroups = parseStoredJson<TelegramGroup[]>(saved.selected_groups, []);
-
           setLoggedIn(true);
           setTelegramUser(result.user || savedUser);
           setActiveSession(saved.session_string);
           setSelectedGroups(savedGroups);
-          setMode("groups");
         } catch {
           await callAccountAction("tg-delete-account-session");
         }
       } catch {
-        // المستخدم غير مسجل دخول أو لا توجد جلسة محفوظة
+        // not logged in or no saved session
       } finally {
         if (mounted) setAutoConnecting(false);
       }
     };
-
     loadSession();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, []);
-
-  // Wizard state (instructions mode)
-  type Step = "credentials" | "phone" | "otp" | "2fa" | "result";
-  const [currentStep, setCurrentStep] = useState<Step>("credentials");
-  const [apiId, setApiId] = useState("");
-  const [apiHash, setApiHash] = useState("");
-  const [phone, setPhone] = useState("");
-  const [otpCode, setOtpCode] = useState("");
-  const [password2FA, setPassword2FA] = useState("");
-  const [sessionString, setSessionString] = useState("");
-  const [phoneCodeHash, setPhoneCodeHash] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [showSession, setShowSession] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [needs2FA, setNeeds2FA] = useState(false);
-  const [errorMsg, setErrorMsg] = useState("");
 
   // === Login ===
   const handleSessionLogin = async () => {
@@ -153,8 +126,6 @@ const AutoDashboard = () => {
       setLoggedIn(true);
       setTelegramUser(result.user || null);
       setActiveSession(sessionInput.trim());
-      setMode("groups");
-      // حفظ الجلسة بالحساب
       try {
         await saveSessionToAccount(sessionInput.trim(), result.user || null);
       } catch (saveErr: any) {
@@ -170,20 +141,30 @@ const AutoDashboard = () => {
   };
 
   const handleLogout = async () => {
-    try {
-      await callAccountAction("tg-delete-account-session");
-    } catch {
-      // تجاهل خطأ حذف الجلسة المحفوظة
-    }
+    try { await callAccountAction("tg-delete-account-session"); } catch {}
     setLoggedIn(false);
     setTelegramUser(null);
     setActiveSession("");
     setSessionInput("");
     setSelectedGroups([]);
-    setMode("login");
   };
 
-  // === Instructions handlers ===
+  // Wizard state
+  type Step = "credentials" | "phone" | "otp" | "2fa" | "result";
+  const [currentStep, setCurrentStep] = useState<Step>("credentials");
+  const [apiId, setApiId] = useState("");
+  const [apiHash, setApiHash] = useState("");
+  const [phone, setPhone] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [password2FA, setPassword2FA] = useState("");
+  const [sessionString, setSessionString] = useState("");
+  const [phoneCodeHash, setPhoneCodeHash] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showSession, setShowSession] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [needs2FA, setNeeds2FA] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+
   const handleSendCode = async () => {
     if (!apiId || !apiHash || !phone) { toast.error("يرجى ملء جميع الحقول"); return; }
     setLoading(true); setErrorMsg("");
@@ -227,92 +208,94 @@ const AutoDashboard = () => {
     </div>
   ) : null;
 
-  // === Sidebar items ===
-  const sidebarItems = loggedIn
-    ? [
-        { key: "groups" as Mode, label: "المجموعات", icon: Users },
-        { key: "auto-publish" as Mode, label: "النشر التلقائي", icon: Send },
-        { key: "broadcast" as Mode, label: "البث", icon: MessageSquare },
-      ]
-    : [
-        { key: "login" as Mode, label: "تسجيل الدخول", icon: LogIn },
-        { key: "instructions" as Mode, label: "التعليمات", icon: BookOpen },
-      ];
-
-  const modeLabels: Record<Mode, { title: string; desc: string }> = {
-    login: { title: "تسجيل الدخول", desc: "اتصل بحسابك على Telegram" },
-    instructions: { title: "إنشاء Session String", desc: "اتبع الخطوات لإنشاء جلسة جديدة" },
-    groups: { title: "المجموعات", desc: "جلب واختيار المجموعات للنشر" },
-    "auto-publish": { title: "النشر التلقائي", desc: "إرسال رسائل تلقائية للمجموعات" },
-    broadcast: { title: "البث", desc: "إرسال رسائل خاصة لجهات الاتصال" },
-  };
-
-  // === Render Login ===
-  const renderLogin = () => {
-    if (loggedIn && telegramUser) {
-      return (
-        <div className="space-y-6 max-w-2xl">
-          <div className="flex items-center gap-3">
-            <CheckCircle2 className="h-6 w-6 text-green-500" />
-            <h2 className="text-xl font-bold text-foreground">متصل بنجاح!</h2>
-          </div>
-          <div className="bg-muted/50 rounded-xl p-6 border border-border space-y-4">
-            <div className="flex items-center gap-4">
-              <div className="h-14 w-14 rounded-full bg-primary/10 flex items-center justify-center">
-                <User className="h-7 w-7 text-primary" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="font-bold text-foreground text-lg">{telegramUser.firstName} {telegramUser.lastName}</h3>
-                {telegramUser.username && <p className="text-sm text-muted-foreground" dir="ltr">@{telegramUser.username}</p>}
-                {telegramUser.phone && <p className="text-sm text-muted-foreground" dir="ltr">+{telegramUser.phone}</p>}
-              </div>
-            </div>
-          </div>
-          <Button variant="outline" onClick={handleLogout}>قطع الاتصال</Button>
-        </div>
-      );
-    }
-
-    if (autoConnecting) {
-      return (
-        <div className="flex flex-col items-center justify-center py-16 space-y-4">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-muted-foreground text-sm">جاري إعادة الاتصال...</p>
-        </div>
-      );
-    }
-
+  // ============ LOGGED IN VIEW ============
+  if (loggedIn) {
     return (
-      <div className="space-y-6 max-w-md">
-        <div className="space-y-2">
-          <h2 className="text-xl font-bold text-foreground">تسجيل الدخول</h2>
-          <p className="text-muted-foreground text-sm">الصق Session String للاتصال بحسابك على Telegram</p>
-        </div>
-        <div className="space-y-2">
-          <Label>Session String</Label>
-          <Textarea placeholder="الصق Session String هنا..." value={sessionInput} onChange={e => setSessionInput(e.target.value)} dir="ltr" className="font-mono text-xs min-h-[100px]" />
-        </div>
-        <ErrorBox msg={loginError} />
-        <div className="bg-muted/50 rounded-lg p-4 border border-border">
-          <p className="text-xs text-muted-foreground">
-            ما عندك Session String؟{" "}
-            <button onClick={() => setMode("instructions")} className="text-primary underline font-medium">اتبع التعليمات</button>
-          </p>
-        </div>
-        <Button onClick={handleSessionLogin} disabled={!sessionInput.trim() || loginLoading} className="w-full gap-2">
-          {loginLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
-          اتصال
-        </Button>
+      <div className="min-h-screen bg-background" dir="rtl">
+        {/* Top bar */}
+        <header className="sticky top-0 z-30 bg-card/80 backdrop-blur-md border-b border-border">
+          <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-primary/10">
+                <Bot className="h-5 w-5 text-primary" />
+              </div>
+              <h1 className="font-bold text-foreground">لوحة تحكم Telegram</h1>
+            </div>
+            <Link to="/">
+              <Button variant="ghost" size="sm" className="gap-2 text-xs">
+                <Home className="h-4 w-4" /> الرئيسية
+              </Button>
+            </Link>
+          </div>
+        </header>
+
+        <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+          {/* Profile Card */}
+          <TelegramProfileCard
+            sessionString={activeSession}
+            initialUser={telegramUser}
+            onLogout={handleLogout}
+          />
+
+          {/* Tabs: المجموعات | النشر التلقائي | البث */}
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-3 h-11">
+              <TabsTrigger value="groups" className="gap-2 text-sm">
+                <Users className="h-4 w-4" /> المجموعات
+              </TabsTrigger>
+              <TabsTrigger value="auto-publish" className="gap-2 text-sm">
+                <Send className="h-4 w-4" /> النشر التلقائي
+              </TabsTrigger>
+              <TabsTrigger value="broadcast" className="gap-2 text-sm">
+                <MessageSquare className="h-4 w-4" /> البث
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="groups" className="mt-4">
+              <GroupsSelector
+                sessionString={activeSession}
+                selectedGroups={selectedGroups}
+                onSave={async (groups) => {
+                  setSelectedGroups(groups);
+                  try {
+                    await saveSessionToAccount(activeSession, telegramUser, groups);
+                    toast.success("تم حفظ المجموعات في الحساب");
+                  } catch (err: any) {
+                    toast.error(err.message || "تعذر حفظ المجموعات");
+                  }
+                }}
+              />
+            </TabsContent>
+
+            <TabsContent value="auto-publish" className="mt-4">
+              <AutoPublishPanel sessionString={activeSession} selectedGroups={selectedGroups} />
+            </TabsContent>
+
+            <TabsContent value="broadcast" className="mt-4">
+              <BroadcastPanel sessionString={activeSession} />
+            </TabsContent>
+          </Tabs>
+        </main>
       </div>
     );
-  };
+  }
 
-  // === Render Instructions ===
+  // ============ NOT LOGGED IN VIEW ============
+  if (autoConnecting) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center" dir="rtl">
+        <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+        <p className="text-muted-foreground text-sm">جاري إعادة الاتصال...</p>
+      </div>
+    );
+  }
+
+  // Instructions wizard renderer
   const renderInstructions = () => {
     switch (currentStep) {
       case "credentials":
         return (
-          <div className="space-y-6 max-w-2xl">
+          <div className="space-y-6">
             <div className="bg-muted/50 rounded-xl p-5 space-y-4 border border-border">
               <h3 className="font-semibold text-foreground flex items-center gap-2"><ExternalLink className="h-4 w-4 text-primary" />التعليمات:</h3>
               <ol className="space-y-3 text-sm text-foreground/80 list-decimal list-inside">
@@ -338,7 +321,7 @@ const AutoDashboard = () => {
         );
       case "otp":
         return (
-          <div className="space-y-6 max-w-md">
+          <div className="space-y-6">
             <h2 className="text-xl font-bold">رمز التحقق</h2>
             <div className="space-y-2"><Label>رمز التحقق</Label><Input placeholder="12345" value={otpCode} onChange={e => setOtpCode(e.target.value)} dir="ltr" className="text-center text-lg tracking-widest font-mono" /></div>
             <ErrorBox msg={errorMsg} />
@@ -349,7 +332,7 @@ const AutoDashboard = () => {
         );
       case "2fa":
         return (
-          <div className="space-y-6 max-w-md">
+          <div className="space-y-6">
             <h2 className="text-xl font-bold">التحقق بخطوتين</h2>
             <div className="space-y-2">
               <Label>كلمة المرور</Label>
@@ -368,7 +351,7 @@ const AutoDashboard = () => {
         );
       case "result":
         return (
-          <div className="space-y-6 max-w-2xl">
+          <div className="space-y-6">
             <div className="flex items-center gap-2"><CheckCircle2 className="h-6 w-6 text-green-500" /><h2 className="text-xl font-bold">تم بنجاح!</h2></div>
             <div className="bg-muted/50 rounded-xl p-5 border border-border space-y-3">
               <div className="flex items-center justify-between">
@@ -387,7 +370,7 @@ const AutoDashboard = () => {
               </div>
             </div>
             <div className="flex gap-3">
-              <Button onClick={() => { setSessionInput(sessionString); setMode("login"); }} className="gap-2">
+              <Button onClick={() => { setSessionInput(sessionString); setShowLoginMode("login"); }} className="gap-2">
                 <LogIn className="h-4 w-4" /> استخدمه لتسجيل الدخول
               </Button>
               <Button variant="outline" onClick={() => { setCurrentStep("credentials"); setSessionString(""); }}>
@@ -399,65 +382,63 @@ const AutoDashboard = () => {
     }
   };
 
-  // === Render content by mode ===
-  const renderContent = () => {
-    switch (mode) {
-      case "login": return renderLogin();
-      case "instructions": return renderInstructions();
-      case "groups": return <GroupsSelector sessionString={activeSession} selectedGroups={selectedGroups} onSave={async (groups) => { setSelectedGroups(groups); try { await saveSessionToAccount(activeSession, telegramUser, groups); toast.success("تم حفظ المجموعات في الحساب"); } catch (err: any) { toast.error(err.message || "تعذر حفظ المجموعات"); } }} />;
-      case "auto-publish": return <AutoPublishPanel sessionString={activeSession} selectedGroups={selectedGroups} />;
-      case "broadcast": return <BroadcastPanel sessionString={activeSession} />;
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-background flex" dir="rtl">
-      {/* Sidebar */}
-      <aside className={cn("h-screen sticky top-0 border-l border-border bg-card flex flex-col transition-all duration-300", collapsed ? "w-16" : "w-64")}>
-        <div className="flex items-center gap-3 p-4 border-b border-border">
-          <div className="p-2 rounded-lg bg-primary/10 shrink-0"><Bot className="h-5 w-5 text-primary" /></div>
-          {!collapsed && (
-            <div className="overflow-hidden">
-              <h2 className="text-sm font-bold text-foreground truncate">النشر التلقائي</h2>
-              {loggedIn && telegramUser && (
-                <p className="text-xs text-muted-foreground truncate">{telegramUser.firstName}</p>
-              )}
-            </div>
-          )}
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4" dir="rtl">
+      <div className="w-full max-w-lg space-y-6">
+        {/* Logo */}
+        <div className="text-center space-y-2">
+          <div className="inline-flex p-3 rounded-2xl bg-primary/10 mb-2">
+            <Bot className="h-8 w-8 text-primary" />
+          </div>
+          <h1 className="text-2xl font-bold text-foreground">لوحة تحكم Telegram</h1>
+          <p className="text-muted-foreground text-sm">اتصل بحسابك لبدء الأتمتة</p>
         </div>
-        <nav className="flex-1 p-3 space-y-1">
-          {sidebarItems.map(item => {
-            const Icon = item.icon;
-            const isActive = mode === item.key;
-            return (
-              <button key={item.key} onClick={() => setMode(item.key)} className={cn(
-                "flex items-center gap-3 rounded-lg p-2.5 text-sm transition-colors w-full",
-                isActive ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:bg-muted"
-              )}>
-                <Icon className="h-5 w-5 shrink-0" />
-                {!collapsed && <span className="truncate">{item.label}</span>}
-              </button>
-            );
-          })}
-        </nav>
-        <div className="p-3 border-t border-border space-y-2">
-          <Link to="/"><Button variant="ghost" size="sm" className={cn("w-full", collapsed ? "justify-center px-0" : "justify-start gap-2")}>
-            <Home className="h-4 w-4 shrink-0" />{!collapsed && <span className="text-xs">الرئيسية</span>}
-          </Button></Link>
-          <Button variant="ghost" size="icon" className="w-full" onClick={() => setCollapsed(!collapsed)}>
-            {collapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-          </Button>
-        </div>
-      </aside>
 
-      {/* Main */}
-      <main className="flex-1 p-6 md:p-10">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-foreground">{modeLabels[mode].title}</h1>
-          <p className="text-muted-foreground text-sm mt-1">{modeLabels[mode].desc}</p>
+        {/* Toggle login / instructions */}
+        <div className="flex rounded-xl bg-muted/50 p-1 border border-border">
+          <button
+            onClick={() => setShowLoginMode("login")}
+            className={cn(
+              "flex-1 py-2 rounded-lg text-sm font-medium transition-all",
+              showLoginMode === "login" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
+            )}
+          >
+            <LogIn className="h-4 w-4 inline mr-1.5" /> تسجيل الدخول
+          </button>
+          <button
+            onClick={() => setShowLoginMode("instructions")}
+            className={cn(
+              "flex-1 py-2 rounded-lg text-sm font-medium transition-all",
+              showLoginMode === "instructions" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
+            )}
+          >
+            <BookOpen className="h-4 w-4 inline mr-1.5" /> إنشاء جلسة
+          </button>
         </div>
-        {renderContent()}
-      </main>
+
+        {/* Content */}
+        {showLoginMode === "login" ? (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Session String</Label>
+              <Textarea placeholder="الصق Session String هنا..." value={sessionInput} onChange={e => setSessionInput(e.target.value)} dir="ltr" className="font-mono text-xs min-h-[100px]" />
+            </div>
+            <ErrorBox msg={loginError} />
+            <Button onClick={handleSessionLogin} disabled={!sessionInput.trim() || loginLoading} className="w-full gap-2">
+              {loginLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
+              اتصال
+            </Button>
+          </div>
+        ) : (
+          renderInstructions()
+        )}
+
+        <div className="text-center">
+          <Link to="/" className="text-xs text-muted-foreground hover:text-primary transition-colors">
+            ← العودة للرئيسية
+          </Link>
+        </div>
+      </div>
     </div>
   );
 };

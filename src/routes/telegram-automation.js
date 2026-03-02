@@ -103,4 +103,56 @@ router.post('/broadcast', async (req, res) => {
   }
 });
 
+// جلب البروفايل
+router.post('/get-profile', async (req, res) => {
+  try {
+    const { sessionString } = req.body;
+    if (!sessionString) return res.status(400).json({ success: false, error: 'sessionString مطلوب' });
+    const result = await telegramAuto.getProfile({ sessionString });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Get profile error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// تحديث البروفايل
+router.post('/update-profile', async (req, res) => {
+  try {
+    const { sessionString, firstName, lastName, about } = req.body;
+    if (!sessionString) return res.status(400).json({ success: false, error: 'sessionString مطلوب' });
+    const result = await telegramAuto.updateProfile({ sessionString, firstName, lastName, about });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Update profile error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// تحديث صورة البروفايل
+router.post('/update-profile-photo', async (req, res) => {
+  try {
+    const { sessionString, photoBase64 } = req.body;
+    if (!sessionString || !photoBase64) return res.status(400).json({ success: false, error: 'sessionString, photoBase64 مطلوبة' });
+    const result = await telegramAuto.updateProfilePhoto({ sessionString, photoBase64 });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Update profile photo error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// حذف صورة البروفايل
+router.post('/delete-profile-photo', async (req, res) => {
+  try {
+    const { sessionString } = req.body;
+    if (!sessionString) return res.status(400).json({ success: false, error: 'sessionString مطلوب' });
+    const result = await telegramAuto.deleteProfilePhoto({ sessionString });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Delete profile photo error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 export default router;
