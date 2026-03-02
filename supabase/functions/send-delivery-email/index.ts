@@ -154,6 +154,9 @@ const handler = async (req: Request): Promise<Response> => {
       year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit",
     });
     const currentYear = new Date().getFullYear();
+    const baseStoreUrl = (settings.store_url || "").trim().replace(/\/+$/, "");
+    const invoiceUrl = baseStoreUrl && order_id ? `${baseStoreUrl}/invoice/${order_id}` : "";
+    const reviewUrl = invoiceUrl ? `${invoiceUrl}#review` : "";
 
     // Products HTML
     const productsHtml = products.map(product => `
@@ -344,6 +347,22 @@ ${activationCodeHtml}
 </tr>
 </table>
 
+${invoiceUrl ? `
+<!-- Invoice & Review Links -->
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:18px;">
+  <tr>
+    <td align="center" style="padding:4px 0 8px; color:#6b7280; font-size:13px; font-family:'Segoe UI',Tahoma,sans-serif;">
+      روابط مهمة بعد الشراء
+    </td>
+  </tr>
+  <tr>
+    <td align="center" style="padding-bottom:10px;">
+      <a href="${invoiceUrl}" style="display:inline-block; background:linear-gradient(135deg,#7c3aed,#6d28d9); color:#ffffff; padding:12px 24px; border-radius:10px; text-decoration:none; font-size:14px; font-weight:700; font-family:'Segoe UI',Tahoma,sans-serif; margin:0 4px;">📄 فتح الإيصال</a>
+      <a href="${reviewUrl}" style="display:inline-block; background:linear-gradient(135deg,#f59e0b,#d97706); color:#ffffff; padding:12px 24px; border-radius:10px; text-decoration:none; font-size:14px; font-weight:700; font-family:'Segoe UI',Tahoma,sans-serif; margin:0 4px;">⭐ تقييم الطلب</a>
+    </td>
+  </tr>
+</table>` : ``}
+
 </td>
 </tr>
 
@@ -357,6 +376,10 @@ ${buildFooter(storeName, currentYear)}
     const activationTextSection = activation_code
       ? `\n\n🔐 كود التفعيل: ${activation_code}\n⏰ صالح لمدة 24 ساعة فقط!\n${telegram_bot_username ? `📱 البوت: https://t.me/${telegram_bot_username}` : ''}\n`
       : '';
+
+    const invoiceLinksText = invoiceUrl
+      ? `\n\n📄 رابط الإيصال: ${invoiceUrl}\n⭐ تقييم الطلب: ${reviewUrl}\n`
+      : `\n\n⚠️ ملاحظة: لم يتم ضبط رابط الموقع (store_url) في الإعدادات بعد.\n`;
 
     const plainTextContent = `
 ${storeName}
@@ -373,6 +396,7 @@ ${storeName}
 بيانات الحسابات:
 ${products.map(p => `🎁 ${p.name} (×${p.quantity})\n${p.account_data}`).join('\n\n')}
 ${activationTextSection}
+${invoiceLinksText}
 ⚠️ تنبيه: احتفظ بهذا الإيميل في مكان آمن ولا تشاركه.
 
 © ${currentYear} ${storeName}
