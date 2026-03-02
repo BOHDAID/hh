@@ -31,7 +31,7 @@ async function sendCode({ apiId, apiHash, phone }) {
   const stringSession = new StringSession('');
   const client = new TelegramClient(stringSession, parseInt(apiId), apiHash, {
     connectionRetries: 3,
-    deviceModel: 'Angel Store Bot',
+    deviceModel: 'ninto Store Bot',
     systemVersion: 'Linux',
     appVersion: '1.0.0',
   });
@@ -153,7 +153,7 @@ async function connectSession({ sessionString }) {
   // قيم افتراضية — Session String يكفي للاتصال
   const client = new TelegramClient(stringSession, 2040, 'b18441a1ff607e10a989891a5462e627', {
     connectionRetries: 3,
-    deviceModel: 'Angel Store Bot',
+    deviceModel: 'ninto Store Bot',
     systemVersion: 'Linux',
     appVersion: '1.0.0',
   });

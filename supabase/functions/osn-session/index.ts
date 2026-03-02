@@ -1,9 +1,51 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
+
+const ACCOUNT_SESSION_ACTIONS = new Set([
+  "tg-save-account-session",
+  "tg-get-account-session",
+  "tg-delete-account-session",
+]);
+
+const getBearerToken = (req: Request): string | null => {
+  const authHeader = req.headers.get("Authorization") || req.headers.get("authorization");
+  if (!authHeader?.startsWith("Bearer ")) return null;
+  return authHeader.replace("Bearer ", "").trim();
+};
+
+const serializeMaybeJson = (value: unknown): string | null => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+};
+
+const getAuthenticatedUserId = async (req: Request): Promise<string | null> => {
+  const token = getBearerToken(req);
+  if (!token) return null;
+
+  const cloudUrl = Deno.env.get("SUPABASE_URL");
+  const cloudAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
+  if (!cloudUrl || !cloudAnonKey) {
+    throw new Error("Cloud auth configuration missing");
+  }
+
+  const authClient = createClient(cloudUrl, cloudAnonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const { data, error } = await authClient.auth.getUser(token);
+  if (error || !data?.user) return null;
+  return data.user.id;
 };
 
 serve(async (req) => {
@@ -44,7 +86,35 @@ serve(async (req) => {
 
     let endpoint = "";
     let method = "POST";
-    let body: any = { secret: QR_AUTOMATION_SECRET };
+    let body: Record<string, unknown> = { secret: QR_AUTOMATION_SECRET };
+
+    const EXTERNAL_SUPABASE_URL = Deno.env.get("EXTERNAL_SUPABASE_URL");
+    const EXTERNAL_SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
+
+    const needsAccountSessionAccess = ACCOUNT_SESSION_ACTIONS.has(action);
+    let accountUserId: string | null = null;
+    let externalClient: ReturnType<typeof createClient> | null = null;
+
+    if (needsAccountSessionAccess) {
+      accountUserId = await getAuthenticatedUserId(req);
+      if (!accountUserId) {
+        return new Response(
+          JSON.stringify({ success: false, error: "يجب تسجيل الدخول أولاً لحفظ الجلسة في الحساب" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (!EXTERNAL_SUPABASE_URL || !EXTERNAL_SUPABASE_SERVICE_ROLE_KEY) {
+        return new Response(
+          JSON.stringify({ success: false, error: "إعدادات قاعدة البيانات الخارجية غير مكتملة" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      externalClient = createClient(EXTERNAL_SUPABASE_URL, EXTERNAL_SUPABASE_SERVICE_ROLE_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+    }
 
     switch (action) {
       case "status":
@@ -156,6 +226,83 @@ serve(async (req) => {
         body.blacklistIds = reqBody.blacklistIds;
         body.taskId = reqBody.taskId;
         break;
+
+      case "tg-save-account-session": {
+        const sessionString = typeof reqBody.sessionString === "string" ? reqBody.sessionString.trim() : "";
+        if (!sessionString) {
+          return new Response(
+            JSON.stringify({ success: false, error: "sessionString مطلوب" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { error } = await externalClient!
+          .from("telegram_sessions")
+          .upsert(
+            {
+              user_id: accountUserId,
+              session_string: sessionString,
+              telegram_user: serializeMaybeJson(reqBody.telegramUser),
+              selected_groups: serializeMaybeJson(reqBody.selectedGroups),
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "user_id" }
+          );
+
+        if (error) {
+          console.error("❌ Save account session failed:", error);
+          return new Response(
+            JSON.stringify({ success: false, error: error.message }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      case "tg-get-account-session": {
+        const { data, error } = await externalClient!
+          .from("telegram_sessions")
+          .select("session_string, telegram_user, selected_groups, updated_at")
+          .eq("user_id", accountUserId)
+          .maybeSingle();
+
+        if (error) {
+          console.error("❌ Get account session failed:", error);
+          return new Response(
+            JSON.stringify({ success: false, error: error.message }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        return new Response(
+          JSON.stringify({ success: true, session: data || null }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      case "tg-delete-account-session": {
+        const { error } = await externalClient!
+          .from("telegram_sessions")
+          .delete()
+          .eq("user_id", accountUserId);
+
+        if (error) {
+          console.error("❌ Delete account session failed:", error);
+          return new Response(
+            JSON.stringify({ success: false, error: error.message }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
 
       default:
         return new Response(

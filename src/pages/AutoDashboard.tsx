@@ -7,8 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
-import { db } from "@/lib/supabaseClient";
+import { invokeCloudFunction, invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
+import { supabase } from "@/integrations/supabase/client";
 import GroupsSelector from "@/components/auto/GroupsSelector";
 import AutoPublishPanel from "@/components/auto/AutoPublishPanel";
 import BroadcastPanel from "@/components/auto/BroadcastPanel";
@@ -48,33 +48,82 @@ const AutoDashboard = () => {
   // Groups state
   const [selectedGroups, setSelectedGroups] = useState<TelegramGroup[]>([]);
 
-  // Auto-reconnect from saved session (database)
+  const callAction = async (action: string, extra: Record<string, unknown> = {}) => {
+    const { data, error } = await invokeCloudFunctionPublic<any>("osn-session", { action, ...extra });
+    if (error) throw new Error(error.message);
+    if (data && !data.success) throw new Error(data.error || "فشل غير متوقع");
+    return data;
+  };
+
+  const callAccountAction = async (action: string, extra: Record<string, unknown> = {}) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) throw new Error("يجب تسجيل الدخول في الحساب أولاً");
+
+    const { data, error } = await invokeCloudFunction<any>("osn-session", { action, ...extra }, session.access_token);
+    if (error) throw new Error(error.message);
+    if (data && !data.success) throw new Error(data.error || "فشل غير متوقع");
+    return data;
+  };
+
+  const parseStoredJson = <T,>(value: unknown, fallback: T): T => {
+    if (value === null || value === undefined) return fallback;
+    if (typeof value === "string") {
+      try {
+        return JSON.parse(value) as T;
+      } catch {
+        return fallback;
+      }
+    }
+    return value as T;
+  };
+
+  // === Save to account helper ===
+  const saveSessionToAccount = async (sessionStr: string, user: TelegramUser | null, groups?: TelegramGroup[]) => {
+    if (!sessionStr) return;
+    await callAccountAction("tg-save-account-session", {
+      sessionString: sessionStr,
+      telegramUser: user,
+      selectedGroups: groups ?? selectedGroups,
+    });
+  };
+
+  // Auto-reconnect from saved session (account storage)
   useEffect(() => {
+    let mounted = true;
+
     const loadSession = async () => {
-      const { data: { user } } = await db.auth.getUser();
-      if (!user) return;
-
-      const { data } = await db.from("telegram_sessions").select("*").eq("user_id", user.id).maybeSingle();
-      if (!data?.session_string) return;
-
       setAutoConnecting(true);
       try {
-        const result = await callAction("tg-connect-session", { sessionString: data.session_string });
-        setLoggedIn(true);
-        setTelegramUser(result.user || (data.telegram_user ? JSON.parse(data.telegram_user) : null));
-        setActiveSession(data.session_string);
-        setMode("groups");
-        if (data.selected_groups) {
-          try { setSelectedGroups(JSON.parse(data.selected_groups)); } catch {}
+        const data = await callAccountAction("tg-get-account-session");
+        const saved = data?.session;
+        if (!saved?.session_string || !mounted) return;
+
+        try {
+          const result = await callAction("tg-connect-session", { sessionString: saved.session_string });
+          if (!mounted) return;
+
+          const savedUser = parseStoredJson<TelegramUser | null>(saved.telegram_user, null);
+          const savedGroups = parseStoredJson<TelegramGroup[]>(saved.selected_groups, []);
+
+          setLoggedIn(true);
+          setTelegramUser(result.user || savedUser);
+          setActiveSession(saved.session_string);
+          setSelectedGroups(savedGroups);
+          setMode("groups");
+        } catch {
+          await callAccountAction("tg-delete-account-session");
         }
       } catch {
-        // Session invalid - delete from DB
-        await db.from("telegram_sessions").delete().eq("user_id", user.id);
+        // المستخدم غير مسجل دخول أو لا توجد جلسة محفوظة
       } finally {
-        setAutoConnecting(false);
+        if (mounted) setAutoConnecting(false);
       }
     };
+
     loadSession();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   // Wizard state (instructions mode)
@@ -93,26 +142,6 @@ const AutoDashboard = () => {
   const [needs2FA, setNeeds2FA] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  const callAction = async (action: string, extra: Record<string, unknown> = {}) => {
-    const { data, error } = await invokeCloudFunctionPublic<any>("osn-session", { action, ...extra });
-    if (error) throw new Error(error.message);
-    if (data && !data.success) throw new Error(data.error || "فشل غير متوقع");
-    return data;
-  };
-
-  // === Save to DB helper ===
-  const saveSessionToDB = async (sessionStr: string, user: TelegramUser | null, groups?: TelegramGroup[]) => {
-    const { data: { user: authUser } } = await db.auth.getUser();
-    if (!authUser) return;
-    await db.from("telegram_sessions").upsert({
-      user_id: authUser.id,
-      session_string: sessionStr,
-      telegram_user: user ? JSON.stringify(user) : null,
-      selected_groups: groups ? JSON.stringify(groups) : null,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: "user_id" });
-  };
-
   // === Login ===
   const handleSessionLogin = async () => {
     if (!sessionInput.trim()) { toast.error("يرجى لصق Session String"); return; }
@@ -124,8 +153,12 @@ const AutoDashboard = () => {
       setTelegramUser(result.user || null);
       setActiveSession(sessionInput.trim());
       setMode("groups");
-      // حفظ في قاعدة البيانات
-      await saveSessionToDB(sessionInput.trim(), result.user || null);
+      // حفظ الجلسة بالحساب
+      try {
+        await saveSessionToAccount(sessionInput.trim(), result.user || null);
+      } catch (saveErr: any) {
+        toast.error(saveErr.message || "تعذر حفظ الجلسة في الحساب");
+      }
       toast.success("تم الاتصال بنجاح!");
     } catch (err: any) {
       setLoginError(err.message);
@@ -136,9 +169,10 @@ const AutoDashboard = () => {
   };
 
   const handleLogout = async () => {
-    const { data: { user } } = await db.auth.getUser();
-    if (user) {
-      await db.from("telegram_sessions").delete().eq("user_id", user.id);
+    try {
+      await callAccountAction("tg-delete-account-session");
+    } catch {
+      // تجاهل خطأ حذف الجلسة المحفوظة
     }
     setLoggedIn(false);
     setTelegramUser(null);
@@ -369,7 +403,7 @@ const AutoDashboard = () => {
     switch (mode) {
       case "login": return renderLogin();
       case "instructions": return renderInstructions();
-      case "groups": return <GroupsSelector sessionString={activeSession} selectedGroups={selectedGroups} onSave={(groups) => { setSelectedGroups(groups); saveSessionToDB(activeSession, telegramUser, groups); }} />;
+      case "groups": return <GroupsSelector sessionString={activeSession} selectedGroups={selectedGroups} onSave={async (groups) => { setSelectedGroups(groups); try { await saveSessionToAccount(activeSession, telegramUser, groups); toast.success("تم حفظ المجموعات في الحساب"); } catch (err: any) { toast.error(err.message || "تعذر حفظ المجموعات"); } }} />;
       case "auto-publish": return <AutoPublishPanel sessionString={activeSession} selectedGroups={selectedGroups} />;
       case "broadcast": return <BroadcastPanel sessionString={activeSession} />;
     }
