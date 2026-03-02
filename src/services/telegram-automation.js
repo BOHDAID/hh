@@ -64,7 +64,7 @@ async function fetchGroups({ sessionString }) {
     const isSupergroup = entity.megagroup === true;
     const isChannel = entity.className === 'Channel' && !entity.megagroup;
     
-    if (!isGroup) continue;
+    if (!isGroup || isChannel) continue;
 
     let photoUrl = null;
     try {
