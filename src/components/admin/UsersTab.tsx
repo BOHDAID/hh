@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Users, Wallet, Plus, Minus, Ban, UserPlus, RefreshCw, ShieldCheck, ShieldX } from "lucide-react";
+import { Loader2, Users, Wallet, Plus, Minus, Ban, UserPlus, RefreshCw, ShieldCheck, ShieldX, Search, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -42,6 +42,7 @@ const UsersTab = () => {
   const [users, setUsers] = useState<UserWithWallet[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserWithWallet | null>(null);
   const [balanceAmount, setBalanceAmount] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [creatingProfile, setCreatingProfile] = useState(false);
@@ -397,6 +398,22 @@ const UsersTab = () => {
         </div>
       </div>
 
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="ابحث بالإيميل أو الاسم..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pr-10"
+        />
+        {searchQuery && (
+          <button onClick={() => setSearchQuery("")} className="absolute left-3 top-1/2 -translate-y-1/2">
+            <X className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+          </button>
+        )}
+      </div>
+
       {users.length === 0 ? (
         <div className="text-center py-12 space-y-4">
           <p className="text-muted-foreground">لا يوجد مستخدمين في جدول profiles</p>
@@ -431,7 +448,16 @@ const UsersTab = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {users.map((user) => (
+              {users
+                .filter((u) => {
+                  if (!searchQuery.trim()) return true;
+                  const q = searchQuery.toLowerCase();
+                  return (
+                    (u.email && u.email.toLowerCase().includes(q)) ||
+                    (u.full_name && u.full_name.toLowerCase().includes(q))
+                  );
+                })
+                .map((user) => (
                 <TableRow key={user.id}>
                   <TableCell className="font-mono text-xs">
                     {user.user_id.substring(0, 8)}...
