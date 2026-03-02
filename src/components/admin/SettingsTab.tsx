@@ -128,6 +128,46 @@ const SettingsTab = () => {
   // الإعدادات العامة (غير حساسة) التي يجب أن تكون مرئية للجميع
   const publicSettingKeys = new Set(allRequiredKeys);
 
+  const saveSingleSetting = async (key: string, value: string, successMessage?: string) => {
+    setSettings((prev) => ({ ...prev, [key]: value }));
+
+    try {
+      const isSensitive = !publicSettingKeys.has(key);
+
+      const { error } = value.trim() === ""
+        ? await db.from("site_settings").delete().eq("key", key)
+        : await db
+            .from("site_settings")
+            .upsert(
+              {
+                key,
+                value,
+                is_sensitive: isSensitive,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "key" }
+            );
+
+      if (error) throw error;
+
+      window.dispatchEvent(new Event("site-settings-updated"));
+
+      if (successMessage) {
+        toast({
+          title: "✅ تم الحفظ",
+          description: successMessage,
+        });
+      }
+    } catch (error) {
+      console.error(`Failed to save setting ${key}:`, error);
+      toast({
+        title: "❌ خطأ",
+        description: "فشل حفظ الإعداد",
+        variant: "destructive",
+      });
+    }
+  };
+
   const saveSettings = async () => {
     setSaving(true);
     
@@ -186,6 +226,8 @@ const SettingsTab = () => {
           hasError = true;
         }
       }
+
+      window.dispatchEvent(new Event("site-settings-updated"));
       
       toast({
         title: hasError ? "⚠️ تحذير" : "✅ تم الحفظ بنجاح",
@@ -607,7 +649,14 @@ const SettingsTab = () => {
                   <Button
                     variant={settings.maintenance_mode === "true" ? "destructive" : "outline"}
                     size="sm"
-                    onClick={() => updateSetting("maintenance_mode", settings.maintenance_mode === "true" ? "false" : "true")}
+                    onClick={async () => {
+                      const nextValue = settings.maintenance_mode === "true" ? "false" : "true";
+                      await saveSingleSetting(
+                        "maintenance_mode",
+                        nextValue,
+                        nextValue === "true" ? "تم تفعيل وضع الصيانة" : "تم إيقاف وضع الصيانة"
+                      );
+                    }}
                   >
                     {settings.maintenance_mode === "true" ? "🔴 مفعّل - إيقاف" : "تفعيل"}
                   </Button>
