@@ -25,8 +25,6 @@ const AutoDashboard = () => {
 
   // Login mode state
   const [sessionInput, setSessionInput] = useState("");
-  const [loginApiId, setLoginApiId] = useState("");
-  const [loginApiHash, setLoginApiHash] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
   const [telegramUser, setTelegramUser] = useState<TelegramUser | null>(null);
@@ -60,16 +58,14 @@ const AutoDashboard = () => {
 
   // === Login Mode: Real connection ===
   const handleSessionLogin = async () => {
-    if (!sessionInput.trim() || !loginApiId.trim() || !loginApiHash.trim()) {
-      toast.error("يرجى ملء جميع الحقول");
+    if (!sessionInput.trim()) {
+      toast.error("يرجى لصق Session String");
       return;
     }
     setLoginLoading(true);
     setLoginError("");
     try {
       const result = await callAction("tg-connect-session", {
-        apiId: loginApiId.trim(),
-        apiHash: loginApiHash.trim(),
         sessionString: sessionInput.trim(),
       });
       setLoggedIn(true);
@@ -202,8 +198,6 @@ const AutoDashboard = () => {
             setLoggedIn(false);
             setTelegramUser(null);
             setSessionInput("");
-            setLoginApiId("");
-            setLoginApiHash("");
           }}>
             قطع الاتصال
           </Button>
@@ -215,29 +209,19 @@ const AutoDashboard = () => {
       <div className="space-y-6 max-w-md">
         <div className="space-y-2">
           <h2 className="text-xl font-bold text-foreground">تسجيل الدخول</h2>
-          <p className="text-muted-foreground text-sm">أدخل بيانات API و Session String للاتصال بحسابك</p>
+          <p className="text-muted-foreground text-sm">الصق Session String للاتصال بحسابك على Telegram</p>
         </div>
 
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="login-api-id">API ID</Label>
-            <Input id="login-api-id" placeholder="مثال: 12345678" value={loginApiId} onChange={(e) => setLoginApiId(e.target.value)} dir="ltr" />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="login-api-hash">API Hash</Label>
-            <Input id="login-api-hash" placeholder="مثال: a1b2c3d4e5f6..." value={loginApiHash} onChange={(e) => setLoginApiHash(e.target.value)} dir="ltr" />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="session-input">Session String</Label>
-            <Textarea
-              id="session-input"
-              placeholder="الصق Session String هنا..."
-              value={sessionInput}
-              onChange={(e) => setSessionInput(e.target.value)}
-              dir="ltr"
-              className="font-mono text-xs min-h-[80px]"
-            />
-          </div>
+        <div className="space-y-2">
+          <Label htmlFor="session-input">Session String</Label>
+          <Textarea
+            id="session-input"
+            placeholder="الصق Session String هنا..."
+            value={sessionInput}
+            onChange={(e) => setSessionInput(e.target.value)}
+            dir="ltr"
+            className="font-mono text-xs min-h-[100px]"
+          />
         </div>
 
         <ErrorBox msg={loginError} />
@@ -251,7 +235,7 @@ const AutoDashboard = () => {
           </p>
         </div>
 
-        <Button onClick={handleSessionLogin} disabled={!sessionInput.trim() || !loginApiId.trim() || !loginApiHash.trim() || loginLoading} className="w-full gap-2">
+        <Button onClick={handleSessionLogin} disabled={!sessionInput.trim() || loginLoading} className="w-full gap-2">
           {loginLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
           اتصال
         </Button>
@@ -387,8 +371,6 @@ const AutoDashboard = () => {
             <div className="flex gap-3">
               <Button onClick={() => {
                 setSessionInput(sessionString);
-                setLoginApiId(apiId);
-                setLoginApiHash(apiHash);
                 setMode("login");
               }} className="gap-2">
                 <LogIn className="h-4 w-4" />

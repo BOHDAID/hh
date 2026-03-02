@@ -146,11 +146,12 @@ async function verify2FA({ apiId, phone, password }) {
 
 /**
  * التحقق من Session String عبر الاتصال الفعلي بتليجرام
- * يُرجع معلومات الحساب إذا نجح
+ * Session String يحتوي كل شيء — لا حاجة لـ API ID/Hash حقيقية
  */
-async function connectSession({ apiId, apiHash, sessionString }) {
+async function connectSession({ sessionString }) {
   const stringSession = new StringSession(sessionString);
-  const client = new TelegramClient(stringSession, parseInt(apiId), apiHash, {
+  // قيم افتراضية — Session String يكفي للاتصال
+  const client = new TelegramClient(stringSession, 2040, 'b18441a1ff607e10a989891a5462e627', {
     connectionRetries: 3,
     deviceModel: 'Angel Store Bot',
     systemVersion: 'Linux',
@@ -159,9 +160,7 @@ async function connectSession({ apiId, apiHash, sessionString }) {
 
   await client.connect();
 
-  // جلب معلومات الحساب
   const me = await client.getMe();
-
   await client.disconnect();
 
   console.log(`✅ Session validated for ${me.phone || me.username || me.id}`);
