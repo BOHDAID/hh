@@ -54,31 +54,49 @@ async function fetchGroups({ sessionString }) {
   
   const dialogs = await client.getDialogs({ limit: 500 });
   
+  // المرحلة 1: جمع المجموعات بدون صور (سريع جداً)
   const groups = [];
+  const entities = [];
   for (const dialog of dialogs) {
     const entity = dialog.entity;
     if (!entity) continue;
     
-    // مجموعات وقنوات فقط
     const isGroup = entity.className === 'Channel' || entity.className === 'Chat';
     const isSupergroup = entity.megagroup === true;
     const isChannel = entity.className === 'Channel' && !entity.megagroup;
     
     if (!isGroup || isChannel) continue;
 
-    const photoUrl = null; // تخطي الصور لتسريع الجلب
-
     groups.push({
       id: entity.id?.toString(),
       title: entity.title || 'بدون اسم',
       username: entity.username || null,
       participantsCount: entity.participantsCount || 0,
-      photo: photoUrl,
-      type: isChannel ? 'channel' : (isSupergroup ? 'supergroup' : 'group'),
+      photo: null,
+      type: isSupergroup ? 'supergroup' : 'group',
+    });
+    entities.push(entity);
+  }
+
+  // المرحلة 2: تحميل الصور بالتوازي (دفعات من 5)
+  const BATCH = 5;
+  for (let i = 0; i < entities.length; i += BATCH) {
+    const batch = entities.slice(i, i + BATCH);
+    const photos = await Promise.allSettled(
+      batch.map(async (entity) => {
+        if (!entity.photo) return null;
+        const buf = await client.downloadProfilePhoto(entity, { isBig: false });
+        return buf ? `data:image/jpeg;base64,${Buffer.from(buf).toString('base64')}` : null;
+      })
+    );
+    photos.forEach((result, j) => {
+      if (result.status === 'fulfilled' && result.value) {
+        groups[i + j].photo = result.value;
+      }
     });
   }
 
-  console.log(`✅ Fetched ${groups.length} groups/channels`);
+  console.log(`✅ Fetched ${groups.length} groups with photos`);
   return { success: true, groups };
 }
 
