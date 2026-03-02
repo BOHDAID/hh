@@ -429,6 +429,184 @@ async function deleteProfilePhoto({ sessionString }) {
   return { success: true, message: 'تم حذف الصورة بنجاح' };
 }
 
+// تخزين مؤقت لمراقبة المنشنات (taskId → handler)
+const activeMentionsMonitors = new Map();
+
+/**
+ * جلب القنوات التي أنا أدمن فيها
+ */
+async function fetchChannels({ sessionString }) {
+  const client = await getOrCreateClient(sessionString);
+  const dialogs = await client.getDialogs({ limit: 500 });
+  
+  const channels = [];
+  for (const dialog of dialogs) {
+    const entity = dialog.entity;
+    if (!entity) continue;
+    // فقط القنوات (وليس المجموعات)
+    const isChannel = entity.className === 'Channel' && !entity.megagroup;
+    if (!isChannel) continue;
+    // تحقق أن لدي صلاحية الإرسال (أدمن أو creator)
+    if (!entity.creator && !entity.adminRights) continue;
+
+    let photoUrl = null;
+    try {
+      if (entity.photo) {
+        const buf = await client.downloadProfilePhoto(entity, { isBig: false });
+        if (buf) photoUrl = `data:image/jpeg;base64,${Buffer.from(buf).toString('base64')}`;
+      }
+    } catch {}
+
+    channels.push({
+      id: entity.id?.toString(),
+      title: entity.title || 'بدون اسم',
+      username: entity.username || null,
+      photo: photoUrl,
+    });
+  }
+
+  console.log(`✅ Fetched ${channels.length} admin channels`);
+  return { success: true, channels };
+}
+
+/**
+ * بدء مراقبة المنشنات والردود وإرسالها للقناة المحددة
+ */
+async function startMentionsMonitor({ sessionString, channelId, taskId }) {
+  // إيقاف أي مراقبة سابقة
+  if (activeMentionsMonitors.has(taskId)) {
+    await stopMentionsMonitor({ taskId });
+  }
+
+  const client = await getOrCreateClient(sessionString);
+  const me = await client.getMe();
+  const myId = me.id?.toString();
+  const myUsername = me.username?.toLowerCase();
+  const channelEntity = await client.getEntity(BigInt(channelId));
+  
+  const mentionsLog = [];
+
+  // Event handler for new messages
+  const { NewMessage } = await import('telegram/events/index.js');
+  
+  const handler = async (event) => {
+    try {
+      const msg = event.message;
+      if (!msg || !msg.peerId) return;
+      
+      // فقط رسائل المجموعات
+      const chat = await msg.getChat();
+      if (!chat || (chat.className !== 'Channel' && chat.className !== 'Chat')) return;
+      if (chat.className === 'Channel' && !chat.megagroup) return; // تجاهل القنوات
+      
+      const sender = await msg.getSender();
+      if (!sender || sender.id?.toString() === myId) return; // تجاهل رسائلي
+      
+      const text = msg.message || '';
+      let isMention = false;
+      
+      // 1) تحقق من المنشنات في entities
+      if (msg.entities) {
+        for (const ent of msg.entities) {
+          if (ent.className === 'MessageEntityMention') {
+            const mentionText = text.substring(ent.offset + 1, ent.offset + ent.length).toLowerCase();
+            if (mentionText === myUsername) isMention = true;
+          }
+          if (ent.className === 'MessageEntityMentionName' && ent.userId?.toString() === myId) {
+            isMention = true;
+          }
+        }
+      }
+      
+      // 2) تحقق من الرد على رسائلي
+      if (msg.replyTo && msg.replyTo.replyToMsgId) {
+        try {
+          const repliedMsg = await client.getMessages(chat, { ids: [msg.replyTo.replyToMsgId] });
+          if (repliedMsg?.[0]?.senderId?.toString() === myId) {
+            isMention = true;
+          }
+        } catch {}
+      }
+      
+      if (!isMention) return;
+
+      const groupUsername = chat.username;
+      const groupId = chat.id?.toString();
+      let messageLink = null;
+      if (groupUsername) {
+        messageLink = `https://t.me/${groupUsername}/${msg.id}`;
+      } else {
+        // For private groups, use c/ format
+        messageLink = `https://t.me/c/${groupId}/${msg.id}`;
+      }
+
+      const mentionData = {
+        fromUser: {
+          id: sender.id?.toString(),
+          firstName: sender.firstName || '',
+          lastName: sender.lastName || '',
+          username: sender.username || null,
+        },
+        groupTitle: chat.title || '',
+        groupId,
+        message: text.substring(0, 500),
+        messageLink,
+        date: new Date().toISOString(),
+      };
+
+      mentionsLog.push(mentionData);
+      if (mentionsLog.length > 100) mentionsLog.shift();
+
+      // إرسال إشعار للقناة
+      const notifText = [
+        `🔔 **منشن/رد جديد**`,
+        ``,
+        `👤 **من:** ${sender.firstName || ''} ${sender.lastName || ''} ${sender.username ? `(@${sender.username})` : ''} [ID: ${sender.id}]`,
+        `💬 **المجموعة:** ${chat.title}`,
+        `📝 **الرسالة:** ${text.substring(0, 300)}`,
+        `🕐 **الوقت:** ${new Date().toLocaleString('ar')}`,
+        messageLink ? `🔗 **الرابط:** ${messageLink}` : '',
+      ].filter(Boolean).join('\n');
+
+      await client.sendMessage(channelEntity, { message: notifText, parseMode: 'md' });
+      console.log(`📨 Mention forwarded to channel [${taskId}] from ${sender.firstName}`);
+    } catch (err) {
+      console.error(`❌ Mention handler error [${taskId}]:`, err.message);
+    }
+  };
+
+  client.addEventHandler(handler, new NewMessage({}));
+  
+  activeMentionsMonitors.set(taskId, { handler, client, mentionsLog });
+  console.log(`✅ Mentions monitor started [${taskId}]`);
+  
+  return { success: true, message: 'تم بدء مراقبة المنشنات والردود' };
+}
+
+/**
+ * إيقاف مراقبة المنشنات
+ */
+async function stopMentionsMonitor({ taskId }) {
+  if (activeMentionsMonitors.has(taskId)) {
+    const { handler, client } = activeMentionsMonitors.get(taskId);
+    try { client.removeEventHandler(handler); } catch {}
+    activeMentionsMonitors.delete(taskId);
+    console.log(`🛑 Mentions monitor stopped [${taskId}]`);
+    return { success: true, message: 'تم إيقاف المراقبة' };
+  }
+  return { success: true, message: 'لا توجد مراقبة نشطة' };
+}
+
+/**
+ * جلب المنشنات المسجلة
+ */
+async function getMentions({ taskId }) {
+  if (activeMentionsMonitors.has(taskId)) {
+    return { success: true, mentions: activeMentionsMonitors.get(taskId).mentionsLog };
+  }
+  return { success: true, mentions: [] };
+}
+
 // تنظيف العملاء غير المستخدمين كل 15 دقيقة
 setInterval(() => {
   const now = Date.now();
@@ -455,4 +633,8 @@ export default {
   updateProfile,
   updateProfilePhoto,
   deleteProfilePhoto,
+  fetchChannels,
+  startMentionsMonitor,
+  stopMentionsMonitor,
+  getMentions,
 };

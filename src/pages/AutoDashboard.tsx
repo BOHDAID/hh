@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Bot, Home, LogIn, BookOpen, Users, Send, MessageSquare, User, CheckCircle2, Loader2, AlertCircle, Key, ExternalLink, Eye, EyeOff, Copy, Shield } from "lucide-react";
+import { Bot, Home, LogIn, BookOpen, Users, Send, MessageSquare, User, CheckCircle2, Loader2, AlertCircle, Key, ExternalLink, Eye, EyeOff, Copy, Shield, AtSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +14,7 @@ import TelegramProfileCard from "@/components/auto/TelegramProfileCard";
 import GroupsSelector from "@/components/auto/GroupsSelector";
 import AutoPublishPanel from "@/components/auto/AutoPublishPanel";
 import BroadcastPanel from "@/components/auto/BroadcastPanel";
+import MentionsMonitorPanel from "@/components/auto/MentionsMonitorPanel";
 
 interface TelegramUser {
   id: string;
@@ -237,9 +238,9 @@ const AutoDashboard = () => {
             onLogout={handleLogout}
           />
 
-          {/* Tabs: المجموعات | النشر التلقائي | البث */}
+          {/* Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-3 h-11">
+            <TabsList className="grid w-full grid-cols-4 h-11">
               <TabsTrigger value="groups" className="gap-2 text-sm">
                 <Users className="h-4 w-4" /> المجموعات
               </TabsTrigger>
@@ -248,6 +249,9 @@ const AutoDashboard = () => {
               </TabsTrigger>
               <TabsTrigger value="broadcast" className="gap-2 text-sm">
                 <MessageSquare className="h-4 w-4" /> إرسال رسائل خاص
+              </TabsTrigger>
+              <TabsTrigger value="mentions" className="gap-2 text-sm">
+                <AtSign className="h-4 w-4" /> المنشنات
               </TabsTrigger>
             </TabsList>
 
@@ -273,6 +277,10 @@ const AutoDashboard = () => {
 
             <TabsContent value="broadcast" className="mt-4">
               <BroadcastPanel sessionString={activeSession} />
+            </TabsContent>
+
+            <TabsContent value="mentions" className="mt-4">
+              <MentionsMonitorPanel sessionString={activeSession} />
             </TabsContent>
           </Tabs>
         </main>
