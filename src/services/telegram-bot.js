@@ -823,7 +823,15 @@ async function handleCallbackQuery(callbackQuery) {
         ));
 
         await markCodeAsUsed(session.activationCodeId);
-        await sendSuccessMessage(chatId, session);
+        try {
+          await sendSuccessMessage(chatId, session);
+        } catch (msgErr) {
+          console.error('⚠️ Failed to send success message after OTP:', msgErr.message);
+          await sendMessage(chatId, bi(
+            '✅ <b>تم التفعيل بنجاح!</b> 🎉',
+            '✅ <b>Activation completed successfully!</b> 🎉'
+          )).catch(() => {});
+        }
         delete userSessions[chatId];
         return;
       }
@@ -850,6 +858,13 @@ async function handleCallbackQuery(callbackQuery) {
 // ============================================================
 // Success message with receipt link + rating
 // ============================================================
+function escapeTelegramHtml(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 async function sendSuccessMessage(chatId, session) {
   const storeUrl = await getStoreUrl();
   const orderId = session.orderId;
@@ -886,11 +901,16 @@ async function sendSuccessMessage(chatId, session) {
   }
 
   const productLabel = productName || 'الخدمة';
+  const safeProductLabel = escapeTelegramHtml(productLabel);
 
-  await sendMessage(chatId, bi(
-    `✅ <b>تم تفعيل اشتراكك بنجاح!</b> 🎉\n\n📺 الحساب الآن مرتبط بجهازك، استمتع بالمشاهدة!\n\n⭐ نقدر لك ثقتك في Angel Store، يسعدنا جداً أن تشاركنا تقييمك لـ <b>${productLabel}</b> عبر الزر أدناه 👇`,
-    `✅ <b>Your subscription has been activated successfully!</b> 🎉\n\n📺 Your account is now linked to your device, enjoy watching!\n\n⭐ We appreciate your trust in Angel Store. We'd love for you to rate <b>${productLabel}</b> using the button below 👇`
+  const messageResult = await sendMessage(chatId, bi(
+    `✅ <b>تم تفعيل اشتراكك بنجاح!</b> 🎉\n\n📺 الحساب الآن مرتبط بجهازك، استمتع بالمشاهدة!\n\n⭐ نقدر لك ثقتك في Angel Store، يسعدنا جداً أن تشاركنا تقييمك لـ <b>${safeProductLabel}</b> عبر الزر أدناه 👇`,
+    `✅ <b>Your subscription has been activated successfully!</b> 🎉\n\n📺 Your account is now linked to your device, enjoy watching!\n\n⭐ We appreciate your trust in Angel Store. We'd love for you to rate <b>${safeProductLabel}</b> using the button below 👇`
   ), inlineButtons.length > 0 ? inlineButtons : null);
+
+  if (!messageResult?.ok) {
+    throw new Error(messageResult?.description || 'Telegram sendMessage failed');
+  }
 }
 
 // ============================================================
