@@ -48,6 +48,7 @@ const AutoDashboard = () => {
 
   // Groups state
   const [selectedGroups, setSelectedGroups] = useState<TelegramGroup[]>([]);
+  const [savedMentionsChannelId, setSavedMentionsChannelId] = useState<string | null>(null);
 
   // Active tab
   const [activeTab, setActiveTab] = useState("groups");
@@ -104,6 +105,7 @@ const AutoDashboard = () => {
           setTelegramUser(result.user || savedUser);
           setActiveSession(saved.session_string);
           setSelectedGroups(savedGroups);
+          if (saved.mentions_channel_id) setSavedMentionsChannelId(saved.mentions_channel_id);
         } catch {
           await callAccountAction("tg-delete-account-session");
         }
@@ -280,7 +282,7 @@ const AutoDashboard = () => {
             </TabsContent>
 
             <TabsContent value="mentions" className="mt-4">
-              <MentionsMonitorPanel sessionString={activeSession} />
+              <MentionsMonitorPanel sessionString={activeSession} savedChannelId={savedMentionsChannelId} />
             </TabsContent>
           </Tabs>
         </main>

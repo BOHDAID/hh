@@ -168,6 +168,19 @@ router.post('/delete-profile-photo', async (req, res) => {
   }
 });
 
+// إنشاء قناة منشنات جديدة
+router.post('/create-mentions-channel', async (req, res) => {
+  try {
+    const { sessionString } = req.body;
+    if (!sessionString) return res.status(400).json({ success: false, error: 'sessionString مطلوب' });
+    const result = await telegramAuto.createMentionsChannel({ sessionString });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Create mentions channel error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // جلب القنوات
 router.post('/fetch-channels', async (req, res) => {
   try {
