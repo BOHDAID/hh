@@ -145,6 +145,7 @@ const AppContent = () => {
   );
 };
 
+// App v2
 const App = () => (
   <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
