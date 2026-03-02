@@ -3,6 +3,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync } from 'fs';
 import qrAutomationRoutes from './src/routes/qr-automation.js';
+import telegramSessionRoutes from './src/routes/telegram-session.js';
 import sessionManager from './src/services/session-manager.js';
 import telegramBot from './src/services/telegram-bot.js';
 
@@ -127,6 +128,7 @@ function escapeHtml(str) {
 
 // QR Automation API routes
 app.use('/api/qr', qrAutomationRoutes);
+app.use('/api/telegram-session', telegramSessionRoutes);
 
 // Debug OG endpoint - shows what the server will inject
 app.get('/debug-og', async (req, res) => {
