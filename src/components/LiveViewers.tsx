@@ -14,19 +14,26 @@ const LiveViewers = ({ productId, salesCount = 0 }: LiveViewersProps) => {
   const [viewers, setViewers] = useState(0);
 
   useEffect(() => {
-    // Generate a realistic number based on product popularity
-    const base = Math.min(Math.max(Math.floor(salesCount / 5), 1), 15);
-    const variation = Math.floor(Math.random() * 5);
-    setViewers(base + variation);
+    // More realistic: use product ID hash + time-of-day pattern
+    const hash = productId.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+    const hour = new Date().getHours();
+    // Peak hours: 18-23, low: 3-8
+    const hourMultiplier = hour >= 18 ? 1.5 : hour >= 12 ? 1.2 : hour >= 8 ? 0.8 : 0.4;
+    
+    const popularity = Math.min(Math.max(salesCount, 1), 200);
+    const base = Math.max(1, Math.round(Math.sqrt(popularity) * hourMultiplier));
+    const seed = (hash + Math.floor(Date.now() / 30000)) % 7;
+    setViewers(Math.max(1, base + seed));
 
-    // Periodically change viewers slightly
     const interval = setInterval(() => {
       setViewers(prev => {
-        const change = Math.random() > 0.5 ? 1 : -1;
-        const next = prev + change;
-        return Math.max(1, Math.min(next, base + 10));
+        const rand = Math.random();
+        // 60% no change, 25% +1, 15% -1
+        if (rand < 0.6) return prev;
+        const change = rand < 0.85 ? 1 : -1;
+        return Math.max(1, Math.min(prev + change, base + 8));
       });
-    }, 5000 + Math.random() * 10000);
+    }, 8000 + Math.random() * 12000);
 
     return () => clearInterval(interval);
   }, [productId, salesCount]);

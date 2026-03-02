@@ -157,7 +157,7 @@ const ProductCard = ({
   return (
     <motion.div 
       ref={cardRef}
-      className="group relative overflow-hidden rounded-2xl sm:rounded-3xl bg-card border border-border/50 transition-colors duration-500 flex flex-row sm:flex-col"
+      className="group relative overflow-hidden rounded-xl sm:rounded-2xl bg-card border border-border/50 transition-colors duration-500 flex flex-col"
       onMouseMove={handleMouseMove}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={handleMouseLeave}
@@ -211,7 +211,7 @@ const ProductCard = ({
       />
 
       {/* Image Container */}
-      <div className="relative w-28 h-28 sm:w-full sm:h-auto sm:aspect-[4/3] overflow-hidden bg-muted/30 flex-shrink-0 rounded-r-2xl sm:rounded-r-none sm:rounded-t-3xl z-[3]">
+      <div className="relative w-full aspect-square overflow-hidden bg-muted/30 flex-shrink-0 rounded-t-xl sm:rounded-t-2xl z-[3]">
         {image ? (
           <motion.img
             src={image}
@@ -259,55 +259,41 @@ const ProductCard = ({
       </div>
 
       {/* Content */}
-      <div className="relative p-3 sm:p-6 flex-1 min-w-0 z-[3]">
+      <div className="relative p-2.5 sm:p-3 flex-1 min-w-0 z-[3]">
         <motion.h3 
-          className="mb-1 sm:mb-2 text-sm sm:text-lg font-bold text-foreground break-words line-clamp-2 sm:line-clamp-none"
+          className="mb-1 text-xs sm:text-sm font-bold text-foreground break-words line-clamp-2"
           animate={{ x: isHovered ? (isRTL ? -5 : 5) : 0 }}
           transition={{ duration: 0.2 }}
         >
           {title}
         </motion.h3>
-        <p className="mb-2 sm:mb-3 text-xs sm:text-sm text-muted-foreground line-clamp-2 sm:line-clamp-3 leading-relaxed hidden sm:block">
-          {description}
-        </p>
-
         {/* Live Viewers */}
-        <div className="mb-2 sm:mb-3">
+        <div className="mb-1.5">
           <LiveViewers productId={id} salesCount={sales_count} />
         </div>
 
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          {/* Show price based on variants */}
-          <motion.div 
-            className="flex items-baseline gap-1"
-            animate={{ scale: isHovered ? 1.05 : 1 }}
-            transition={{ duration: 0.2 }}
-          >
-            <span className="text-lg sm:text-2xl font-extrabold text-primary">
+        <div className="flex items-center justify-between gap-1">
+          <div className="flex items-baseline gap-0.5">
+            <span className="text-sm sm:text-base font-extrabold text-primary">
               {hasVariants ? minPrice : price}
             </span>
-            <span className="text-xs sm:text-sm text-muted-foreground font-medium">{currency}</span>
-          </motion.div>
+            <span className="text-[10px] sm:text-xs text-muted-foreground font-medium">{currency}</span>
+          </div>
           
-          {/* Actions - consistent layout for all products */}
-          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-            <Button 
-              variant="hero" 
-              size="sm" 
-              className="gap-1 sm:gap-2 rounded-lg sm:rounded-xl px-2 sm:px-5 shadow-lg text-xs sm:text-sm"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setDetailsOpen(true);
-              }}
-              type="button"
-            >
-              <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="hidden sm:inline">{hasVariants ? (isRTL ? "عرض الخيارات" : "View Options") : (isRTL ? "عرض التفاصيل" : "View Details")}</span>
-              <span className="sm:hidden">{isRTL ? "عرض" : "View"}</span>
-              {hasVariants && ` (${variantsCount})`}
-            </Button>
-          </motion.div>
+          <Button 
+            variant="hero" 
+            size="sm" 
+            className="gap-1 rounded-lg px-2 sm:px-3 shadow-lg text-[10px] sm:text-xs h-7 sm:h-8"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setDetailsOpen(true);
+            }}
+            type="button"
+          >
+            <Eye className="h-3 w-3" />
+            <span>{isRTL ? "عرض" : "View"}</span>
+          </Button>
         </div>
       </div>
 
