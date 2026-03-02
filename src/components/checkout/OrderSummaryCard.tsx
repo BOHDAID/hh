@@ -20,6 +20,7 @@ interface Product {
   image_url: string | null;
   product_type: string;
   warranty_days: number;
+  description?: string | null;
 }
 
 interface OrderSummaryCardProps {
@@ -78,6 +79,11 @@ const OrderSummaryCard = ({
               {getProductTypeLabel(product.product_type)}
               {variantName ? <> • {variantName}</> : null}
             </p>
+            {product.description && (
+              <p className="text-xs text-muted-foreground mt-1.5 line-clamp-3 leading-relaxed">
+                {product.description}
+              </p>
+            )}
           </div>
         </div>
 
