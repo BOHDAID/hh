@@ -168,4 +168,58 @@ router.post('/delete-profile-photo', async (req, res) => {
   }
 });
 
+// جلب القنوات
+router.post('/fetch-channels', async (req, res) => {
+  try {
+    const { sessionString } = req.body;
+    if (!sessionString) return res.status(400).json({ success: false, error: 'sessionString مطلوب' });
+    const result = await telegramAuto.fetchChannels({ sessionString });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Fetch channels error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// بدء مراقبة المنشنات
+router.post('/start-mentions-monitor', async (req, res) => {
+  try {
+    const { sessionString, channelId, taskId } = req.body;
+    if (!sessionString || !channelId || !taskId) {
+      return res.status(400).json({ success: false, error: 'sessionString, channelId, taskId مطلوبة' });
+    }
+    const result = await telegramAuto.startMentionsMonitor({ sessionString, channelId, taskId });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Start mentions monitor error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// إيقاف مراقبة المنشنات
+router.post('/stop-mentions-monitor', async (req, res) => {
+  try {
+    const { taskId } = req.body;
+    if (!taskId) return res.status(400).json({ success: false, error: 'taskId مطلوب' });
+    const result = await telegramAuto.stopMentionsMonitor({ taskId });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Stop mentions monitor error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// جلب المنشنات
+router.post('/get-mentions', async (req, res) => {
+  try {
+    const { taskId } = req.body;
+    if (!taskId) return res.status(400).json({ success: false, error: 'taskId مطلوب' });
+    const result = await telegramAuto.getMentions({ taskId });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Get mentions error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 export default router;

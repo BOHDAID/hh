@@ -262,6 +262,29 @@ serve(async (req) => {
         body.sessionString = reqBody.sessionString;
         break;
 
+      // === Telegram Channels & Mentions Monitor ===
+      case "tg-fetch-channels":
+        endpoint = "/api/telegram-auto/fetch-channels";
+        body.sessionString = reqBody.sessionString;
+        break;
+
+      case "tg-start-mentions-monitor":
+        endpoint = "/api/telegram-auto/start-mentions-monitor";
+        body.sessionString = reqBody.sessionString;
+        body.channelId = reqBody.channelId;
+        body.taskId = reqBody.taskId;
+        break;
+
+      case "tg-stop-mentions-monitor":
+        endpoint = "/api/telegram-auto/stop-mentions-monitor";
+        body.taskId = reqBody.taskId;
+        break;
+
+      case "tg-get-mentions":
+        endpoint = "/api/telegram-auto/get-mentions";
+        body.taskId = reqBody.taskId;
+        break;
+
       case "tg-save-account-session": {
         const sessionString = typeof reqBody.sessionString === "string" ? reqBody.sessionString.trim() : "";
         if (!sessionString) {
