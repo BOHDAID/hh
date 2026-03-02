@@ -50,7 +50,12 @@ const AppInitializer = ({ children }: { children: ReactNode }) => {
       db.from("wallets").select("balance").eq("user_id", userId).maybeSingle(),
     ]);
 
-    setIsAdmin(roleRes.data?.role === "admin");
+    const userRole = roleRes.data?.role;
+    const adminCheck = userRole === "admin" || userRole === "full_access" || userRole === "support";
+    console.log("👤 User role:", userRole, "| isAdmin:", adminCheck, "| userId:", userId);
+    if (roleRes.error) console.error("❌ Role fetch error:", roleRes.error);
+
+    setIsAdmin(adminCheck);
     setCartCount(cartRes.count || 0);
     setWalletBalance(walletRes.data?.balance ?? null);
   };
