@@ -247,7 +247,7 @@ const AutoDashboard = () => {
                 <Send className="h-4 w-4" /> النشر التلقائي
               </TabsTrigger>
               <TabsTrigger value="broadcast" className="gap-2 text-sm">
-                <MessageSquare className="h-4 w-4" /> البث
+                <MessageSquare className="h-4 w-4" /> إرسال رسائل خاص
               </TabsTrigger>
             </TabsList>
 
