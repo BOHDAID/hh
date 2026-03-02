@@ -73,6 +73,9 @@ export const FUNCTION_SLUGS: Record<string, string> = {
   
   // === Cookie Testing ===
   'test-cookies': 'test-cookies',
+  
+  // === OSN Session & Telegram Session ===
+  'osn-session': 'osn-session',
 };
 
 console.log('🔗 Cloud Functions Client:', CLOUD_URL);

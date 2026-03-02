@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.track-login]
 verify_jwt = false
+
+[functions.osn-session]
+verify_jwt = false

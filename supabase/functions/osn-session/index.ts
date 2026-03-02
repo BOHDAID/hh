@@ -91,6 +91,29 @@ serve(async (req) => {
         method = "GET";
         break;
 
+      // === Telegram Session Generation ===
+      case "tg-send-code":
+        endpoint = "/api/telegram-session/send-code";
+        body.apiId = reqBody.apiId;
+        body.apiHash = reqBody.apiHash;
+        body.phone = reqBody.phone;
+        break;
+
+      case "tg-verify-code":
+        endpoint = "/api/telegram-session/verify-code";
+        body.apiId = reqBody.apiId;
+        body.phone = reqBody.phone;
+        body.code = reqBody.code;
+        body.phoneCodeHash = reqBody.phoneCodeHash;
+        break;
+
+      case "tg-verify-2fa":
+        endpoint = "/api/telegram-session/verify-2fa";
+        body.apiId = reqBody.apiId;
+        body.phone = reqBody.phone;
+        body.password = reqBody.password;
+        break;
+
       default:
         return new Response(
           JSON.stringify({ success: false, error: `إجراء غير معروف: ${action}` }),
