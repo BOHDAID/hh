@@ -38,6 +38,7 @@ const RefundPolicy = lazy(() => import("./pages/RefundPolicy"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const Demo = lazy(() => import("./pages/Demo"));
 const Status = lazy(() => import("./pages/Status"));
+const AutoDashboard = lazy(() => import("./pages/AutoDashboard"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -134,6 +135,7 @@ const AppContent = () => {
             <Route path="/privacy-policy" element={<PrivacyPolicy />} />
             <Route path="/demo" element={<Demo />} />
             <Route path="/status" element={<Status />} />
+            <Route path="/auto-dashboard" element={<AutoDashboard />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
