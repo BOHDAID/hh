@@ -1450,6 +1450,36 @@ export type Database = {
         }
         Relationships: []
       }
+      telegram_sessions: {
+        Row: {
+          created_at: string
+          id: string
+          selected_groups: Json | null
+          session_string: string
+          telegram_user: Json | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          selected_groups?: Json | null
+          session_string: string
+          telegram_user?: Json | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          selected_groups?: Json | null
+          session_string?: string
+          telegram_user?: Json | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       ticket_messages: {
         Row: {
           created_at: string
