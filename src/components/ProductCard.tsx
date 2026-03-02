@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { ShoppingCart, Check, Package, Plus, Sparkles, Eye } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { db } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
-import { motion } from "framer-motion";
+import { motion, useMotionValue, useTransform, useSpring } from "framer-motion";
 import ProductDetailsModal from "./ProductDetailsModal";
 import WishlistButton from "./WishlistButton";
 import { useTranslation } from "react-i18next";
@@ -48,6 +48,29 @@ const ProductCard = ({
   const [hasVariants, setHasVariants] = useState(false);
   const [variantsCount, setVariantsCount] = useState(0);
   const [minPrice, setMinPrice] = useState<number | null>(null);
+
+  // 3D Tilt effect
+  const cardRef = useRef<HTMLDivElement>(null);
+  const mouseX = useMotionValue(0.5);
+  const mouseY = useMotionValue(0.5);
+  const rotateX = useSpring(useTransform(mouseY, [0, 1], [8, -8]), { stiffness: 300, damping: 30 });
+  const rotateY = useSpring(useTransform(mouseX, [0, 1], [-8, 8]), { stiffness: 300, damping: 30 });
+  const shineX = useTransform(mouseX, [0, 1], [0, 100]);
+  const shineY = useTransform(mouseY, [0, 1], [0, 100]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!cardRef.current) return;
+    const rect = cardRef.current.getBoundingClientRect();
+    mouseX.set((e.clientX - rect.left) / rect.width);
+    mouseY.set((e.clientY - rect.top) / rect.height);
+  }, [mouseX, mouseY]);
+
+  const handleMouseLeave = useCallback(() => {
+    setIsHovered(false);
+    mouseX.set(0.5);
+    mouseY.set(0.5);
+  }, [mouseX, mouseY]);
+
 
   // Check if product has variants
   useEffect(() => {
@@ -132,23 +155,62 @@ const ProductCard = ({
 
   return (
     <motion.div 
-      className="group relative overflow-hidden rounded-2xl sm:rounded-3xl bg-card border border-border/50 transition-all duration-500 flex flex-row sm:flex-col"
-      onHoverStart={() => setIsHovered(true)}
-      onHoverEnd={() => setIsHovered(false)}
-      whileHover={{ 
-        boxShadow: "0 25px 50px -12px rgba(139, 92, 246, 0.25)",
-        borderColor: "rgba(139, 92, 246, 0.3)"
+      ref={cardRef}
+      className="group relative overflow-hidden rounded-2xl sm:rounded-3xl bg-card border border-border/50 transition-colors duration-500 flex flex-row sm:flex-col"
+      onMouseMove={handleMouseMove}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={handleMouseLeave}
+      style={{
+        rotateX: isHovered ? rotateX : 0,
+        rotateY: isHovered ? rotateY : 0,
+        transformPerspective: 800,
+        transformStyle: "preserve-3d",
       }}
+      whileHover={{ 
+        boxShadow: "0 25px 50px -12px hsl(var(--primary) / 0.25)",
+        borderColor: "hsl(var(--primary) / 0.4)",
+        scale: 1.02,
+      }}
+      transition={{ type: "spring", stiffness: 300, damping: 25 }}
     >
+      {/* Holographic Shine Effect */}
+      <motion.div 
+        className="absolute inset-0 pointer-events-none z-10 rounded-2xl sm:rounded-3xl"
+        style={{
+          background: isHovered 
+            ? `radial-gradient(circle at ${shineX.get()}% ${shineY.get()}%, hsl(var(--primary) / 0.15) 0%, transparent 60%)`
+            : "none",
+          opacity: isHovered ? 1 : 0,
+        }}
+      />
+      
+      {/* Rainbow edge glow */}
+      {isHovered && (
+        <motion.div 
+          className="absolute -inset-[1px] rounded-2xl sm:rounded-3xl pointer-events-none z-0"
+          style={{
+            background: "linear-gradient(135deg, hsl(var(--primary) / 0.4), hsl(280 80% 60% / 0.3), hsl(200 80% 60% / 0.3), hsl(var(--primary) / 0.4))",
+            backgroundSize: "300% 300%",
+          }}
+          animate={{ 
+            backgroundPosition: ["0% 0%", "100% 100%", "0% 0%"],
+          }}
+          transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+        />
+      )}
+
+      {/* Card inner bg to cover rainbow border */}
+      <div className="absolute inset-[1px] rounded-2xl sm:rounded-3xl bg-card z-[1]" />
+
       {/* Glow Effect */}
       <motion.div 
-        className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-secondary/20 opacity-0 pointer-events-none"
+        className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-secondary/20 opacity-0 pointer-events-none z-[2]"
         animate={{ opacity: isHovered ? 1 : 0 }}
         transition={{ duration: 0.3 }}
       />
 
       {/* Image Container */}
-      <div className="relative w-28 h-28 sm:w-full sm:h-auto sm:aspect-[4/3] overflow-hidden bg-muted/30 flex-shrink-0 rounded-r-2xl sm:rounded-r-none sm:rounded-t-3xl">
+      <div className="relative w-28 h-28 sm:w-full sm:h-auto sm:aspect-[4/3] overflow-hidden bg-muted/30 flex-shrink-0 rounded-r-2xl sm:rounded-r-none sm:rounded-t-3xl z-[3]">
         {image ? (
           <motion.img
             src={image}
@@ -196,7 +258,7 @@ const ProductCard = ({
       </div>
 
       {/* Content */}
-      <div className="relative p-3 sm:p-6 flex-1 min-w-0">
+      <div className="relative p-3 sm:p-6 flex-1 min-w-0 z-[3]">
         <motion.h3 
           className="mb-1 sm:mb-2 text-sm sm:text-lg font-bold text-foreground break-words line-clamp-2 sm:line-clamp-none"
           animate={{ x: isHovered ? (isRTL ? -5 : 5) : 0 }}

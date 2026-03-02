@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { CheckCircle, Mail, ArrowRight, Loader2, Key, Bot, Copy, ExternalLink } from "lucide-react";
+import { CheckCircle, Mail, ArrowRight, Loader2, Key, Bot, Copy, ExternalLink, PartyPopper } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { db } from "@/lib/supabaseClient";
 import { toast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
+import { motion } from "framer-motion";
+import confetti from "canvas-confetti";
 
 interface ActivationCode {
   code: string;
@@ -22,6 +24,54 @@ const PaymentSuccess = () => {
   const [loading, setLoading] = useState(true);
   const [activationCodes, setActivationCodes] = useState<ActivationCode[]>([]);
   const [botUsername, setBotUsername] = useState<string | null>(null);
+
+  // 🎆 Confetti celebration
+  const hasLaunched = useRef(false);
+
+  useEffect(() => {
+    if (hasLaunched.current) return;
+    hasLaunched.current = true;
+
+    // Initial burst
+    const burst = () => {
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['hsl(262,83%,58%)', '#FFD700', '#FF6B6B', '#4ECDC4', '#45B7D1'],
+      });
+    };
+
+    // Side cannons
+    const sideCannon = (x: number) => {
+      confetti({
+        particleCount: 50,
+        angle: x < 0.5 ? 60 : 120,
+        spread: 55,
+        origin: { x, y: 0.65 },
+        colors: ['hsl(262,83%,58%)', '#FFD700', '#FF6B6B', '#4ECDC4'],
+      });
+    };
+
+    // Firework sequence
+    setTimeout(burst, 300);
+    setTimeout(() => sideCannon(0.1), 600);
+    setTimeout(() => sideCannon(0.9), 800);
+    setTimeout(burst, 1200);
+
+    // Stars shower
+    setTimeout(() => {
+      confetti({
+        particleCount: 30,
+        spread: 160,
+        startVelocity: 25,
+        decay: 0.92,
+        origin: { y: 0 },
+        shapes: ['star'],
+        colors: ['#FFD700', '#FFA500'],
+      });
+    }, 1500);
+  }, []);
 
   useEffect(() => {
     const fetchOrderAndActivationCodes = async () => {
@@ -89,32 +139,83 @@ const PaymentSuccess = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="max-w-lg w-full text-center space-y-8">
-        {/* Success Icon */}
+    <div className="min-h-screen bg-background flex items-center justify-center p-4 overflow-hidden">
+      <motion.div 
+        className="max-w-lg w-full text-center space-y-8"
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: "easeOut" }}
+      >
+        {/* Success Icon with celebration */}
         <div className="relative">
-          <div className="w-24 h-24 mx-auto bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center animate-in zoom-in duration-500">
-            <CheckCircle className="h-14 w-14 text-green-600 dark:text-green-400" />
-          </div>
-          <div className="absolute -top-2 -right-2 w-32 h-32 mx-auto">
-            <div className="absolute inset-0 bg-green-500/20 rounded-full animate-ping" />
-          </div>
+          <motion.div 
+            className="w-28 h-28 mx-auto bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center"
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: "spring", stiffness: 200, damping: 12, delay: 0.2 }}
+          >
+            <motion.div
+              initial={{ scale: 0, rotate: -180 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.4 }}
+            >
+              <CheckCircle className="h-16 w-16 text-green-600 dark:text-green-400" />
+            </motion.div>
+          </motion.div>
+          
+          {/* Animated rings */}
+          <motion.div 
+            className="absolute inset-0 flex items-center justify-center"
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1.5, opacity: 0 }}
+            transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.5 }}
+          >
+            <div className="w-28 h-28 rounded-full border-2 border-green-500/40" />
+          </motion.div>
+
+          {/* Floating party poppers */}
+          <motion.div
+            className="absolute -top-3 -right-3"
+            initial={{ scale: 0, rotate: -30 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ delay: 0.8, type: "spring" }}
+          >
+            <PartyPopper className="h-8 w-8 text-yellow-500" />
+          </motion.div>
+          <motion.div
+            className="absolute -top-3 -left-3"
+            initial={{ scale: 0, rotate: 30 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ delay: 1, type: "spring" }}
+          >
+            <PartyPopper className="h-8 w-8 text-primary -scale-x-100" />
+          </motion.div>
         </div>
 
         {/* Success Message */}
-        <div className="space-y-4">
+        <motion.div 
+          className="space-y-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5 }}
+        >
           <h1 className="text-3xl font-bold text-foreground">
-            {t('paymentSuccess.title')}
+            🎉 {t('paymentSuccess.title')}
           </h1>
           <p className="text-lg text-muted-foreground">
             {t('paymentSuccess.subtitle')}
           </p>
           {orderNumber && (
-            <p className="text-sm text-muted-foreground">
+            <motion.p 
+              className="text-sm text-muted-foreground"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.7 }}
+            >
               {t('paymentSuccess.orderNumber')}: <span className="font-mono font-bold text-foreground">{orderNumber}</span>
-            </p>
+            </motion.p>
           )}
-        </div>
+        </motion.div>
 
         {/* Activation Codes Section */}
         {activationCodes.length > 0 && (
@@ -228,7 +329,7 @@ const PaymentSuccess = () => {
             {t('paymentSuccess.contactSupport')}
           </button>
         </p>
-      </div>
+      </motion.div>
     </div>
   );
 };
