@@ -76,6 +76,9 @@ export const FUNCTION_SLUGS: Record<string, string> = {
   
   // === OSN Session & Telegram Session ===
   'osn-session': 'osn-session',
+  
+  // === Telegram Plans ===
+  'process-plan-subscription': 'process-plan-subscription',
 };
 
 console.log('🔗 Cloud Functions Client:', CLOUD_URL);
