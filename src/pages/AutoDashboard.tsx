@@ -274,7 +274,7 @@ const AutoDashboard = () => {
             </TabsContent>
 
             <TabsContent value="auto-publish" className="mt-4">
-              <AutoPublishPanel sessionString={activeSession} selectedGroups={selectedGroups} />
+              <AutoPublishPanel sessionString={activeSession} selectedGroups={selectedGroups} mentionsChannelId={savedMentionsChannelId} />
             </TabsContent>
 
             <TabsContent value="broadcast" className="mt-4">
