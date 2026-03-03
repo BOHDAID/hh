@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { getAuthClient } from "@/lib/supabaseClient";
+import { db, getAuthClient } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -179,7 +178,7 @@ const TelegramPlansSection = () => {
 
   const loadData = async () => {
     try {
-      const { data: plansData } = await supabase
+      const { data: plansData } = await db
         .from("telegram_plans")
         .select("*")
         .eq("is_active", true)
@@ -201,7 +200,7 @@ const TelegramPlansSection = () => {
       const authClient = getAuthClient();
       const { data: { session } } = await authClient.auth.getSession();
       if (session) {
-        const { data: subs } = await supabase
+        const { data: subs } = await db
           .from("telegram_subscriptions")
           .select("*")
           .eq("user_id", session.user.id)
@@ -227,7 +226,7 @@ const TelegramPlansSection = () => {
       const { data: { session } } = await authClient.auth.getSession();
       if (!session) { toast.error("يجب تسجيل الدخول أولاً"); return; }
 
-      const { data: existing } = await supabase
+      const { data: existing } = await db
         .from("telegram_subscriptions")
         .select("id")
         .eq("user_id", session.user.id)
@@ -243,7 +242,7 @@ const TelegramPlansSection = () => {
       const now = new Date();
       const trialEnd = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-      const { error } = await supabase.from("telegram_subscriptions").insert({
+      const { error } = await db.from("telegram_subscriptions").insert({
         user_id: session.user.id,
         status: "trial",
         starts_at: now.toISOString(),

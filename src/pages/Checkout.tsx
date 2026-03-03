@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { db, getAuthClient, isExternalConfigured } from "@/lib/supabaseClient";
-import { supabase as cloudDb } from "@/integrations/supabase/client";
 import { invokeCloudFunction, invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -159,8 +158,8 @@ const Checkout = () => {
 
       // Plan checkout mode - load plan as virtual product
       if (isPlanCheckout && planId) {
-        // Plans are stored in Lovable Cloud DB, not external
-        const { data: planRow, error: planErr } = await cloudDb
+        // Plans are stored in external database
+        const { data: planRow, error: planErr } = await db
           .from("telegram_plans")
           .select("*")
           .eq("id", planId)
@@ -548,7 +547,7 @@ const Checkout = () => {
         if (isPlanCheckout && planData) {
           const response = await invokeCloudFunction<{ success: boolean; subscription?: any; error?: string }>(
             "process-plan-subscription",
-            { plan_id: planData.id, payment_method: "wallet" },
+            { plan_id: planData.id, payment_method: "wallet", sessions: planData.max_sessions },
             session.access_token
           );
 

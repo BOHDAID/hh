@@ -10,18 +10,13 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return errorResponse("Missing authorization", 401);
 
-    // Cloud DB for plans & subscriptions
-    const cloudUrl = Deno.env.get("SUPABASE_URL")!;
-    const cloudServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const cloudDb = createClient(cloudUrl, cloudServiceKey);
-
-    // External DB for auth verification & wallets
+    // External DB for auth verification + all plans/subscriptions/orders/wallets
     const extUrl = Deno.env.get("EXTERNAL_SUPABASE_URL") || Deno.env.get("VITE_EXTERNAL_SUPABASE_URL") || "";
     const extAnonKey = Deno.env.get("EXTERNAL_SUPABASE_ANON_KEY") || Deno.env.get("VITE_EXTERNAL_SUPABASE_ANON_KEY") || "";
     const extServiceKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") || "";
 
-    if (!extUrl || !extAnonKey) {
-      return errorResponse("External database not configured", 500);
+    if (!extUrl || !extAnonKey || !extServiceKey) {
+      return errorResponse("External database secrets are not fully configured", 500);
     }
 
     // Verify user against EXTERNAL database (where the token was issued)
@@ -31,8 +26,8 @@ Deno.serve(async (req) => {
     const { data: { user }, error: authError } = await userClient.auth.getUser();
     if (authError || !user) return errorResponse("Unauthorized", 401);
 
-    // External DB admin client for wallets
-    const extDb = extServiceKey ? createClient(extUrl, extServiceKey) : createClient(extUrl, extAnonKey);
+    // External DB admin client for all data writes/reads
+    const extDb = createClient(extUrl, extServiceKey);
 
     const body = await req.json();
     const { plan_id, payment_method, sessions } = body;
@@ -42,8 +37,8 @@ Deno.serve(async (req) => {
 
     const sessionsCount = Math.max(1, Math.min(50, parseInt(sessions) || 1));
 
-    // Fetch plan from Cloud DB
-    const { data: plan, error: planError } = await cloudDb
+    // Fetch plan from external DB
+    const { data: plan, error: planError } = await extDb
       .from("telegram_plans")
       .select("*")
       .eq("id", plan_id)
@@ -90,11 +85,11 @@ Deno.serve(async (req) => {
         status: "completed",
       });
 
-      // Create subscription in CLOUD DB
+      // Create subscription in EXTERNAL DB
       const now = new Date();
       const endsAt = new Date(now.getTime() + plan.duration_days * 24 * 60 * 60 * 1000);
 
-      const { data: subscription, error: subError } = await cloudDb
+      const { data: subscription, error: subError } = await extDb
         .from("telegram_subscriptions")
         .insert({
           user_id: user.id,
