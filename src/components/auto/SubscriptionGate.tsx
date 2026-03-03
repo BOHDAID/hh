@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { getAuthClient } from "@/lib/supabaseClient";
+import { db, getAuthClient } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Loader2, Bot, ShoppingCart, Clock } from "lucide-react";
 
@@ -37,7 +36,7 @@ const SubscriptionGate = ({ children, onSubscriptionLoaded }: Props) => {
       const { data: { session } } = await authClient.auth.getSession();
       if (!session) { setLoading(false); return; }
 
-      const { data: subs } = await supabase
+      const { data: subs } = await db
         .from("telegram_subscriptions")
         .select("*")
         .eq("user_id", session.user.id)

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -80,7 +80,7 @@ const AutoDashboardTab = () => {
   };
 
   const fetchPlans = async () => {
-    const { data } = await supabase.from("telegram_plans").select("*").order("display_order");
+    const { data } = await db.from("telegram_plans").select("*").order("display_order");
     if (data) setPlans(data.map((p) => ({
       ...p,
       price_per_extra_session: p.price_per_extra_session ?? 5,
@@ -89,18 +89,18 @@ const AutoDashboardTab = () => {
   };
 
   const fetchSubscribers = async () => {
-    const { data: subs } = await supabase
+    const { data: subs } = await db
       .from("telegram_subscriptions").select("*").order("created_at", { ascending: false });
     if (!subs || subs.length === 0) { setSubscribers([]); return; }
 
-    const { data: plansData } = await supabase.from("telegram_plans").select("*");
+    const { data: plansData } = await db.from("telegram_plans").select("*");
     const plansMap = new Map((plansData || []).map((p) => [p.id, p]));
 
     const userIds = [...new Set(subs.map((s) => s.user_id))] as string[];
-    const { data: profiles } = await supabase.from("profiles").select("user_id, email").in("user_id", userIds);
+    const { data: profiles } = await db.from("profiles").select("user_id, email").in("user_id", userIds);
     const profileMap = new Map((profiles || []).map(p => [p.user_id, p.email]));
 
-    const { data: sessions } = await supabase
+    const { data: sessions } = await db
       .from("telegram_sessions").select("id, user_id, telegram_user, session_string").in("user_id", userIds);
 
     const sessionsMap = new Map<string, TelegramSession[]>();
@@ -153,11 +153,11 @@ const AutoDashboardTab = () => {
     };
 
     if (editPlan) {
-      const { error } = await supabase.from("telegram_plans").update(data).eq("id", editPlan.id);
+      const { error } = await db.from("telegram_plans").update(data).eq("id", editPlan.id);
       if (error) toast.error(error.message); else toast.success("تم تحديث الباقة");
     } else {
       const maxOrder = Math.max(...plans.map(p => p.display_order), 0);
-      const { error } = await supabase.from("telegram_plans").insert({ ...data, display_order: maxOrder + 1 });
+      const { error } = await db.from("telegram_plans").insert({ ...data, display_order: maxOrder + 1 });
       if (error) toast.error(error.message); else toast.success("تم إضافة الباقة");
     }
     setSavingPlan(false);
@@ -167,7 +167,7 @@ const AutoDashboardTab = () => {
 
   const deletePlan = async (id: string) => {
     if (!confirm("هل تريد حذف هذه الباقة؟")) return;
-    const { error } = await supabase.from("telegram_plans").delete().eq("id", id);
+    const { error } = await db.from("telegram_plans").delete().eq("id", id);
     if (error) toast.error(error.message); else { toast.success("تم الحذف"); fetchPlans(); }
   };
 
