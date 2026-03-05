@@ -1647,27 +1647,7 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
   const MAX_CACHE = 5000;
 
   const { NewMessage } = await import('telegram/events/index.js');
-  let DeletedMessage;
-  try {
-    const eventsModule = await import('telegram/events/index.js');
-    DeletedMessage = eventsModule.DeletedMessage || eventsModule.default?.DeletedMessage;
-  } catch {}
-  if (!DeletedMessage) {
-    try {
-      const eventsAlt = await import('telegram');
-      DeletedMessage = eventsAlt.events?.DeletedMessage;
-    } catch {}
-  }
-  if (!DeletedMessage) {
-    try {
-      const delMod = await import('telegram/events/DeletedMessage.js');
-      DeletedMessage = delMod.DeletedMessage || delMod.default;
-    } catch {}
-  }
-  if (!DeletedMessage) {
-    console.error('❌ DeletedMessage class not found in GramJS');
-    return { success: false, error: 'DeletedMessage غير متوفر في هذا الإصدار من GramJS' };
-  }
+  const { Api } = await import('telegram');
 
   // Handler 1: حفظ نسخة من كل رسالة جديدة
   const newMsgHandler = async (event) => {
