@@ -1465,7 +1465,7 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
           const forceDoc = mediaSendType === 'file';
           const isSticker = mediaSendType === 'sticker';
           await client.sendFile(sender || msg.peerId, {
-            file: mediaBuffer,
+            file: mediaFile || mediaBuffer,
             caption: isSticker ? '' : (replyMessage || ''),
             fileName: mediaFileName || 'file',
             forceDocument: forceDoc,
