@@ -297,6 +297,24 @@ serve(async (req) => {
         endpoint = "/api/telegram-auto/get-stats";
         break;
 
+      case "tg-start-auto-reply":
+        endpoint = "/api/telegram-auto/start-auto-reply";
+        body.sessionString = reqBody.sessionString;
+        body.replyMessage = reqBody.replyMessage;
+        body.taskId = reqBody.taskId;
+        body.mentionsChannelId = reqBody.mentionsChannelId;
+        break;
+
+      case "tg-stop-auto-reply":
+        endpoint = "/api/telegram-auto/stop-auto-reply";
+        body.taskId = reqBody.taskId;
+        break;
+
+      case "tg-auto-reply-status":
+        endpoint = "/api/telegram-auto/auto-reply-status";
+        body.taskId = reqBody.taskId;
+        break;
+
       case "tg-save-account-session": {
         const sessionString = typeof reqBody.sessionString === "string" ? reqBody.sessionString.trim() : "";
         if (!sessionString) {
