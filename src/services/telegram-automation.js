@@ -1682,7 +1682,7 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
     try {
       markClientAsUsed(client);
       const msg = event.message;
-      if (!msg) return;
+      if (!msg || msg.action) return;
 
       // جلب معلومات المرسل والمحادثة
       let senderName = 'مجهول';
