@@ -62,6 +62,10 @@ const BroadcastPanel = ({ sessionString }: BroadcastPanelProps) => {
   const [includeContacts, setIncludeContacts] = useState(false);
   const [media, setMedia] = useState<{ base64: string; fileName: string; mimeType: string } | null>(null);
 
+  const handlePremiumEmojiSelect = (emoji: any) => {
+    setMessage(prev => prev + emoji.emoticon);
+  };
+
   const fetchDialogs = async () => {
     setLoading(true);
     try {
@@ -151,15 +155,16 @@ const BroadcastPanel = ({ sessionString }: BroadcastPanelProps) => {
       <div className="space-y-2 max-w-2xl">
         <Label>رسالة البث</Label>
         <Textarea
-          placeholder="اكتب الرسالة... (يدعم إيموجي بريميوم ✨)"
+          placeholder="اكتب الرسالة..."
           value={message}
           onChange={e => setMessage(e.target.value)}
           className="min-h-[100px]"
         />
-        <MediaAttachment onMediaChange={setMedia} disabled={sending} />
+        <div className="flex gap-2">
+          <PremiumEmojiPicker sessionString={sessionString} onEmojiSelect={handlePremiumEmojiSelect} disabled={sending} />
+          <MediaAttachment onMediaChange={setMedia} disabled={sending} />
+        </div>
       </div>
-
-      {/* خيار تضمين جهات الاتصال */}
       <div className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card max-w-2xl">
         <Switch
           checked={includeContacts}
