@@ -71,10 +71,13 @@ Deno.serve(async (req) => {
       const newBalance = Number(wallet.balance) - amount;
       const { error: walletError } = await extDb
         .from("wallets")
-        .update({ balance: newBalance, updated_at: new Date().toISOString() })
+        .update({ balance: newBalance })
         .eq("id", wallet.id);
 
-      if (walletError) return errorResponse("Failed to deduct wallet balance");
+      if (walletError) {
+        console.error("Wallet deduct error:", JSON.stringify(walletError));
+        return errorResponse("Failed to deduct wallet balance: " + walletError.message);
+      }
 
       // Record wallet transaction in EXTERNAL DB
       await extDb.from("wallet_transactions").insert({
