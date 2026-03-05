@@ -31,7 +31,7 @@ interface MentionsMonitorPanelProps {
 const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: MentionsMonitorPanelProps) => {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(false);
-  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(savedChannelId || null);
+  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(savedChannelId || localStorage.getItem("tg-mentions-channel-id") || null);
   const [monitoring, setMonitoring] = useState(false);
   const [starting, setStarting] = useState(false);
   const [stopping, setStopping] = useState(false);
