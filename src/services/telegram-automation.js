@@ -5,6 +5,18 @@
 
 import { TelegramClient, Api } from 'telegram';
 import { StringSession } from 'telegram/sessions/index.js';
+import { Logger, LogLevel } from 'telegram/extensions/Logger.js';
+
+const createTelegramClientOptions = () => ({
+  connectionRetries: 10,
+  retryDelay: 2000,
+  autoReconnect: true,
+  timeout: 20,
+  deviceModel: 'ninto Store Bot',
+  systemVersion: 'Linux',
+  appVersion: '1.0.0',
+  baseLogger: new Logger(LogLevel.NONE),
+});
 
 // تخزين مؤقت للعملاء المتصلين (sessionHash → client)
 const activeClients = new Map();
@@ -147,17 +159,75 @@ function getSessionHash(sessionString) {
   return sessionString.substring(0, 20);
 }
 
+function markClientAsUsed(client) {
+  for (const entry of activeClients.values()) {
+    if (entry.client === client) {
+      entry.lastUsed = Date.now();
+      return;
+    }
+  }
+}
+
+async function shutdownClient(client, reason = '') {
+  if (!client) return;
+  try {
+    await client.disconnect();
+  } catch (err) {
+    if (reason) console.warn(`⚠️ Disconnect warning (${reason}):`, err.message);
+  }
+  try {
+    await client.destroy();
+  } catch (err) {
+    if (reason) console.warn(`⚠️ Destroy warning (${reason}):`, err.message);
+  }
+}
+
+function isClientProtected(client) {
+  if (!client) return false;
+
+  for (const task of activeAutoPublish.values()) {
+    if (task.client === client) return true;
+  }
+  for (const task of activeMentionsMonitors.values()) {
+    if (task.client === client) return true;
+  }
+  for (const task of activeAutoReply.values()) {
+    if (task.client === client) return true;
+  }
+  for (const task of activeAntiDelete.values()) {
+    if (task.client === client) return true;
+  }
+
+  return false;
+}
+
+async function releaseClientIfUnused(client, reason = '') {
+  if (!client || isClientProtected(client)) return;
+
+  let hashToDelete = null;
+  for (const [hash, entry] of activeClients.entries()) {
+    if (entry.client === client) {
+      hashToDelete = hash;
+      break;
+    }
+  }
+
+  await shutdownClient(client, reason);
+  if (hashToDelete) {
+    activeClients.delete(hashToDelete);
+  }
+}
+
 async function getOrCreateClient(sessionString) {
   const hash = getSessionHash(sessionString);
-  
+
   if (activeClients.has(hash)) {
     const existing = activeClients.get(hash);
     if (existing.client.connected) {
       existing.lastUsed = Date.now();
       return existing.client;
     }
-    // إعادة الاتصال
-    try { await existing.client.disconnect(); } catch {}
+    await shutdownClient(existing.client, `stale client ${hash}`);
     activeClients.delete(hash);
   }
 
@@ -165,14 +235,7 @@ async function getOrCreateClient(sessionString) {
     new StringSession(sessionString),
     2040,
     'b18441a1ff607e10a989891a5462e627',
-    {
-      connectionRetries: 10,
-      retryDelay: 2000,
-      autoReconnect: true,
-      deviceModel: 'ninto Store Bot',
-      systemVersion: 'Linux',
-      appVersion: '1.0.0',
-    }
+    createTelegramClientOptions()
   );
 
   await client.connect();
@@ -659,6 +722,7 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
   }
 
   const client = await getOrCreateClient(sessionString);
+  markClientAsUsed(client);
   
   // تجهيز الملف المرفق
   let mediaBuffer = null;
@@ -682,6 +746,8 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
 
   // إرسال لمجموعة واحدة كل فترة
   async function sendNext() {
+    markClientAsUsed(client);
+
     if (currentIndex >= groupIds.length) {
       currentIndex = 0;
     }
@@ -750,6 +816,7 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
   
   activeAutoPublish.set(taskId, {
     interval,
+    client,
     groupIds,
     message,
     intervalMinutes,
@@ -774,6 +841,7 @@ async function stopAutoPublish({ taskId }) {
     clearInterval(activeAutoPublish.get(taskId).interval);
     const task = activeAutoPublish.get(taskId);
     activeAutoPublish.delete(taskId);
+    await releaseClientIfUnused(task.client, `stop auto-publish ${taskId}`);
     console.log(`🛑 Auto-publish stopped [${taskId}]`);
     return { success: true, message: 'تم إيقاف النشر التلقائي' };
   }
@@ -1106,6 +1174,7 @@ async function startMentionsMonitor({ sessionString, channelId, taskId }) {
   }
 
   const client = await getOrCreateClient(sessionString);
+  markClientAsUsed(client);
   const me = await client.getMe();
   const myId = me.id?.toString();
   const myUsername = me.username?.toLowerCase();
@@ -1122,6 +1191,7 @@ async function startMentionsMonitor({ sessionString, channelId, taskId }) {
   
   const handler = async (event) => {
     try {
+      markClientAsUsed(client);
       const msg = event.message;
       if (!msg || !msg.peerId) return;
       
@@ -1222,6 +1292,7 @@ async function startMentionsMonitor({ sessionString, channelId, taskId }) {
       if (!client.connected) {
         console.log(`🔄 Reconnecting mentions monitor [${taskId}]...`);
         await client.connect();
+        markClientAsUsed(client);
         console.log(`✅ Reconnected mentions monitor [${taskId}]`);
       }
     } catch (err) {
@@ -1244,6 +1315,7 @@ async function stopMentionsMonitor({ taskId }) {
     try { if (reconnectInterval) clearInterval(reconnectInterval); } catch {}
     try { client.removeEventHandler(handler); } catch {}
     activeMentionsMonitors.delete(taskId);
+    await releaseClientIfUnused(client, `stop mentions monitor ${taskId}`);
     console.log(`🛑 Mentions monitor stopped [${taskId}]`);
     return { success: true, message: 'تم إيقاف المراقبة' };
   }
@@ -1261,14 +1333,16 @@ async function getMentions({ taskId }) {
 }
 
 // تنظيف العملاء غير المستخدمين كل 15 دقيقة
-setInterval(() => {
+setInterval(async () => {
   const now = Date.now();
   const THIRTY_MINUTES = 30 * 60 * 1000;
   
   for (const [hash, val] of activeClients.entries()) {
+    if (isClientProtected(val.client)) continue;
+
     if (now - val.lastUsed > THIRTY_MINUTES) {
       console.log(`🧹 Cleaning idle client: ${hash}`);
-      try { val.client.disconnect(); } catch {}
+      await shutdownClient(val.client, `idle cleanup ${hash}`);
       activeClients.delete(hash);
     }
   }
@@ -1287,6 +1361,7 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
   }
 
   const client = await getOrCreateClient(sessionString);
+  markClientAsUsed(client);
   const repliedUsers = new Set();
   
   let mediaBuffer = null;
@@ -1308,6 +1383,7 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
 
   const handler = async (event) => {
     try {
+      markClientAsUsed(client);
       const msg = event.message;
       if (!msg || !msg.peerId) return;
 
@@ -1390,6 +1466,7 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
       if (!client.connected) {
         console.log(`🔄 Reconnecting auto-reply [${taskId}]...`);
         await client.connect();
+        markClientAsUsed(client);
       }
     } catch (err) {
       console.error(`❌ Auto-reply reconnect failed [${taskId}]:`, err.message);
@@ -1412,6 +1489,7 @@ async function stopAutoReply({ taskId }) {
     try { client.removeEventHandler(handler); } catch {}
     const totalReplied = repliedUsers.size;
     activeAutoReply.delete(taskId);
+    await releaseClientIfUnused(client, `stop auto-reply ${taskId}`);
     console.log(`🛑 Auto-reply stopped [${taskId}], replied to ${totalReplied} users`);
     return { success: true, message: `تم إيقاف الرد التلقائي (تم الرد على ${totalReplied} شخص)` };
   }
@@ -1443,6 +1521,7 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
   }
 
   const client = await getOrCreateClient(sessionString);
+  markClientAsUsed(client);
 
   // قناة الإشعارات
   let channelEntity = null;
@@ -1468,6 +1547,7 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
   // Handler 1: حفظ نسخة من كل رسالة جديدة
   const newMsgHandler = async (event) => {
     try {
+      markClientAsUsed(client);
       const msg = event.message;
       if (!msg) return;
 
@@ -1546,6 +1626,7 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
   // Handler 2: مراقبة الحذف
   const deleteHandler = async (event) => {
     try {
+      markClientAsUsed(client);
       const deletedIds = event.deletedIds || [];
       
       for (const msgId of deletedIds) {
@@ -1615,6 +1696,7 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
       if (!client.connected) {
         console.log(`🔄 Reconnecting anti-delete [${taskId}]...`);
         await client.connect();
+        markClientAsUsed(client);
       }
     } catch (err) {
       console.error(`❌ Anti-delete reconnect failed [${taskId}]:`, err.message);
@@ -1645,6 +1727,7 @@ async function stopAntiDelete({ taskId }) {
     const cachedCount = messageCache.size;
     messageCache.clear();
     activeAntiDelete.delete(taskId);
+    await releaseClientIfUnused(client, `stop anti-delete ${taskId}`);
     console.log(`🛑 Anti-delete stopped [${taskId}], had ${cachedCount} cached msgs`);
     return { success: true, message: 'تم إيقاف مراقب الحذف' };
   }
