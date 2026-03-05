@@ -13,6 +13,7 @@ const ACCOUNT_SESSION_ACTIONS = new Set([
   "tg-delete-account-session",
   "tg-save-mentions-channel",
   "tg-get-mentions-channel",
+  "tg-save-automation-state",
 ]);
 
 const getBearerToken = (req: Request): string | null => {
@@ -29,6 +30,53 @@ const serializeMaybeJson = (value: unknown): string | null => {
   } catch {
     return null;
   }
+};
+
+const parseMaybeJson = <T>(value: unknown, fallback: T): T => {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return fallback;
+    }
+  }
+  return value as T;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+};
+
+const parseStoredSessionPayload = (rawSelectedGroups: unknown) => {
+  const parsed = parseMaybeJson<unknown>(rawSelectedGroups, []);
+
+  if (Array.isArray(parsed)) {
+    return {
+      groups: parsed,
+      automation: {},
+    };
+  }
+
+  if (isRecord(parsed)) {
+    const groups = Array.isArray(parsed.groups)
+      ? parsed.groups
+      : Array.isArray(parsed.selectedGroups)
+        ? parsed.selectedGroups
+        : [];
+
+    const automation = isRecord(parsed.automation) ? parsed.automation : {};
+
+    return {
+      groups,
+      automation,
+    };
+  }
+
+  return {
+    groups: [],
+    automation: {},
+  };
 };
 
 const getAuthenticatedUserId = async (req: Request): Promise<string | null> => {
