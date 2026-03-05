@@ -1662,6 +1662,66 @@ function getAntiDeleteStatus({ taskId }) {
   return { success: true, active: false, cachedMessages: 0 };
 }
 
+/**
+ * جلب الإيموجي البريميوم من حساب المستخدم
+ */
+async function getPremiumEmojis({ sessionString }) {
+  const client = await getOrCreateClient(sessionString);
+  try {
+    // جلب مجموعات الإيموجي البريميوم
+    const result = await client.invoke(
+      new Api.messages.GetEmojiStickers({ hash: 0 })
+    );
+
+    const emojis = [];
+
+    if (result?.sets) {
+      for (const stickerSet of result.sets) {
+        try {
+          // جلب محتوى كل مجموعة
+          const fullSet = await client.invoke(
+            new Api.messages.GetStickerSet({
+              stickerset: new Api.InputStickerSetID({
+                id: stickerSet.id,
+                accessHash: stickerSet.accessHash,
+              }),
+              hash: 0,
+            })
+          );
+
+          if (fullSet?.documents) {
+            for (const doc of fullSet.documents) {
+              // استخراج الإيموجي البديلة من الـ attributes
+              let emoticon = '✨';
+              for (const attr of doc.attributes || []) {
+                if (attr.className === 'DocumentAttributeCustomEmoji' || attr.alt) {
+                  emoticon = attr.alt || emoticon;
+                  break;
+                }
+              }
+
+              emojis.push({
+                documentId: doc.id.toString(),
+                accessHash: doc.accessHash.toString(),
+                emoticon,
+                stickerSetTitle: stickerSet.title || 'إيموجي بريميوم',
+              });
+            }
+          }
+        } catch (setErr) {
+          console.warn(`⚠️ Failed to fetch sticker set ${stickerSet.title}:`, setErr.message);
+        }
+      }
+    }
+
+    console.log(`✅ Fetched ${emojis.length} premium emojis`);
+    return { success: true, emojis };
+  } catch (err) {
+    console.error('❌ Get premium emojis error:', err.message);
+    throw err;
+  }
+}
+
 export default {
   fetchGroups,
   fetchContacts,
@@ -1686,4 +1746,5 @@ export default {
   startAntiDelete,
   stopAntiDelete,
   getAntiDeleteStatus,
+  getPremiumEmojis,
 };
