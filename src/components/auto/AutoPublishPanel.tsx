@@ -30,8 +30,12 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
   const [interval, setInterval] = useState("1");
   const [forcedSubscription, setForcedSubscription] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [taskId, setTaskId] = useState<string | null>(null);
-  const [isRunning, setIsRunning] = useState(false);
+  const [taskId, setTaskId] = useState<string | null>(() => {
+    try { return localStorage.getItem("tg-autopublish-taskId") || null; } catch { return null; }
+  });
+  const [isRunning, setIsRunning] = useState(() => {
+    try { return localStorage.getItem("tg-autopublish-running") === "true"; } catch { return false; }
+  });
   const [statusInfo, setStatusInfo] = useState<any>(null);
   const [media, setMedia] = useState<{ base64: string; fileName: string; mimeType: string; sendType: string } | null>(null);
   const [customEmojis, setCustomEmojis] = useState<Array<{ documentId: string; accessHash: string; emoticon: string; offset: number }>>([]);
@@ -71,6 +75,8 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
 
       setTaskId(newTaskId);
       setIsRunning(true);
+      localStorage.setItem("tg-autopublish-taskId", newTaskId);
+      localStorage.setItem("tg-autopublish-running", "true");
       toast.success(result.data.message || "بدأ النشر التلقائي!");
     } catch (err: any) {
       toast.error(err.message);
@@ -91,6 +97,8 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
       setIsRunning(false);
       setTaskId(null);
       setStatusInfo(null);
+      localStorage.removeItem("tg-autopublish-taskId");
+      localStorage.removeItem("tg-autopublish-running");
       toast.success("تم إيقاف النشر التلقائي");
     } catch (err: any) {
       toast.error(err.message);
