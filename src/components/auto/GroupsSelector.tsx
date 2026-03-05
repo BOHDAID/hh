@@ -6,6 +6,29 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
 
+const AVATAR_COLORS = [
+  "bg-red-500/20 text-red-600 dark:text-red-400",
+  "bg-blue-500/20 text-blue-600 dark:text-blue-400",
+  "bg-green-500/20 text-green-600 dark:text-green-400",
+  "bg-purple-500/20 text-purple-600 dark:text-purple-400",
+  "bg-orange-500/20 text-orange-600 dark:text-orange-400",
+  "bg-pink-500/20 text-pink-600 dark:text-pink-400",
+  "bg-teal-500/20 text-teal-600 dark:text-teal-400",
+  "bg-indigo-500/20 text-indigo-600 dark:text-indigo-400",
+];
+
+const getInitials = (name: string) => {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+};
+
+const getAvatarColor = (id: string) => {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = ((hash << 5) - hash) + id.charCodeAt(i);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+};
+
 interface TelegramGroup {
   id: string;
   title: string;
