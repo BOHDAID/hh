@@ -328,4 +328,17 @@ router.post('/anti-delete-status', async (req, res) => {
   }
 });
 
+// جلب الإيموجي البريميوم
+router.post('/get-premium-emojis', async (req, res) => {
+  try {
+    const { sessionString } = req.body;
+    if (!sessionString) return res.status(400).json({ success: false, error: 'sessionString مطلوب' });
+    const result = await telegramAuto.getPremiumEmojis({ sessionString });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Get premium emojis error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 export default router;
