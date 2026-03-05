@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
 import MediaAttachment from "./MediaAttachment";
 import TelegramMessagePreview from "./TelegramMessagePreview";
+import PremiumEmojiPicker from "./PremiumEmojiPicker";
 
 interface TelegramGroup {
   id: string;
