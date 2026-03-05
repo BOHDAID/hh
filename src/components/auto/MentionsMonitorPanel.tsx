@@ -65,7 +65,10 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
 
   // Pre-select saved channel
   useEffect(() => {
-    if (savedChannelId) setSelectedChannelId(savedChannelId);
+    if (savedChannelId) {
+      setSelectedChannelId(savedChannelId);
+      localStorage.setItem("tg-mentions-channel-id", savedChannelId);
+    }
   }, [savedChannelId]);
 
   const callAccountAction = async (action: string, extra: Record<string, unknown> = {}) => {
