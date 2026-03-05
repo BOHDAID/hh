@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Bot, Home, LogIn, BookOpen, Users, Send, MessageSquare, User, CheckCircle2, Loader2, AlertCircle, Key, ExternalLink, Eye, EyeOff, Copy, Shield, AtSign, BarChart3, ChevronLeft, Sparkles, Zap } from "lucide-react";
+import { Bot, Home, LogIn, BookOpen, Users, Send, MessageSquare, User, CheckCircle2, Loader2, AlertCircle, Key, ExternalLink, Eye, EyeOff, Copy, Shield, AtSign, BarChart3, ChevronLeft, Sparkles, Zap, MessageCircleReply } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,6 +15,7 @@ import AutoPublishPanel from "@/components/auto/AutoPublishPanel";
 import BroadcastPanel from "@/components/auto/BroadcastPanel";
 import MentionsMonitorPanel from "@/components/auto/MentionsMonitorPanel";
 import StatsPanel from "@/components/auto/StatsPanel";
+import AutoReplyPanel from "@/components/auto/AutoReplyPanel";
 import SubscriptionGate from "@/components/auto/SubscriptionGate";
 
 interface TelegramUser {
@@ -297,6 +298,7 @@ const AutoDashboard = () => {
                   { key: "groups", icon: Users, label: "المجموعات" },
                   { key: "auto-publish", icon: Send, label: "النشر التلقائي" },
                   { key: "broadcast", icon: MessageSquare, label: "رسائل خاص" },
+                  { key: "auto-reply", icon: MessageCircleReply, label: "رد تلقائي" },
                   { key: "mentions", icon: AtSign, label: "مراقب المنشنات" },
                 ].map(({ key, icon: Icon, label }) => (
                   <button
@@ -350,6 +352,15 @@ const AutoDashboard = () => {
                 <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
               </Button>
               <MentionsMonitorPanel sessionString={activeSession} savedChannelId={savedMentionsChannelId} />
+            </div>
+          )}
+
+          {activeFeature === "auto-reply" && (
+            <div className="space-y-4">
+              <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
+                <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
+              </Button>
+              <AutoReplyPanel sessionString={activeSession} mentionsChannelId={savedMentionsChannelId} />
             </div>
           )}
 
