@@ -1289,22 +1289,16 @@ async function startMentionsMonitor({ sessionString, channelId, taskId }) {
       const senderName = [sender.firstName, sender.lastName].filter(Boolean).join(' ') || 'مجهول';
       const senderTag = sender.username ? ` (@${sender.username})` : '';
       const notifText = [
-        `🔔 **منشن / رد جديد**`,
+        `🔔 منشن / رد جديد`,
         `━━━━━━━━━━━━━━━`,
-        ``,
-        `👤 **من:** ${senderName}${senderTag}`,
-        `💬 **المجموعة:** ${chat.title}`,
-        ``,
-        `📝 **الرسالة:**`,
-        `> ${text.substring(0, 300)}`,
-        ``,
-        messageLink ? `🔗 [فتح الرسالة](${messageLink})` : '',
-        ``,
-        `━━━━━━━━━━━━━━━`,
+        `👤 من: ${senderName}${senderTag}`,
+        `💬 المجموعة: ${chat.title}`,
+        text ? `📝 الرسالة: ${text.substring(0, 300)}` : `📝 الرسالة: (بدون نص)`,
+        messageLink ? `🔗 الرابط: ${messageLink}` : null,
         `🕐 ${new Date().toLocaleString('ar-u-nu-latn')}`,
       ].filter(Boolean).join('\n');
 
-      await client.sendMessage(channelEntity, { message: notifText, parseMode: 'md' });
+      await client.sendMessage(channelEntity, { message: notifText });
       console.log(`📨 Mention forwarded to channel [${taskId}] from ${sender.firstName}`);
     } catch (err) {
       console.error(`❌ Mention handler error [${taskId}]:`, err.message);
