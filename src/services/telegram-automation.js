@@ -1728,11 +1728,12 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
     }
   };
 
-  // Handler 2: مراقبة الحذف
-  const deleteHandler = async (event) => {
+  // Handler 2: مراقبة الحذف عبر raw update
+  const deleteHandler = async (update) => {
     try {
       markClientAsUsed(client);
-      const deletedIds = event.deletedIds || [];
+      // Handle both UpdateDeleteMessages and UpdateDeleteChannelMessages
+      const deletedIds = update.messages || [];
       
       for (const msgId of deletedIds) {
         const cached = messageCache.get(msgId);
