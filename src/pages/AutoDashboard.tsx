@@ -330,50 +330,40 @@ const AutoDashboard = () => {
             </div>
           )}
 
-          {activeFeature === "auto-publish" && (
-            <div className="space-y-4">
-              <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
-                <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
-              </Button>
-              <AutoPublishPanel sessionString={activeSession} selectedGroups={selectedGroups} mentionsChannelId={savedMentionsChannelId} />
-            </div>
-          )}
+          <div className={activeFeature === "auto-publish" ? "space-y-4" : "hidden"}>
+            <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
+              <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
+            </Button>
+            <AutoPublishPanel sessionString={activeSession} selectedGroups={selectedGroups} mentionsChannelId={savedMentionsChannelId} />
+          </div>
 
-          {activeFeature === "broadcast" && (
-            <div className="space-y-4">
-              <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
-                <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
-              </Button>
-              <BroadcastPanel sessionString={activeSession} />
-            </div>
-          )}
+          <div className={activeFeature === "broadcast" ? "space-y-4" : "hidden"}>
+            <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
+              <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
+            </Button>
+            <BroadcastPanel sessionString={activeSession} />
+          </div>
 
-          {activeFeature === "mentions" && (
-            <div className="space-y-4">
-              <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
-                <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
-              </Button>
-              <MentionsMonitorPanel sessionString={activeSession} savedChannelId={savedMentionsChannelId} onChannelSave={(channelId) => setSavedMentionsChannelId(channelId)} />
-            </div>
-          )}
+          <div className={activeFeature === "mentions" ? "space-y-4" : "hidden"}>
+            <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
+              <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
+            </Button>
+            <MentionsMonitorPanel sessionString={activeSession} savedChannelId={savedMentionsChannelId} onChannelSave={(channelId) => setSavedMentionsChannelId(channelId)} />
+          </div>
 
-          {activeFeature === "auto-reply" && (
-            <div className="space-y-4">
-              <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
-                <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
-              </Button>
-              <AutoReplyPanel sessionString={activeSession} mentionsChannelId={savedMentionsChannelId} />
-            </div>
-          )}
+          <div className={activeFeature === "auto-reply" ? "space-y-4" : "hidden"}>
+            <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
+              <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
+            </Button>
+            <AutoReplyPanel sessionString={activeSession} mentionsChannelId={savedMentionsChannelId} />
+          </div>
 
-          {activeFeature === "anti-delete" && (
-            <div className="space-y-4">
-              <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
-                <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
-              </Button>
-              <AntiDeletePanel sessionString={activeSession} mentionsChannelId={savedMentionsChannelId} />
-            </div>
-          )}
+          <div className={activeFeature === "anti-delete" ? "space-y-4" : "hidden"}>
+            <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
+              <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
+            </Button>
+            <AntiDeletePanel sessionString={activeSession} mentionsChannelId={savedMentionsChannelId} />
+          </div>
 
           {/* Stats expanded view */}
           {showStats && (
