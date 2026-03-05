@@ -36,8 +36,21 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
   const [starting, setStarting] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [mentions, setMentions] = useState<MentionEvent[]>([]);
-  const [taskId] = useState(`mentions-${Date.now()}`);
+  const [taskId, setTaskId] = useState(() => {
+    try { return localStorage.getItem("tg-mentions-taskId") || `mentions-${Date.now()}`; } catch { return `mentions-${Date.now()}`; }
+  });
   const [fetched, setFetched] = useState(false);
+
+  // Restore running state on mount
+  useEffect(() => {
+    const storedTaskId = localStorage.getItem("tg-mentions-taskId");
+    const storedRunning = localStorage.getItem("tg-mentions-running");
+    if (storedTaskId && storedRunning === "true") {
+      setTaskId(storedTaskId);
+      setMonitoring(true);
+      setFetched(true);
+    }
+  }, []);
 
   // Pre-select saved channel
   useEffect(() => {
@@ -110,6 +123,8 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
       if (res.error) throw new Error(res.error.message);
       if (!res.data?.success) throw new Error(res.data?.error || "فشل بدء المراقبة");
       setMonitoring(true);
+      localStorage.setItem("tg-mentions-taskId", taskId);
+      localStorage.setItem("tg-mentions-running", "true");
       toast.success("تم بدء مراقبة المنشنات والردود!");
     } catch (err: any) {
       toast.error(err.message);
@@ -127,6 +142,8 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
       });
       if (res.error) throw new Error(res.error.message);
       setMonitoring(false);
+      localStorage.removeItem("tg-mentions-taskId");
+      localStorage.removeItem("tg-mentions-running");
       toast.success("تم إيقاف المراقبة");
     } catch (err: any) {
       toast.error(err.message);

@@ -11,8 +11,12 @@ interface AntiDeletePanelProps {
 
 const AntiDeletePanel = ({ sessionString, mentionsChannelId }: AntiDeletePanelProps) => {
   const [loading, setLoading] = useState(false);
-  const [taskId, setTaskId] = useState<string | null>(null);
-  const [isRunning, setIsRunning] = useState(false);
+  const [taskId, setTaskId] = useState<string | null>(() => {
+    try { return localStorage.getItem("tg-antidelete-taskId") || null; } catch { return null; }
+  });
+  const [isRunning, setIsRunning] = useState(() => {
+    try { return localStorage.getItem("tg-antidelete-running") === "true"; } catch { return false; }
+  });
   const [cachedCount, setCachedCount] = useState(0);
 
   const startAntiDelete = async () => {
@@ -35,6 +39,8 @@ const AntiDeletePanel = ({ sessionString, mentionsChannelId }: AntiDeletePanelPr
       setTaskId(newTaskId);
       setIsRunning(true);
       setCachedCount(0);
+      localStorage.setItem("tg-antidelete-taskId", newTaskId);
+      localStorage.setItem("tg-antidelete-running", "true");
       toast.success("تم بدء مراقبة الرسائل المحذوفة!");
     } catch (err: any) {
       toast.error(err.message);
@@ -54,6 +60,8 @@ const AntiDeletePanel = ({ sessionString, mentionsChannelId }: AntiDeletePanelPr
       if (result.error) throw new Error(result.error.message);
       setIsRunning(false);
       setTaskId(null);
+      localStorage.removeItem("tg-antidelete-taskId");
+      localStorage.removeItem("tg-antidelete-running");
       toast.success("تم إيقاف مراقب الحذف");
     } catch (err: any) {
       toast.error(err.message);

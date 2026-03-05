@@ -56,8 +56,14 @@ const AutoDashboard = () => {
   const [selectedGroups, setSelectedGroups] = useState<TelegramGroup[]>([]);
   const [savedMentionsChannelId, setSavedMentionsChannelId] = useState<string | null>(null);
 
-  // Active section
-  const [activeFeature, setActiveFeature] = useState<string | null>(null);
+  // Active section - persist to localStorage
+  const [activeFeature, setActiveFeatureState] = useState<string | null>(() => {
+    try { return localStorage.getItem("tg-active-feature") || null; } catch { return null; }
+  });
+  const setActiveFeature = (f: string | null) => {
+    setActiveFeatureState(f);
+    try { if (f) localStorage.setItem("tg-active-feature", f); else localStorage.removeItem("tg-active-feature"); } catch {}
+  };
   const [showStats, setShowStats] = useState(false);
 
   const callAction = async (action: string, extra: Record<string, unknown> = {}) => {

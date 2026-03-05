@@ -17,8 +17,12 @@ interface AutoReplyPanelProps {
 const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProps) => {
   const [replyMessage, setReplyMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const [taskId, setTaskId] = useState<string | null>(null);
-  const [isRunning, setIsRunning] = useState(false);
+  const [taskId, setTaskId] = useState<string | null>(() => {
+    try { return localStorage.getItem("tg-autoreply-taskId") || null; } catch { return null; }
+  });
+  const [isRunning, setIsRunning] = useState(() => {
+    try { return localStorage.getItem("tg-autoreply-running") === "true"; } catch { return false; }
+  });
   const [repliedCount, setRepliedCount] = useState(0);
   const [media, setMedia] = useState<{ base64: string; fileName: string; mimeType: string; sendType: string } | null>(null);
   const [customEmojis, setCustomEmojis] = useState<Array<{ documentId: string; accessHash: string; emoticon: string; offset: number }>>([]);
@@ -57,6 +61,8 @@ const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProp
       setTaskId(newTaskId);
       setIsRunning(true);
       setRepliedCount(0);
+      localStorage.setItem("tg-autoreply-taskId", newTaskId);
+      localStorage.setItem("tg-autoreply-running", "true");
       toast.success("تم بدء الرد التلقائي في الخاص!");
     } catch (err: any) {
       toast.error(err.message);
@@ -76,6 +82,8 @@ const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProp
       if (result.error) throw new Error(result.error.message);
       setIsRunning(false);
       setTaskId(null);
+      localStorage.removeItem("tg-autoreply-taskId");
+      localStorage.removeItem("tg-autoreply-running");
       toast.success(result.data?.message || "تم إيقاف الرد التلقائي");
     } catch (err: any) {
       toast.error(err.message);
