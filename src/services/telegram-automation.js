@@ -1473,7 +1473,7 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
     }
   };
 
-  client.addEventHandler(handler, new NewMessage({}));
+  client.addEventHandler(handler, new NewMessage({ incoming: true }));
 
   // Auto-reconnect
   const reconnectInterval = setInterval(async () => {
