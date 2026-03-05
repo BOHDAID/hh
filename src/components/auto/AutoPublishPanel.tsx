@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
 import MediaAttachment from "./MediaAttachment";
+import TelegramMessagePreview from "./TelegramMessagePreview";
 
 interface TelegramGroup {
   id: string;
@@ -137,6 +138,9 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
           disabled={isRunning}
         />
       </div>
+
+      {/* معاينة الرسالة */}
+      <TelegramMessagePreview message={message} />
 
       {/* المرفقات */}
       <MediaAttachment onMediaChange={setMedia} disabled={isRunning} />

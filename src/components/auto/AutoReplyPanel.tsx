@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
 import MediaAttachment from "./MediaAttachment";
+import TelegramMessagePreview from "./TelegramMessagePreview";
 
 interface AutoReplyPanelProps {
   sessionString: string;
@@ -111,6 +112,9 @@ const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProp
           disabled={isRunning}
         />
       </div>
+
+      {/* معاينة الرسالة */}
+      <TelegramMessagePreview message={replyMessage} />
 
       {/* المرفقات */}
       <MediaAttachment onMediaChange={setMedia} disabled={isRunning} />
