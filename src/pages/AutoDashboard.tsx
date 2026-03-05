@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Bot, Home, LogIn, BookOpen, Users, Send, MessageSquare, User, CheckCircle2, Loader2, AlertCircle, Key, ExternalLink, Eye, EyeOff, Copy, Shield, AtSign, BarChart3, ChevronLeft, Sparkles, Zap, MessageCircleReply } from "lucide-react";
+import { Bot, Home, LogIn, BookOpen, Users, Send, MessageSquare, User, CheckCircle2, Loader2, AlertCircle, Key, ExternalLink, Eye, EyeOff, Copy, Shield, AtSign, BarChart3, ChevronLeft, Sparkles, Zap, MessageCircleReply, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +16,7 @@ import BroadcastPanel from "@/components/auto/BroadcastPanel";
 import MentionsMonitorPanel from "@/components/auto/MentionsMonitorPanel";
 import StatsPanel from "@/components/auto/StatsPanel";
 import AutoReplyPanel from "@/components/auto/AutoReplyPanel";
+import AntiDeletePanel from "@/components/auto/AntiDeletePanel";
 import SubscriptionGate from "@/components/auto/SubscriptionGate";
 
 interface TelegramUser {
@@ -299,6 +300,7 @@ const AutoDashboard = () => {
                   { key: "auto-publish", icon: Send, label: "النشر التلقائي" },
                   { key: "broadcast", icon: MessageSquare, label: "رسائل خاص" },
                   { key: "auto-reply", icon: MessageCircleReply, label: "رد تلقائي" },
+                  { key: "anti-delete", icon: Trash2, label: "مراقب الحذف" },
                   { key: "mentions", icon: AtSign, label: "مراقب المنشنات" },
                 ].map(({ key, icon: Icon, label }) => (
                   <button
