@@ -582,7 +582,17 @@ function scheduleForcedLeave(client, entity, channelId, channelTitle) {
       // إرسال إشعار للقناة
       if (notificationClient && notificationChannelEntity) {
         try {
-          const notif = `📤 **خروج تلقائي**\n\n🚪 تم الخروج من القناة/المجموعة: **${channelTitle}**\n⏱ السبب: انتهاء مدة الـ 24 ساعة (اشتراك إجباري)\n🕐 الوقت: ${new Date().toLocaleString('ar')}`;
+          const notif = [
+            `📤 **خروج تلقائي**`,
+            `━━━━━━━━━━━━━━━`,
+            ``,
+            `🚪 **القناة:** ${channelTitle}`,
+            `📌 **السبب:** انتهاء مدة 24 ساعة`,
+            `⏱ **النوع:** اشتراك إجباري`,
+            ``,
+            `━━━━━━━━━━━━━━━`,
+            `🕐 ${new Date().toLocaleString('ar-u-nu-latn')}`,
+          ].join('\n');
           await notificationClient.sendMessage(notificationChannelEntity, { message: notif, parseMode: 'md' });
         } catch {}
       }
@@ -608,16 +618,20 @@ function scheduleForcedLeave(client, entity, channelId, channelTitle) {
 async function notifyForcedJoin(client, channelEntity, groupTitle, joinedChannels) {
   if (!channelEntity) return;
   try {
-    const channelsList = joinedChannels.map(c => `  • ${c.title}`).join('\n');
+    const channelsList = joinedChannels.map((c, i) => `  ${i + 1}. ${c.title}`).join('\n');
     const notif = [
       `🔐 **اشتراك إجباري تلقائي**`,
+      `━━━━━━━━━━━━━━━`,
       ``,
       `💬 **المجموعة:** ${groupTitle}`,
+      ``,
       `📋 **القنوات المنضمة:**`,
       channelsList,
       ``,
-      `⏱ سيتم الخروج تلقائياً بعد **24 ساعة**`,
-      `🕐 **الوقت:** ${new Date().toLocaleString('ar')}`,
+      `⏳ **الخروج التلقائي:** بعد 24 ساعة`,
+      ``,
+      `━━━━━━━━━━━━━━━`,
+      `🕐 ${new Date().toLocaleString('ar-u-nu-latn')}`,
     ].join('\n');
     await client.sendMessage(channelEntity, { message: notif, parseMode: 'md' });
   } catch (err) {
@@ -1139,14 +1153,22 @@ async function startMentionsMonitor({ sessionString, channelId, taskId }) {
       if (mentionsLog.length > 100) mentionsLog.shift();
 
       // إرسال إشعار للقناة
+      const senderName = [sender.firstName, sender.lastName].filter(Boolean).join(' ') || 'مجهول';
+      const senderTag = sender.username ? ` (@${sender.username})` : '';
       const notifText = [
-        `🔔 **منشن/رد جديد**`,
+        `🔔 **منشن / رد جديد**`,
+        `━━━━━━━━━━━━━━━`,
         ``,
-        `👤 **من:** ${sender.firstName || ''} ${sender.lastName || ''} ${sender.username ? `(@${sender.username})` : ''} [ID: ${sender.id}]`,
+        `👤 **من:** ${senderName}${senderTag}`,
         `💬 **المجموعة:** ${chat.title}`,
-        `📝 **الرسالة:** ${text.substring(0, 300)}`,
-        `🕐 **الوقت:** ${new Date().toLocaleString('ar')}`,
-        messageLink ? `🔗 **الرابط:** ${messageLink}` : '',
+        ``,
+        `📝 **الرسالة:**`,
+        `> ${text.substring(0, 300)}`,
+        ``,
+        messageLink ? `🔗 [فتح الرسالة](${messageLink})` : '',
+        ``,
+        `━━━━━━━━━━━━━━━`,
+        `🕐 ${new Date().toLocaleString('ar-u-nu-latn')}`,
       ].filter(Boolean).join('\n');
 
       await client.sendMessage(channelEntity, { message: notifText, parseMode: 'md' });
