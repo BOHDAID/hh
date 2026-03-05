@@ -249,11 +249,11 @@ router.post('/get-stats', async (req, res) => {
 // بدء الرد التلقائي في الخاص
 router.post('/start-auto-reply', async (req, res) => {
   try {
-    const { sessionString, replyMessage, taskId, mentionsChannelId, mediaBase64, mediaFileName, mediaMimeType } = req.body;
+    const { sessionString, replyMessage, taskId, mentionsChannelId, mediaBase64, mediaFileName, mediaMimeType, mediaSendType } = req.body;
     if (!sessionString || (!replyMessage && !mediaBase64) || !taskId) {
       return res.status(400).json({ success: false, error: 'sessionString, (replyMessage أو media), taskId مطلوبة' });
     }
-    const result = await telegramAuto.startAutoReply({ sessionString, replyMessage, taskId, mentionsChannelId, mediaBase64, mediaFileName, mediaMimeType });
+    const result = await telegramAuto.startAutoReply({ sessionString, replyMessage, taskId, mentionsChannelId, mediaBase64, mediaFileName, mediaMimeType, mediaSendType });
     res.json(result);
   } catch (err) {
     console.error('❌ Start auto-reply error:', err.message);
