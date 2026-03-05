@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Bot, Home, LogIn, BookOpen, Users, Send, MessageSquare, User, CheckCircle2, Loader2, AlertCircle, Key, ExternalLink, Eye, EyeOff, Copy, Shield, AtSign, BarChart3 } from "lucide-react";
+import { Bot, Home, LogIn, BookOpen, Users, Send, MessageSquare, User, CheckCircle2, Loader2, AlertCircle, Key, ExternalLink, Eye, EyeOff, Copy, Shield, AtSign, BarChart3, ChevronLeft, Sparkles, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { invokeCloudFunction, invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
@@ -53,8 +52,9 @@ const AutoDashboard = () => {
   const [selectedGroups, setSelectedGroups] = useState<TelegramGroup[]>([]);
   const [savedMentionsChannelId, setSavedMentionsChannelId] = useState<string | null>(null);
 
-  // Active tab
-  const [activeTab, setActiveTab] = useState("groups");
+  // Active section
+  const [activeFeature, setActiveFeature] = useState<string | null>(null);
+  const [showStats, setShowStats] = useState(false);
 
   const callAction = async (action: string, extra: Record<string, unknown> = {}) => {
     const { data, error } = await invokeCloudFunctionPublic<any>("osn-session", { action, ...extra });
@@ -234,22 +234,132 @@ const AutoDashboard = () => {
         </header>
         <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
           <TelegramProfileCard sessionString={activeSession} initialUser={telegramUser} onLogout={handleLogout} />
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-5 h-11">
-              <TabsTrigger value="groups" className="gap-1.5 text-xs sm:text-sm"><Users className="h-4 w-4" /> <span className="hidden sm:inline">المجموعات</span></TabsTrigger>
-              <TabsTrigger value="auto-publish" className="gap-1.5 text-xs sm:text-sm"><Send className="h-4 w-4" /> <span className="hidden sm:inline">النشر</span></TabsTrigger>
-              <TabsTrigger value="broadcast" className="gap-1.5 text-xs sm:text-sm"><MessageSquare className="h-4 w-4" /> <span className="hidden sm:inline">رسائل خاص</span></TabsTrigger>
-              <TabsTrigger value="mentions" className="gap-1.5 text-xs sm:text-sm"><AtSign className="h-4 w-4" /> <span className="hidden sm:inline">المنشنات</span></TabsTrigger>
-              <TabsTrigger value="stats" className="gap-1.5 text-xs sm:text-sm"><BarChart3 className="h-4 w-4" /> <span className="hidden sm:inline">التقارير</span></TabsTrigger>
-            </TabsList>
-            <TabsContent value="groups" className="mt-4">
+
+          {/* Feature cards grid */}
+          {!activeFeature && !showStats && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {/* المميزات card */}
+              <div
+                onClick={() => setActiveFeature("features")}
+                className="group cursor-pointer rounded-2xl border border-border bg-card p-6 space-y-3 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-primary/10 group-hover:bg-primary/20 transition-colors">
+                    <Sparkles className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg text-foreground">المميزات</h3>
+                    <p className="text-sm text-muted-foreground">المجموعات، النشر، الرسائل، المنشنات</p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <span className="text-xs px-2.5 py-1 rounded-full bg-muted text-muted-foreground flex items-center gap-1"><Users className="h-3 w-3" /> المجموعات</span>
+                  <span className="text-xs px-2.5 py-1 rounded-full bg-muted text-muted-foreground flex items-center gap-1"><Send className="h-3 w-3" /> النشر التلقائي</span>
+                  <span className="text-xs px-2.5 py-1 rounded-full bg-muted text-muted-foreground flex items-center gap-1"><MessageSquare className="h-3 w-3" /> رسائل خاص</span>
+                  <span className="text-xs px-2.5 py-1 rounded-full bg-muted text-muted-foreground flex items-center gap-1"><AtSign className="h-3 w-3" /> مراقب المنشنات</span>
+                </div>
+              </div>
+
+              {/* التقارير card */}
+              <div
+                onClick={() => setShowStats(true)}
+                className="group cursor-pointer rounded-2xl border border-border bg-card p-6 space-y-3 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-primary/10 group-hover:bg-primary/20 transition-colors">
+                    <BarChart3 className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg text-foreground">التقارير</h3>
+                    <p className="text-sm text-muted-foreground">إحصائيات النشر والبث والمنشنات</p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <span className="text-xs px-2.5 py-1 rounded-full bg-muted text-muted-foreground flex items-center gap-1"><Zap className="h-3 w-3" /> إحصائيات حية</span>
+                  <span className="text-xs px-2.5 py-1 rounded-full bg-muted text-muted-foreground flex items-center gap-1"><BarChart3 className="h-3 w-3" /> معدلات النجاح</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Features expanded view */}
+          {activeFeature === "features" && (
+            <div className="space-y-4">
+              <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature(null)}>
+                <ChevronLeft className="h-4 w-4 rotate-180" /> رجوع
+              </Button>
+
+              {/* Sub-feature buttons */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { key: "groups", icon: Users, label: "المجموعات" },
+                  { key: "auto-publish", icon: Send, label: "النشر التلقائي" },
+                  { key: "broadcast", icon: MessageSquare, label: "رسائل خاص" },
+                  { key: "mentions", icon: AtSign, label: "مراقب المنشنات" },
+                ].map(({ key, icon: Icon, label }) => (
+                  <button
+                    key={key}
+                    onClick={() => setActiveFeature(key)}
+                    className={cn(
+                      "flex flex-col items-center gap-2 p-4 rounded-xl border transition-all duration-200",
+                      activeFeature === key
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-card hover:border-primary/30 text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <Icon className="h-5 w-5" />
+                    <span className="text-xs font-medium">{label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeFeature === "groups" && (
+            <div className="space-y-4">
+              <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
+                <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
+              </Button>
               <GroupsSelector sessionString={activeSession} selectedGroups={selectedGroups} onSave={async (groups) => { setSelectedGroups(groups); try { await saveSessionToAccount(activeSession, telegramUser, groups); toast.success("تم حفظ المجموعات في الحساب"); } catch (err: any) { toast.error(err.message || "تعذر حفظ المجموعات"); } }} />
-            </TabsContent>
-            <TabsContent value="auto-publish" className="mt-4"><AutoPublishPanel sessionString={activeSession} selectedGroups={selectedGroups} mentionsChannelId={savedMentionsChannelId} /></TabsContent>
-            <TabsContent value="broadcast" className="mt-4"><BroadcastPanel sessionString={activeSession} /></TabsContent>
-            <TabsContent value="mentions" className="mt-4"><MentionsMonitorPanel sessionString={activeSession} savedChannelId={savedMentionsChannelId} /></TabsContent>
-            <TabsContent value="stats" className="mt-4"><StatsPanel /></TabsContent>
-          </Tabs>
+            </div>
+          )}
+
+          {activeFeature === "auto-publish" && (
+            <div className="space-y-4">
+              <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
+                <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
+              </Button>
+              <AutoPublishPanel sessionString={activeSession} selectedGroups={selectedGroups} mentionsChannelId={savedMentionsChannelId} />
+            </div>
+          )}
+
+          {activeFeature === "broadcast" && (
+            <div className="space-y-4">
+              <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
+                <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
+              </Button>
+              <BroadcastPanel sessionString={activeSession} />
+            </div>
+          )}
+
+          {activeFeature === "mentions" && (
+            <div className="space-y-4">
+              <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
+                <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
+              </Button>
+              <MentionsMonitorPanel sessionString={activeSession} savedChannelId={savedMentionsChannelId} />
+            </div>
+          )}
+
+          {/* Stats expanded view */}
+          {showStats && (
+            <div className="space-y-4">
+              <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setShowStats(false)}>
+                <ChevronLeft className="h-4 w-4 rotate-180" /> رجوع
+              </Button>
+              <StatsPanel />
+            </div>
+          )}
         </main>
       </div>
   );
