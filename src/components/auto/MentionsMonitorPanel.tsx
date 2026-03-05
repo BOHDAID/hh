@@ -25,6 +25,7 @@ interface MentionEvent {
 interface MentionsMonitorPanelProps {
   sessionString: string;
   savedChannelId?: string | null;
+  onChannelSave?: (channelId: string | null) => void;
 }
 
 const MentionsMonitorPanel = ({ sessionString, savedChannelId }: MentionsMonitorPanelProps) => {
