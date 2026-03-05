@@ -164,55 +164,59 @@ const TelegramProfileCard = ({ sessionString, initialUser, onLogout, subscriptio
       {/* Header gradient */}
       <div className="h-20 bg-gradient-to-l from-primary/20 via-primary/10 to-transparent" />
 
-      <div className="px-6 pb-6 -mt-10">
-        <div className="flex items-end gap-4 mb-4">
-          {/* Avatar */}
-          <div className="relative group">
-            <div className="h-20 w-20 rounded-2xl bg-muted border-4 border-card flex items-center justify-center overflow-hidden shadow-lg">
-              {displayData.photo ? (
-                <img src={displayData.photo} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <User className="h-8 w-8 text-muted-foreground" />
-              )}
-            </div>
-            {profile && (
-              <div className="absolute inset-0 rounded-2xl bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadingPhoto}
-                  className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"
-                >
-                  {uploadingPhoto ? <Loader2 className="h-3.5 w-3.5 text-white animate-spin" /> : <Camera className="h-3.5 w-3.5 text-white" />}
-                </button>
-                {displayData.photo && (
-                  <button
-                    onClick={deletePhoto}
-                    disabled={uploadingPhoto}
-                    className="p-1.5 rounded-lg bg-white/20 hover:bg-destructive/80 transition-colors"
-                  >
-                    <Trash2 className="h-3.5 w-3.5 text-white" />
-                  </button>
+      <div className="px-4 sm:px-6 pb-4 sm:pb-6 -mt-10">
+        {/* Mobile: stack vertically, Desktop: horizontal */}
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3 sm:gap-4 mb-4">
+          {/* Avatar + Name row on mobile */}
+          <div className="flex items-end gap-3 sm:gap-4">
+            {/* Avatar */}
+            <div className="relative group flex-shrink-0">
+              <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-2xl bg-muted border-4 border-card flex items-center justify-center overflow-hidden shadow-lg">
+                {displayData.photo ? (
+                  <img src={displayData.photo} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <User className="h-7 w-7 sm:h-8 sm:w-8 text-muted-foreground" />
                 )}
               </div>
-            )}
-            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
-          </div>
+              {profile && (
+                <div className="absolute inset-0 rounded-2xl bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingPhoto}
+                    className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"
+                  >
+                    {uploadingPhoto ? <Loader2 className="h-3.5 w-3.5 text-white animate-spin" /> : <Camera className="h-3.5 w-3.5 text-white" />}
+                  </button>
+                  {displayData.photo && (
+                    <button
+                      onClick={deletePhoto}
+                      disabled={uploadingPhoto}
+                      className="p-1.5 rounded-lg bg-white/20 hover:bg-destructive/80 transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-white" />
+                    </button>
+                  )}
+                </div>
+              )}
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+            </div>
 
-          {/* Name & info */}
-          <div className="flex-1 min-w-0 pb-1">
-            <h3 className="font-bold text-lg text-foreground truncate">
-              {displayData.firstName} {displayData.lastName}
-            </h3>
-            <div className="flex items-center gap-3 text-sm text-muted-foreground">
-              {displayData.username && <span dir="ltr">@{displayData.username}</span>}
-              {displayData.phone && <span dir="ltr">+{displayData.phone}</span>}
+            {/* Name & info */}
+            <div className="flex-1 min-w-0 pb-1">
+              <h3 className="font-bold text-base sm:text-lg text-foreground truncate">
+                {displayData.firstName} {displayData.lastName}
+              </h3>
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground">
+                {displayData.username && <span dir="ltr">@{displayData.username}</span>}
+                {displayData.phone && <span dir="ltr">+{displayData.phone}</span>}
+              </div>
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="flex gap-2 pb-1">
+          {/* Actions - full width on mobile */}
+          <div className="flex gap-2 sm:pb-1">
             {!profile && !loading ? (
-              <Button variant="outline" size="sm" onClick={() => fetchProfile()} disabled={loading} className="gap-1.5 text-xs">
+              <Button variant="outline" size="sm" onClick={() => fetchProfile()} disabled={loading} className="gap-1.5 text-xs flex-1 sm:flex-none">
                 <Edit3 className="h-3.5 w-3.5" />
                 تحميل البروفايل
               </Button>
@@ -221,11 +225,11 @@ const TelegramProfileCard = ({ sessionString, initialUser, onLogout, subscriptio
                 <Loader2 className="h-3.5 w-3.5 animate-spin" /> جاري التحميل...
               </div>
             ) : !editing ? (
-              <Button variant="outline" size="sm" onClick={startEdit} className="gap-1.5 text-xs">
+              <Button variant="outline" size="sm" onClick={startEdit} className="gap-1.5 text-xs flex-1 sm:flex-none">
                 <Edit3 className="h-3.5 w-3.5" /> تعديل
               </Button>
             ) : null}
-            <Button variant="ghost" size="sm" onClick={onLogout} className="text-xs text-destructive hover:text-destructive">
+            <Button variant="ghost" size="sm" onClick={onLogout} className="text-xs text-destructive hover:text-destructive flex-1 sm:flex-none">
               قطع الاتصال
             </Button>
           </div>
