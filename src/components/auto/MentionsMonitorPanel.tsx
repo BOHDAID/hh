@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { AtSign, Loader2, Play, Square, Hash, ExternalLink, User, Clock, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -22,54 +22,53 @@ interface MentionEvent {
   date: string;
 }
 
+interface MentionsMonitorState {
+  taskId: string | null;
+  running: boolean;
+  channelId?: string | null;
+}
+
 interface MentionsMonitorPanelProps {
   sessionString: string;
   savedChannelId?: string | null;
+  persistedState?: MentionsMonitorState;
   onChannelSave?: (channelId: string | null) => void;
+  onStateChange?: (state: MentionsMonitorState) => void;
 }
 
-const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: MentionsMonitorPanelProps) => {
+const MentionsMonitorPanel = ({ sessionString, savedChannelId, persistedState, onChannelSave, onStateChange }: MentionsMonitorPanelProps) => {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(false);
-  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(savedChannelId || localStorage.getItem("tg-mentions-channel-id") || null);
-  const [monitoring, setMonitoring] = useState(false);
+  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(savedChannelId || persistedState?.channelId || null);
+  const [monitoring, setMonitoring] = useState(Boolean(persistedState?.running));
   const [starting, setStarting] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [mentions, setMentions] = useState<MentionEvent[]>([]);
-  const [taskId, setTaskId] = useState(() => {
-    try { return localStorage.getItem("tg-mentions-taskId") || `mentions-${Date.now()}`; } catch { return `mentions-${Date.now()}`; }
-  });
-  const [fetched, setFetched] = useState(false);
+  const [taskId, setTaskId] = useState<string>(() => persistedState?.taskId || `mentions-${Date.now()}`);
+  const [fetched, setFetched] = useState(Boolean(persistedState?.running));
 
-  // Restore running state on mount and auto-fetch channels
   useEffect(() => {
-    const storedTaskId = localStorage.getItem("tg-mentions-taskId");
-    const storedRunning = localStorage.getItem("tg-mentions-running");
-    if (storedTaskId && storedRunning === "true") {
-      setTaskId(storedTaskId);
-      setMonitoring(true);
-      setFetched(true);
-      // Auto-fetch channels to restore the list
-      if (sessionString) {
-        invokeCloudFunctionPublic<any>("osn-session", {
-          action: "tg-fetch-channels",
-          sessionString,
-        }).then(res => {
-          if (res.data?.success) {
-            setChannels(res.data.channels || []);
-          }
-        }).catch(() => {});
+    setMonitoring(Boolean(persistedState?.running));
+    if (persistedState?.taskId) setTaskId(persistedState.taskId);
+  }, [persistedState?.running, persistedState?.taskId]);
+
+  useEffect(() => {
+    const nextChannelId = savedChannelId || persistedState?.channelId || null;
+    setSelectedChannelId(nextChannelId);
+  }, [savedChannelId, persistedState?.channelId]);
+
+  useEffect(() => {
+    if (!sessionString || !monitoring) return;
+    invokeCloudFunctionPublic<any>("osn-session", {
+      action: "tg-fetch-channels",
+      sessionString,
+    }).then((res) => {
+      if (res.data?.success) {
+        setChannels(res.data.channels || []);
+        setFetched(true);
       }
-    }
-  }, [sessionString]);
-
-  // Pre-select saved channel
-  useEffect(() => {
-    if (savedChannelId) {
-      setSelectedChannelId(savedChannelId);
-      localStorage.setItem("tg-mentions-channel-id", savedChannelId);
-    }
-  }, [savedChannelId]);
+    }).catch(() => {});
+  }, [sessionString, monitoring]);
 
   const callAccountAction = async (action: string, extra: Record<string, unknown> = {}) => {
     const authClient = getAuthClient();
@@ -80,10 +79,13 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
 
   const saveChannelToAccount = async (channelId: string | null) => {
     try {
-      if (channelId) localStorage.setItem("tg-mentions-channel-id", channelId);
-      else localStorage.removeItem("tg-mentions-channel-id");
       await callAccountAction("tg-save-mentions-channel", { mentionsChannelId: channelId });
       onChannelSave?.(channelId);
+      onStateChange?.({
+        taskId,
+        running: monitoring,
+        channelId,
+      });
     } catch {}
   };
 
@@ -96,15 +98,14 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
       });
       if (res.error) throw new Error(res.error.message);
       if (!res.data?.success) throw new Error(res.data?.error || "فشل جلب القنوات");
+
       const fetchedChannels = res.data.channels || [];
       setChannels(fetchedChannels);
       setFetched(true);
 
-      // إذا كانت هناك قناة محفوظة، حددها تلقائياً
       if (savedChannelId && fetchedChannels.some((c: Channel) => c.id === savedChannelId)) {
         setSelectedChannelId(savedChannelId);
       } else if (fetchedChannels.length === 1) {
-        // إذا قناة واحدة فقط (ربما أنشئت تلقائياً)، حددها
         setSelectedChannelId(fetchedChannels[0].id);
         saveChannelToAccount(fetchedChannels[0].id);
       }
@@ -128,6 +129,7 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
       toast.error("يرجى اختيار قناة أولاً");
       return;
     }
+
     setStarting(true);
     try {
       const res = await invokeCloudFunctionPublic<any>("osn-session", {
@@ -138,9 +140,9 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
       });
       if (res.error) throw new Error(res.error.message);
       if (!res.data?.success) throw new Error(res.data?.error || "فشل بدء المراقبة");
+
       setMonitoring(true);
-      localStorage.setItem("tg-mentions-taskId", taskId);
-      localStorage.setItem("tg-mentions-running", "true");
+      onStateChange?.({ taskId, running: true, channelId: selectedChannelId });
       toast.success("تم بدء مراقبة المنشنات والردود!");
     } catch (err: any) {
       toast.error(err.message);
@@ -157,9 +159,9 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
         taskId,
       });
       if (res.error) throw new Error(res.error.message);
+
       setMonitoring(false);
-      localStorage.removeItem("tg-mentions-taskId");
-      localStorage.removeItem("tg-mentions-running");
+      onStateChange?.({ taskId: null, running: false, channelId: selectedChannelId });
       toast.success("تم إيقاف المراقبة");
     } catch (err: any) {
       toast.error(err.message);
@@ -168,9 +170,8 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
     }
   };
 
-  // Poll for new mentions while monitoring
   useEffect(() => {
-    if (!monitoring) return;
+    if (!monitoring || !taskId) return;
     const interval = setInterval(async () => {
       try {
         const res = await invokeCloudFunctionPublic<any>("osn-session", {
@@ -178,14 +179,15 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
           taskId,
         });
         if (res.data?.success && res.data.mentions?.length) {
-          setMentions(prev => {
-            const existingKeys = new Set(prev.map(m => m.date + m.message));
+          setMentions((prev) => {
+            const existingKeys = new Set(prev.map((m) => m.date + m.message));
             const newOnes = res.data.mentions.filter((m: MentionEvent) => !existingKeys.has(m.date + m.message));
             return [...newOnes, ...prev].slice(0, 100);
           });
         }
       } catch {}
     }, 10000);
+
     return () => clearInterval(interval);
   }, [monitoring, taskId]);
 
@@ -208,7 +210,6 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
 
   return (
     <div className="space-y-6">
-      {/* اختيار القناة */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <Label className="flex items-center gap-2">
@@ -227,7 +228,7 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
           </div>
         ) : (
           <div className="grid gap-2">
-            {channels.map(ch => (
+            {channels.map((ch) => (
               <div
                 key={ch.id}
                 onClick={() => handleSelectChannel(ch.id)}
@@ -250,33 +251,21 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
                     <span className="text-xs text-muted-foreground" dir="ltr">@{ch.username}</span>
                   )}
                 </div>
-                {selectedChannelId === ch.id && (
-                  <div className="h-3 w-3 rounded-full bg-primary shrink-0" />
-                )}
+                {selectedChannelId === ch.id && <div className="h-3 w-3 rounded-full bg-primary shrink-0" />}
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* زر البدء/الإيقاف */}
       <div className="flex items-center gap-3 pt-2 border-t border-border">
         {!monitoring ? (
-          <Button
-            onClick={startMonitoring}
-            disabled={starting || !selectedChannelId}
-            className="gap-2"
-          >
+          <Button onClick={startMonitoring} disabled={starting || !selectedChannelId} className="gap-2">
             {starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
             بدء المراقبة
           </Button>
         ) : (
-          <Button
-            onClick={stopMonitoring}
-            disabled={stopping}
-            variant="destructive"
-            className="gap-2"
-          >
+          <Button onClick={stopMonitoring} disabled={stopping} variant="destructive" className="gap-2">
             {stopping ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />}
             إيقاف المراقبة
           </Button>
@@ -289,7 +278,6 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
         )}
       </div>
 
-      {/* قائمة المنشنات */}
       {mentions.length > 0 && (
         <div className="space-y-3">
           <Label className="flex items-center gap-2">
@@ -318,12 +306,7 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>في: {m.groupTitle}</span>
                   {m.messageLink && (
-                    <a
-                      href={m.messageLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-primary hover:underline"
-                    >
+                    <a href={m.messageLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">
                       <ExternalLink className="h-3 w-3" />
                       رابط الرسالة
                     </a>

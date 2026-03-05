@@ -1,31 +1,41 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Trash2, Loader2, Play, Square, Activity, Database } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
 
+interface AntiDeleteState {
+  taskId: string | null;
+  running: boolean;
+}
+
 interface AntiDeletePanelProps {
   sessionString: string;
   mentionsChannelId?: string | null;
+  persistedState?: AntiDeleteState;
+  onStateChange?: (state: AntiDeleteState) => void;
 }
 
-const AntiDeletePanel = ({ sessionString, mentionsChannelId }: AntiDeletePanelProps) => {
+const AntiDeletePanel = ({ sessionString, mentionsChannelId, persistedState, onStateChange }: AntiDeletePanelProps) => {
   const [loading, setLoading] = useState(false);
-  const [taskId, setTaskId] = useState<string | null>(() => {
-    try { return localStorage.getItem("tg-antidelete-taskId") || null; } catch { return null; }
-  });
-  const [isRunning, setIsRunning] = useState(() => {
-    try { return localStorage.getItem("tg-antidelete-running") === "true"; } catch { return false; }
-  });
+  const [taskId, setTaskId] = useState<string | null>(persistedState?.taskId || null);
+  const [isRunning, setIsRunning] = useState(Boolean(persistedState?.running));
   const [cachedCount, setCachedCount] = useState(0);
+
+  useEffect(() => {
+    setTaskId(persistedState?.taskId || null);
+    setIsRunning(Boolean(persistedState?.running));
+  }, [persistedState?.taskId, persistedState?.running]);
 
   const startAntiDelete = async () => {
     if (!mentionsChannelId) {
       toast.error("يجب تحديد قناة الإشعارات أولاً من \"مراقب المنشنات\"");
       return;
     }
+
     setLoading(true);
     const newTaskId = `ad-${Date.now()}`;
+
     try {
       const result = await invokeCloudFunctionPublic<any>("osn-session", {
         action: "tg-start-anti-delete",
@@ -33,14 +43,14 @@ const AntiDeletePanel = ({ sessionString, mentionsChannelId }: AntiDeletePanelPr
         taskId: newTaskId,
         mentionsChannelId,
       });
+
       if (result.error) throw new Error(result.error.message);
       if (!result.data?.success) throw new Error(result.data?.error || "فشل البدء");
 
       setTaskId(newTaskId);
       setIsRunning(true);
       setCachedCount(0);
-      localStorage.setItem("tg-antidelete-taskId", newTaskId);
-      localStorage.setItem("tg-antidelete-running", "true");
+      onStateChange?.({ taskId: newTaskId, running: true });
       toast.success("تم بدء مراقبة الرسائل المحذوفة!");
     } catch (err: any) {
       toast.error(err.message);
@@ -51,17 +61,19 @@ const AntiDeletePanel = ({ sessionString, mentionsChannelId }: AntiDeletePanelPr
 
   const stopAntiDelete = async () => {
     if (!taskId) return;
+
     setLoading(true);
     try {
       const result = await invokeCloudFunctionPublic<any>("osn-session", {
         action: "tg-stop-anti-delete",
         taskId,
       });
+
       if (result.error) throw new Error(result.error.message);
+
       setIsRunning(false);
       setTaskId(null);
-      localStorage.removeItem("tg-antidelete-taskId");
-      localStorage.removeItem("tg-antidelete-running");
+      onStateChange?.({ taskId: null, running: false });
       toast.success("تم إيقاف مراقب الحذف");
     } catch (err: any) {
       toast.error(err.message);
@@ -85,7 +97,6 @@ const AntiDeletePanel = ({ sessionString, mentionsChannelId }: AntiDeletePanelPr
 
   return (
     <div className="space-y-6 max-w-2xl">
-      {/* الشرح */}
       <div className="bg-muted/50 rounded-xl p-4 border border-border space-y-2">
         <div className="flex items-center gap-2">
           <Trash2 className="h-5 w-5 text-primary" />
@@ -96,14 +107,12 @@ const AntiDeletePanel = ({ sessionString, mentionsChannelId }: AntiDeletePanelPr
         </p>
       </div>
 
-      {/* تنبيه القناة */}
       {!mentionsChannelId && (
         <div className="bg-destructive/10 border border-destructive/30 rounded-xl p-4 text-sm text-destructive">
           ⚠️ يجب تحديد قناة الإشعارات أولاً من قسم "مراقب المنشنات"
         </div>
       )}
 
-      {/* حالة المراقبة */}
       {isRunning && (
         <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4 space-y-3">
           <div className="flex items-center justify-between">
@@ -123,7 +132,6 @@ const AntiDeletePanel = ({ sessionString, mentionsChannelId }: AntiDeletePanelPr
         </div>
       )}
 
-      {/* الأزرار */}
       <div className="flex gap-3">
         {!isRunning ? (
           <Button onClick={startAntiDelete} disabled={loading || !mentionsChannelId} className="gap-2">

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Send, Loader2, Clock, Square, Activity, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,84 +19,116 @@ interface TelegramGroup {
   type: string;
 }
 
+interface MediaConfig {
+  base64: string;
+  fileName: string;
+  mimeType: string;
+  sendType: string;
+}
+
+interface AutoPublishState {
+  taskId: string | null;
+  running: boolean;
+  message: string;
+  intervalMinutes: number;
+  forcedSubscription: boolean;
+  groupIds: string[];
+  mentionsChannelId?: string | null;
+  media: MediaConfig | null;
+}
+
 interface AutoPublishPanelProps {
   sessionString: string;
   selectedGroups: TelegramGroup[];
   mentionsChannelId?: string | null;
+  persistedState?: AutoPublishState;
+  onStateChange?: (state: AutoPublishState) => void;
 }
 
-const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: AutoPublishPanelProps) => {
-  const [message, setMessage] = useState("");
-  const [interval, setInterval] = useState("1");
-  const [forcedSubscription, setForcedSubscription] = useState(true);
+const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId, persistedState, onStateChange }: AutoPublishPanelProps) => {
+  const [message, setMessage] = useState(persistedState?.message || "");
+  const [interval, setInterval] = useState(String(persistedState?.intervalMinutes || 1));
+  const [forcedSubscription, setForcedSubscription] = useState(persistedState?.forcedSubscription ?? true);
   const [loading, setLoading] = useState(false);
-  const [taskId, setTaskId] = useState<string | null>(() => {
-    try { return localStorage.getItem("tg-autopublish-taskId") || null; } catch { return null; }
-  });
-  const [isRunning, setIsRunning] = useState(() => {
-    try { return localStorage.getItem("tg-autopublish-running") === "true"; } catch { return false; }
-  });
+  const [taskId, setTaskId] = useState<string | null>(persistedState?.taskId || null);
+  const [isRunning, setIsRunning] = useState(Boolean(persistedState?.running));
   const [statusInfo, setStatusInfo] = useState<any>(null);
-  const [media, setMedia] = useState<{ base64: string; fileName: string; mimeType: string; sendType: string } | null>(null);
+  const [media, setMedia] = useState<MediaConfig | null>(persistedState?.media || null);
   const [customEmojis, setCustomEmojis] = useState<Array<{ documentId: string; accessHash: string; emoticon: string; offset: number }>>([]);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("tg-autopublish-config");
-      if (!raw) return;
-      const config = JSON.parse(raw);
-      if (typeof config?.message === "string") setMessage(config.message);
-      if (typeof config?.intervalMinutes === "number") setInterval(String(config.intervalMinutes));
-      if (typeof config?.forcedSubscription === "boolean") setForcedSubscription(config.forcedSubscription);
-    } catch {}
-  }, []);
+    setTaskId(persistedState?.taskId || null);
+    setIsRunning(Boolean(persistedState?.running));
+    if (typeof persistedState?.message === "string") setMessage(persistedState.message);
+    if (typeof persistedState?.intervalMinutes === "number") setInterval(String(persistedState.intervalMinutes));
+    if (typeof persistedState?.forcedSubscription === "boolean") setForcedSubscription(persistedState.forcedSubscription);
+    if (persistedState?.media !== undefined) setMedia(persistedState.media || null);
+  }, [
+    persistedState?.taskId,
+    persistedState?.running,
+    persistedState?.message,
+    persistedState?.intervalMinutes,
+    persistedState?.forcedSubscription,
+    persistedState?.media,
+  ]);
 
   const handlePremiumEmojiSelect = (emoji: any) => {
     const offset = message.length;
-    setMessage(prev => prev + emoji.emoticon);
-    setCustomEmojis(prev => [...prev, { documentId: emoji.documentId, accessHash: emoji.accessHash, emoticon: emoji.emoticon, offset }]);
+    setMessage((prev) => prev + emoji.emoticon);
+    setCustomEmojis((prev) => [...prev, { documentId: emoji.documentId, accessHash: emoji.accessHash, emoticon: emoji.emoticon, offset }]);
   };
 
   const startPublish = async () => {
-    if (!message.trim() && !media) { toast.error("يرجى كتابة رسالة أو إرفاق ملف"); return; }
-    if (selectedGroups.length === 0) { toast.error("يرجى اختيار المجموعات أولاً"); return; }
+    if (!message.trim() && !media) {
+      toast.error("يرجى كتابة رسالة أو إرفاق ملف");
+      return;
+    }
+    if (selectedGroups.length === 0) {
+      toast.error("يرجى اختيار المجموعات أولاً");
+      return;
+    }
 
     setLoading(true);
     const newTaskId = `ap-${Date.now()}`;
+
     try {
       const payload: any = {
         action: "tg-start-auto-publish",
         sessionString,
-        groupIds: selectedGroups.map(g => g.id),
+        groupIds: selectedGroups.map((g) => g.id),
         message: message.trim(),
         intervalMinutes: parseFloat(interval) || 1,
         taskId: newTaskId,
         mentionsChannelId: mentionsChannelId || undefined,
         forcedSubscription,
       };
+
       if (media) {
         payload.mediaBase64 = media.base64;
         payload.mediaFileName = media.fileName;
         payload.mediaMimeType = media.mimeType;
         payload.mediaSendType = media.sendType;
       }
+
       const result = await invokeCloudFunctionPublic<any>("osn-session", payload);
       if (result.error) throw new Error(result.error.message);
       if (!result.data?.success) throw new Error(result.data?.error || "فشل البدء");
 
-      setTaskId(newTaskId);
-      setIsRunning(true);
-      localStorage.setItem("tg-autopublish-taskId", newTaskId);
-      localStorage.setItem("tg-autopublish-running", "true");
       const mediaForResume = media && media.base64.length <= 600000 ? media : null;
-      localStorage.setItem("tg-autopublish-config", JSON.stringify({
+      const nextState: AutoPublishState = {
+        taskId: newTaskId,
+        running: true,
         message: message.trim(),
         intervalMinutes: parseFloat(interval) || 1,
         forcedSubscription,
-        groupIds: selectedGroups.map(g => g.id),
+        groupIds: selectedGroups.map((g) => g.id),
         mentionsChannelId: mentionsChannelId || null,
         media: mediaForResume,
-      }));
+      };
+
+      setTaskId(newTaskId);
+      setIsRunning(true);
+      onStateChange?.(nextState);
       toast.success(result.data.message || "بدأ النشر التلقائي!");
     } catch (err: any) {
       toast.error(err.message);
@@ -107,6 +139,7 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
 
   const stopPublish = async () => {
     if (!taskId) return;
+
     setLoading(true);
     try {
       const result = await invokeCloudFunctionPublic<any>("osn-session", {
@@ -114,11 +147,20 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
         taskId,
       });
       if (result.error) throw new Error(result.error.message);
+
       setIsRunning(false);
       setTaskId(null);
       setStatusInfo(null);
-      localStorage.removeItem("tg-autopublish-taskId");
-      localStorage.removeItem("tg-autopublish-running");
+      onStateChange?.({
+        taskId: null,
+        running: false,
+        message,
+        intervalMinutes: parseFloat(interval) || 1,
+        forcedSubscription,
+        groupIds: selectedGroups.map((g) => g.id),
+        mentionsChannelId: mentionsChannelId || null,
+        media,
+      });
       toast.success("تم إيقاف النشر التلقائي");
     } catch (err: any) {
       toast.error(err.message);
@@ -149,11 +191,10 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
 
   return (
     <div className="space-y-6 max-w-2xl">
-      {/* المجموعات المختارة */}
       <div className="bg-muted/50 rounded-xl p-4 border border-border">
         <p className="text-sm font-medium text-foreground mb-2">المجموعات المختارة ({selectedGroups.length})</p>
         <div className="flex flex-wrap gap-2">
-          {selectedGroups.slice(0, 8).map(g => (
+          {selectedGroups.slice(0, 8).map((g) => (
             <span key={g.id} className="bg-background border border-border rounded-lg px-2.5 py-1 text-xs text-foreground">
               {g.title}
             </span>
@@ -164,13 +205,12 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
         </div>
       </div>
 
-      {/* الرسالة */}
       <div className="space-y-2">
         <Label>الرسالة</Label>
         <Textarea
           placeholder="اكتب الرسالة التي ستُنشر في المجموعات..."
           value={message}
-          onChange={e => setMessage(e.target.value)}
+          onChange={(e) => setMessage(e.target.value)}
           className="min-h-[120px]"
           disabled={isRunning}
         />
@@ -179,13 +219,9 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
         </div>
       </div>
 
-      {/* معاينة الرسالة */}
       <TelegramMessagePreview message={message} />
-
-      {/* المرفقات */}
       <MediaAttachment onMediaChange={setMedia} disabled={isRunning} />
 
-      {/* الفاصل الزمني */}
       <div className="space-y-2">
         <Label>الفاصل الزمني (بالدقائق)</Label>
         <div className="flex items-center gap-2">
@@ -195,7 +231,7 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
             min="0.5"
             step="0.5"
             value={interval}
-            onChange={e => setInterval(e.target.value)}
+            onChange={(e) => setInterval(e.target.value)}
             className="w-32"
             dir="ltr"
             disabled={isRunning}
@@ -204,25 +240,17 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
         </div>
       </div>
 
-      {/* الاشتراك الإجباري */}
       <div className="flex items-center justify-between bg-muted/50 rounded-xl p-4 border border-border">
         <div className="flex items-center gap-3">
           <ShieldCheck className="h-5 w-5 text-primary" />
           <div>
             <p className="text-sm font-medium text-foreground">الاشتراك الإجباري التلقائي</p>
-            <p className="text-xs text-muted-foreground">
-              الانضمام تلقائياً للقنوات المطلوبة والخروج بعد 24 ساعة
-            </p>
+            <p className="text-xs text-muted-foreground">الانضمام تلقائياً للقنوات المطلوبة والخروج بعد 24 ساعة</p>
           </div>
         </div>
-        <Switch
-          checked={forcedSubscription}
-          onCheckedChange={setForcedSubscription}
-          disabled={isRunning}
-        />
+        <Switch checked={forcedSubscription} onCheckedChange={setForcedSubscription} disabled={isRunning} />
       </div>
 
-      {/* حالة النشر */}
       {isRunning && statusInfo && (
         <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4 space-y-2">
           <div className="flex items-center gap-2">
@@ -236,7 +264,6 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
         </div>
       )}
 
-      {/* الأزرار */}
       <div className="flex gap-3">
         {!isRunning ? (
           <Button onClick={startPublish} disabled={loading || (!message.trim() && !media)} className="gap-2">
