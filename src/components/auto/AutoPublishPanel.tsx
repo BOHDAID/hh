@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Send, Loader2, Clock, Square, Activity, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -40,6 +40,17 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
   const [media, setMedia] = useState<{ base64: string; fileName: string; mimeType: string; sendType: string } | null>(null);
   const [customEmojis, setCustomEmojis] = useState<Array<{ documentId: string; accessHash: string; emoticon: string; offset: number }>>([]);
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("tg-autopublish-config");
+      if (!raw) return;
+      const config = JSON.parse(raw);
+      if (typeof config?.message === "string") setMessage(config.message);
+      if (typeof config?.intervalMinutes === "number") setInterval(String(config.intervalMinutes));
+      if (typeof config?.forcedSubscription === "boolean") setForcedSubscription(config.forcedSubscription);
+    } catch {}
+  }, []);
+
   const handlePremiumEmojiSelect = (emoji: any) => {
     const offset = message.length;
     setMessage(prev => prev + emoji.emoticon);
@@ -77,6 +88,15 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
       setIsRunning(true);
       localStorage.setItem("tg-autopublish-taskId", newTaskId);
       localStorage.setItem("tg-autopublish-running", "true");
+      const mediaForResume = media && media.base64.length <= 600000 ? media : null;
+      localStorage.setItem("tg-autopublish-config", JSON.stringify({
+        message: message.trim(),
+        intervalMinutes: parseFloat(interval) || 1,
+        forcedSubscription,
+        groupIds: selectedGroups.map(g => g.id),
+        mentionsChannelId: mentionsChannelId || null,
+        media: mediaForResume,
+      }));
       toast.success(result.data.message || "بدأ النشر التلقائي!");
     } catch (err: any) {
       toast.error(err.message);

@@ -31,7 +31,7 @@ interface MentionsMonitorPanelProps {
 const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: MentionsMonitorPanelProps) => {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(false);
-  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(savedChannelId || null);
+  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(savedChannelId || localStorage.getItem("tg-mentions-channel-id") || null);
   const [monitoring, setMonitoring] = useState(false);
   const [starting, setStarting] = useState(false);
   const [stopping, setStopping] = useState(false);
@@ -65,7 +65,10 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
 
   // Pre-select saved channel
   useEffect(() => {
-    if (savedChannelId) setSelectedChannelId(savedChannelId);
+    if (savedChannelId) {
+      setSelectedChannelId(savedChannelId);
+      localStorage.setItem("tg-mentions-channel-id", savedChannelId);
+    }
   }, [savedChannelId]);
 
   const callAccountAction = async (action: string, extra: Record<string, unknown> = {}) => {
@@ -77,6 +80,8 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
 
   const saveChannelToAccount = async (channelId: string | null) => {
     try {
+      if (channelId) localStorage.setItem("tg-mentions-channel-id", channelId);
+      else localStorage.removeItem("tg-mentions-channel-id");
       await callAccountAction("tg-save-mentions-channel", { mentionsChannelId: channelId });
       onChannelSave?.(channelId);
     } catch {}

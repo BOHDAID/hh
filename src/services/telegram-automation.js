@@ -1182,6 +1182,12 @@ async function startMentionsMonitor({ sessionString, channelId, taskId }) {
 
   const client = await getOrCreateClient(sessionString);
   markClientAsUsed(client);
+
+  // تحميل المحادثات لتفعيل تدفق التحديثات بشكل موثوق بعد إعادة التشغيل
+  try {
+    await client.getDialogs({ limit: 100 });
+  } catch {}
+
   const me = await client.getMe();
   const myId = me.id?.toString();
   const myUsername = me.username?.toLowerCase();
@@ -1283,22 +1289,16 @@ async function startMentionsMonitor({ sessionString, channelId, taskId }) {
       const senderName = [sender.firstName, sender.lastName].filter(Boolean).join(' ') || 'مجهول';
       const senderTag = sender.username ? ` (@${sender.username})` : '';
       const notifText = [
-        `🔔 **منشن / رد جديد**`,
+        `🔔 منشن / رد جديد`,
         `━━━━━━━━━━━━━━━`,
-        ``,
-        `👤 **من:** ${senderName}${senderTag}`,
-        `💬 **المجموعة:** ${chat.title}`,
-        ``,
-        `📝 **الرسالة:**`,
-        `> ${text.substring(0, 300)}`,
-        ``,
-        messageLink ? `🔗 [فتح الرسالة](${messageLink})` : '',
-        ``,
-        `━━━━━━━━━━━━━━━`,
+        `👤 من: ${senderName}${senderTag}`,
+        `💬 المجموعة: ${chat.title}`,
+        text ? `📝 الرسالة: ${text.substring(0, 300)}` : `📝 الرسالة: (بدون نص)`,
+        messageLink ? `🔗 الرابط: ${messageLink}` : null,
         `🕐 ${new Date().toLocaleString('ar-u-nu-latn')}`,
       ].filter(Boolean).join('\n');
 
-      await client.sendMessage(channelEntity, { message: notifText, parseMode: 'md' });
+      await client.sendMessage(channelEntity, { message: notifText });
       console.log(`📨 Mention forwarded to channel [${taskId}] from ${sender.firstName}`);
     } catch (err) {
       console.error(`❌ Mention handler error [${taskId}]:`, err.message);
@@ -1682,7 +1682,7 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
     try {
       markClientAsUsed(client);
       const msg = event.message;
-      if (!msg) return;
+      if (!msg || msg.action) return;
 
       // جلب معلومات المرسل والمحادثة
       let senderName = 'مجهول';
@@ -1819,32 +1819,26 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
         const senderTag = cached.senderUsername ? ` (@${cached.senderUsername})` : '';
 
         const notifLines = [
-          `🗑️ **رسالة محذوفة**`,
+          `🗑️ رسالة محذوفة`,
           `━━━━━━━━━━━━━━━`,
-          ``,
-          `👤 **من:** ${cached.senderName}${senderTag}`,
-          `💬 **المحادثة:** ${cached.chatTitle}`,
-          ``,
+          `👤 من: ${cached.senderName}${senderTag}`,
+          `💬 المحادثة: ${cached.chatTitle}`,
         ];
 
         if (cached.text) {
-          notifLines.push(`📝 **النص:**`);
-          notifLines.push(`> ${cached.text.substring(0, 500)}`);
-          notifLines.push(``);
+          notifLines.push(`📝 النص: ${cached.text.substring(0, 500)}`);
         }
 
         if (cached.hasMedia) {
-          notifLines.push(`📎 **نوع المرفق:** ${cached.mediaType || 'ملف'}`);
-          notifLines.push(``);
+          notifLines.push(`📎 نوع المرفق: ${cached.mediaType || 'ملف'}`);
         }
 
         notifLines.push(`━━━━━━━━━━━━━━━`);
         notifLines.push(`🕐 حُذفت: ${new Date().toLocaleString('ar-u-nu-latn')}`);
         notifLines.push(`📅 أُرسلت: ${new Date(cached.date).toLocaleString('ar-u-nu-latn')}`);
 
-        await client.sendMessage(channelEntity, { 
-          message: notifLines.join('\n'), 
-          parseMode: 'md' 
+        await client.sendMessage(channelEntity, {
+          message: notifLines.join('\n'),
         });
 
         // إرسال الميديا المحفوظة
@@ -1873,8 +1867,8 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
     deleteHandler(update);
   };
 
-  // ★ تسجيل الـ handlers - incoming فقط لا نريد حفظ رسائلنا
-  client.addEventHandler(newMsgHandler, new NewMessage({ incoming: true }));
+  // تسجيل الـ handlers (incoming + outgoing) لضمان التقاط أي رسالة قد تُحذف لاحقاً
+  client.addEventHandler(newMsgHandler, new NewMessage({}));
   client.addEventHandler(
     rawDeleteUpdateHandler,
     new Raw({ types: [Api.UpdateDeleteMessages, Api.UpdateDeleteChannelMessages] })

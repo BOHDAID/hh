@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { MessageCircleReply, Loader2, Play, Square, Activity, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -33,6 +33,16 @@ const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProp
     setCustomEmojis(prev => [...prev, { documentId: emoji.documentId, accessHash: emoji.accessHash, emoticon: emoji.emoticon, offset }]);
   };
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("tg-autoreply-config");
+      if (!raw) return;
+      const config = JSON.parse(raw);
+      if (typeof config?.replyMessage === "string") setReplyMessage(config.replyMessage);
+      if (config?.media) setMedia(config.media);
+    } catch {}
+  }, []);
+
   const startAutoReply = async () => {
     if (!replyMessage.trim() && !media) {
       toast.error("يرجى كتابة رسالة أو إرفاق ملف");
@@ -63,6 +73,12 @@ const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProp
       setRepliedCount(0);
       localStorage.setItem("tg-autoreply-taskId", newTaskId);
       localStorage.setItem("tg-autoreply-running", "true");
+      const mediaForResume = media && media.base64.length <= 600000 ? media : null;
+      localStorage.setItem("tg-autoreply-config", JSON.stringify({
+        replyMessage: replyMessage.trim(),
+        mentionsChannelId: mentionsChannelId || null,
+        media: mediaForResume,
+      }));
       toast.success("تم بدء الرد التلقائي في الخاص!");
     } catch (err: any) {
       toast.error(err.message);

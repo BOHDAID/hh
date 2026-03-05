@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { Bot, Home, LogIn, BookOpen, Users, Send, MessageSquare, User, CheckCircle2, Loader2, AlertCircle, Key, ExternalLink, Eye, EyeOff, Copy, Shield, AtSign, BarChart3, ChevronLeft, Sparkles, Zap, MessageCircleReply, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -65,6 +65,7 @@ const AutoDashboard = () => {
     try { if (f) localStorage.setItem("tg-active-feature", f); else localStorage.removeItem("tg-active-feature"); } catch {}
   };
   const [showStats, setShowStats] = useState(false);
+  const resumeKeyRef = useRef<string | null>(null);
 
   const callAction = async (action: string, extra: Record<string, unknown> = {}) => {
     const { data, error } = await invokeCloudFunctionPublic<any>("osn-session", { action, ...extra });
@@ -118,7 +119,10 @@ const AutoDashboard = () => {
           setTelegramUser(result.user || savedUser);
           setActiveSession(saved.session_string);
           setSelectedGroups(savedGroups);
-          if (saved.mentions_channel_id) setSavedMentionsChannelId(saved.mentions_channel_id);
+          if (saved.mentions_channel_id) {
+            setSavedMentionsChannelId(saved.mentions_channel_id);
+            localStorage.setItem("tg-mentions-channel-id", saved.mentions_channel_id);
+          }
         } catch {
           await callAccountAction("tg-delete-account-session");
         }
@@ -131,6 +135,98 @@ const AutoDashboard = () => {
     loadSession();
     return () => { mounted = false; };
   }, []);
+
+  // Auto-resume tasks after backend restart/deploy
+  useEffect(() => {
+    if (!loggedIn || !activeSession) return;
+    if (resumeKeyRef.current === activeSession) return;
+    resumeKeyRef.current = activeSession;
+
+    const safeParse = <T,>(raw: string | null, fallback: T): T => {
+      if (!raw) return fallback;
+      try {
+        return JSON.parse(raw) as T;
+      } catch {
+        return fallback;
+      }
+    };
+
+    const tryStart = async (action: string, payload: Record<string, unknown>) => {
+      try {
+        await callAction(action, payload);
+      } catch (err: any) {
+        const msg = String(err?.message || "");
+        if (!/يعمل بالفعل|already|نشط|active/i.test(msg)) {
+          console.warn(`Auto-resume failed for ${action}:`, msg);
+        }
+      }
+    };
+
+    const resume = async () => {
+      const mentionsTaskId = localStorage.getItem("tg-mentions-taskId");
+      const mentionsRunning = localStorage.getItem("tg-mentions-running") === "true";
+      const channelId = savedMentionsChannelId || localStorage.getItem("tg-mentions-channel-id");
+
+      if (mentionsRunning && mentionsTaskId && channelId) {
+        await tryStart("tg-start-mentions-monitor", {
+          sessionString: activeSession,
+          channelId,
+          taskId: mentionsTaskId,
+        });
+      }
+
+      const antiDeleteTaskId = localStorage.getItem("tg-antidelete-taskId");
+      const antiDeleteRunning = localStorage.getItem("tg-antidelete-running") === "true";
+      if (antiDeleteRunning && antiDeleteTaskId && channelId) {
+        await tryStart("tg-start-anti-delete", {
+          sessionString: activeSession,
+          taskId: antiDeleteTaskId,
+          mentionsChannelId: channelId,
+        });
+      }
+
+      const autoReplyTaskId = localStorage.getItem("tg-autoreply-taskId");
+      const autoReplyRunning = localStorage.getItem("tg-autoreply-running") === "true";
+      const autoReplyConfig = safeParse<any>(localStorage.getItem("tg-autoreply-config"), null);
+      if (autoReplyRunning && autoReplyTaskId && autoReplyConfig && (autoReplyConfig.replyMessage || autoReplyConfig.media)) {
+        await tryStart("tg-start-auto-reply", {
+          sessionString: activeSession,
+          taskId: autoReplyTaskId,
+          replyMessage: autoReplyConfig.replyMessage || "",
+          mentionsChannelId: channelId || autoReplyConfig.mentionsChannelId || undefined,
+          mediaBase64: autoReplyConfig.media?.base64,
+          mediaFileName: autoReplyConfig.media?.fileName,
+          mediaMimeType: autoReplyConfig.media?.mimeType,
+          mediaSendType: autoReplyConfig.media?.sendType,
+        });
+      }
+
+      const autoPublishTaskId = localStorage.getItem("tg-autopublish-taskId");
+      const autoPublishRunning = localStorage.getItem("tg-autopublish-running") === "true";
+      const autoPublishConfig = safeParse<any>(localStorage.getItem("tg-autopublish-config"), null);
+      const groupIds = Array.isArray(autoPublishConfig?.groupIds)
+        ? autoPublishConfig.groupIds.filter((id: unknown) => typeof id === "string")
+        : [];
+
+      if (autoPublishRunning && autoPublishTaskId && autoPublishConfig && (autoPublishConfig.message || autoPublishConfig.media) && groupIds.length > 0) {
+        await tryStart("tg-start-auto-publish", {
+          sessionString: activeSession,
+          taskId: autoPublishTaskId,
+          groupIds,
+          message: autoPublishConfig.message || "",
+          intervalMinutes: autoPublishConfig.intervalMinutes || 1,
+          mentionsChannelId: channelId || autoPublishConfig.mentionsChannelId || undefined,
+          mediaBase64: autoPublishConfig.media?.base64,
+          mediaFileName: autoPublishConfig.media?.fileName,
+          mediaMimeType: autoPublishConfig.media?.mimeType,
+          mediaSendType: autoPublishConfig.media?.sendType,
+          forcedSubscription: autoPublishConfig.forcedSubscription ?? true,
+        });
+      }
+    };
+
+    resume();
+  }, [loggedIn, activeSession, savedMentionsChannelId]);
 
   // === Login ===
   const handleSessionLogin = async () => {
