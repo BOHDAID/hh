@@ -1378,7 +1378,23 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
   let channelEntity = null;
   if (mentionsChannelId) {
     try {
-      channelEntity = await client.getEntity(BigInt(mentionsChannelId));
+      const rawId = String(mentionsChannelId).trim();
+      const candidateIds = rawId.startsWith('-100')
+        ? [rawId]
+        : [rawId, `-100${rawId}`];
+
+      for (const id of candidateIds) {
+        try {
+          channelEntity = await client.getEntity(BigInt(id));
+          break;
+        } catch {
+          // try next format
+        }
+      }
+
+      if (!channelEntity) {
+        console.warn(`⚠️ Auto-reply: Could not resolve notification channel for id ${rawId}`);
+      }
     } catch (err) {
       console.error(`⚠️ Auto-reply: Could not resolve notification channel:`, err.message);
     }
