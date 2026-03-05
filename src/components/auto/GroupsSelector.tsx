@@ -6,6 +6,29 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
 
+const AVATAR_COLORS = [
+  "bg-red-500/20 text-red-600 dark:text-red-400",
+  "bg-blue-500/20 text-blue-600 dark:text-blue-400",
+  "bg-green-500/20 text-green-600 dark:text-green-400",
+  "bg-purple-500/20 text-purple-600 dark:text-purple-400",
+  "bg-orange-500/20 text-orange-600 dark:text-orange-400",
+  "bg-pink-500/20 text-pink-600 dark:text-pink-400",
+  "bg-teal-500/20 text-teal-600 dark:text-teal-400",
+  "bg-indigo-500/20 text-indigo-600 dark:text-indigo-400",
+];
+
+const getInitials = (name: string) => {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+};
+
+const getAvatarColor = (id: string) => {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = ((hash << 5) - hash) + id.charCodeAt(i);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+};
+
 interface TelegramGroup {
   id: string;
   title: string;
@@ -124,11 +147,11 @@ const GroupsSelector = ({ sessionString, selectedGroups, onSave }: GroupsSelecto
               key={group.id}
               className="flex items-center gap-3 p-3 rounded-xl border border-primary/20 bg-primary/5 transition-all"
             >
-              <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center shrink-0 overflow-hidden">
+              <div className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 overflow-hidden ${group.photo ? '' : getAvatarColor(group.id)}`}>
                 {group.photo ? (
                   <img src={group.photo} alt="" className="h-10 w-10 rounded-full object-cover" />
                 ) : (
-                  <Users className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-sm font-bold">{getInitials(group.title)}</span>
                 )}
               </div>
               <div className="flex-1 min-w-0">
@@ -223,13 +246,13 @@ const GroupsSelector = ({ sessionString, selectedGroups, onSave }: GroupsSelecto
             }`}
           >
             <Checkbox checked={selected.has(group.id)} />
-            <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center shrink-0 overflow-hidden">
-              {group.photo ? (
-                <img src={group.photo} alt="" className="h-10 w-10 rounded-full object-cover" />
-              ) : (
-                <Users className="h-5 w-5 text-muted-foreground" />
-              )}
-            </div>
+             <div className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 overflow-hidden ${group.photo ? '' : getAvatarColor(group.id)}`}>
+               {group.photo ? (
+                 <img src={group.photo} alt="" className="h-10 w-10 rounded-full object-cover" />
+               ) : (
+                 <span className="text-sm font-bold">{getInitials(group.title)}</span>
+               )}
+             </div>
             <div className="flex-1 min-w-0">
               <p className="font-medium text-sm text-foreground truncate">{group.title}</p>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
