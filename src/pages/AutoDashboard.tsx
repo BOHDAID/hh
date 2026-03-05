@@ -197,15 +197,15 @@ const AutoDashboard = () => {
           const result = await callAction("tg-connect-session", { sessionString: saved.session_string });
           if (!mounted) return;
           const savedUser = parseStoredJson<TelegramUser | null>(saved.telegram_user, null);
-          const savedGroups = parseStoredJson<TelegramGroup[]>(saved.selected_groups, []);
+          const storedPayload = normalizeStoredSessionPayload(saved.selected_groups);
+          const restoredMentionsChannel = saved.mentions_channel_id || storedPayload.automation.mentions?.channelId || null;
+
           setLoggedIn(true);
           setTelegramUser(result.user || savedUser);
           setActiveSession(saved.session_string);
-          setSelectedGroups(savedGroups);
-          if (saved.mentions_channel_id) {
-            setSavedMentionsChannelId(saved.mentions_channel_id);
-            localStorage.setItem("tg-mentions-channel-id", saved.mentions_channel_id);
-          }
+          setSelectedGroups(storedPayload.groups);
+          setAutomationState(storedPayload.automation);
+          setSavedMentionsChannelId(restoredMentionsChannel);
         } catch {
           await callAccountAction("tg-delete-account-session");
         }
