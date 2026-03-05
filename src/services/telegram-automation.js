@@ -756,10 +756,12 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
     try {
       const peer = await client.getEntity(BigInt(groupId));
       if (mediaBuffer) {
+        const isImage = (mediaMimeType || '').startsWith('image/') && !mediaFileName?.endsWith('.tgs');
         await client.sendFile(peer, {
           file: mediaBuffer,
           caption: message || '',
           fileName: mediaFileName || 'file',
+          forceDocument: !isImage,
         });
       } else {
         await client.sendMessage(peer, { message });
@@ -924,7 +926,8 @@ async function broadcast({ sessionString, message, blacklistIds = [], includeCon
 
   async function sendToEntity(entity) {
     if (mediaBuffer) {
-      await client.sendFile(entity, { file: mediaBuffer, caption: message || '', fileName: mediaFileName || 'file' });
+      const isImage = (mediaMimeType || '').startsWith('image/') && !mediaFileName?.endsWith('.tgs');
+      await client.sendFile(entity, { file: mediaBuffer, caption: message || '', fileName: mediaFileName || 'file', forceDocument: !isImage });
     } else {
       await client.sendMessage(entity, { message });
     }
@@ -1415,7 +1418,8 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
 
       // الرد
       if (mediaBuffer) {
-        await client.sendFile(BigInt(senderId), { file: mediaBuffer, caption: replyMessage || '', fileName: mediaFileName || 'file' });
+        const isImage = (mediaMimeType || '').startsWith('image/') && !mediaFileName?.endsWith('.tgs');
+        await client.sendFile(BigInt(senderId), { file: mediaBuffer, caption: replyMessage || '', fileName: mediaFileName || 'file', forceDocument: !isImage });
       } else {
         await client.sendMessage(BigInt(senderId), { message: replyMessage });
       }
