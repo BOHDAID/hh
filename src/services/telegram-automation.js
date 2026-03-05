@@ -12,6 +12,8 @@ const activeClients = new Map();
 const activeAutoPublish = new Map();
 // تخزين مؤقت للقنوات المنضمة إجبارياً (channelId → { leaveAt, sessionString })
 const forcedJoins = new Map();
+// الرد التلقائي في الخاص (taskId → { handler, client, repliedUsers, reconnectInterval })
+const activeAutoReply = new Map();
 // قناة المنشنات للإشعارات
 let notificationChannelEntity = null;
 let notificationClient = null;
@@ -27,7 +29,7 @@ const stats = {
     forcedJoins: 0,
     forcedLeaves: 0,
     sessionStartedAt: null,
-    history: [], // آخر 100 عملية { timestamp, groupId, groupTitle, status, error? }
+    history: [],
   },
   broadcast: {
     totalSent: 0,
@@ -38,6 +40,11 @@ const stats = {
   mentions: {
     totalDetected: 0,
     totalForwarded: 0,
+    history: [],
+  },
+  autoReply: {
+    totalReplied: 0,
+    totalIgnored: 0,
     history: [],
   },
   connection: {
@@ -1238,6 +1245,152 @@ setInterval(() => {
   }
 }, 15 * 60 * 1000);
 
+// ============================================================
+// الرد التلقائي في الخاص (أول رسالة فقط)
+// ============================================================
+
+/**
+ * بدء الرد التلقائي - يرد مرة واحدة فقط لكل شخص يراسل لأول مرة
+ */
+async function startAutoReply({ sessionString, replyMessage, taskId, mentionsChannelId }) {
+  if (activeAutoReply.has(taskId)) {
+    return { success: false, error: 'الرد التلقائي يعمل بالفعل بهذا المعرف' };
+  }
+
+  const client = await getOrCreateClient(sessionString);
+  const repliedUsers = new Set(); // تتبع المستخدمين الذين تم الرد عليهم
+
+  // تجهيز قناة الإشعارات
+  let channelEntity = null;
+  if (mentionsChannelId) {
+    try {
+      channelEntity = await client.getEntity(BigInt(mentionsChannelId));
+    } catch (err) {
+      console.error(`⚠️ Auto-reply: Could not resolve notification channel:`, err.message);
+    }
+  }
+
+  const { NewMessage } = await import('telegram/events/index.js');
+
+  const handler = async (event) => {
+    try {
+      const msg = event.message;
+      if (!msg || !msg.peerId) return;
+
+      // فقط الرسائل الخاصة (PeerUser)
+      if (msg.peerId.className !== 'PeerUser') return;
+
+      // تجاهل الرسائل الصادرة منا
+      if (msg.out) return;
+
+      const senderId = msg.peerId.userId?.toString();
+      if (!senderId) return;
+
+      // تحقق: هل تم الرد على هذا الشخص مسبقاً؟
+      if (repliedUsers.has(senderId)) {
+        stats.autoReply.totalIgnored++;
+        return;
+      }
+
+      // جلب معلومات المرسل
+      let sender;
+      try {
+        sender = await client.getEntity(BigInt(senderId));
+      } catch {
+        sender = { firstName: 'مجهول', lastName: '', username: null, id: senderId };
+      }
+
+      // تجاهل البوتات
+      if (sender.bot) return;
+
+      // الرد
+      await client.sendMessage(BigInt(senderId), { message: replyMessage });
+      repliedUsers.add(senderId);
+      stats.autoReply.totalReplied++;
+
+      const senderName = [sender.firstName, sender.lastName].filter(Boolean).join(' ') || 'مجهول';
+      const senderTag = sender.username ? ` (@${sender.username})` : '';
+
+      recordStat('autoReply', {
+        userId: senderId,
+        userName: senderName,
+        status: 'replied',
+      });
+
+      console.log(`💬 Auto-reply [${taskId}]: Replied to ${senderName} (${senderId})`);
+
+      // إرسال إشعار للقناة
+      if (channelEntity) {
+        try {
+          const notif = [
+            `💬 **رد تلقائي**`,
+            `━━━━━━━━━━━━━━━`,
+            ``,
+            `👤 **المرسل:** ${senderName}${senderTag}`,
+            ``,
+            `📩 **رسالته:**`,
+            `> ${(msg.text || '').substring(0, 200)}`,
+            ``,
+            `✅ **تم الرد تلقائياً**`,
+            ``,
+            `━━━━━━━━━━━━━━━`,
+            `🕐 ${new Date().toLocaleString('ar-u-nu-latn')}`,
+          ].join('\n');
+          await client.sendMessage(channelEntity, { message: notif, parseMode: 'md' });
+        } catch {}
+      }
+    } catch (err) {
+      console.error(`❌ Auto-reply handler error [${taskId}]:`, err.message);
+    }
+  };
+
+  client.addEventHandler(handler, new NewMessage({}));
+
+  // Auto-reconnect
+  const reconnectInterval = setInterval(async () => {
+    try {
+      if (!client.connected) {
+        console.log(`🔄 Reconnecting auto-reply [${taskId}]...`);
+        await client.connect();
+      }
+    } catch (err) {
+      console.error(`❌ Auto-reply reconnect failed [${taskId}]:`, err.message);
+    }
+  }, 30000);
+
+  activeAutoReply.set(taskId, { handler, client, repliedUsers, reconnectInterval });
+  console.log(`✅ Auto-reply started [${taskId}]`);
+
+  return { success: true, message: 'تم بدء الرد التلقائي في الخاص' };
+}
+
+/**
+ * إيقاف الرد التلقائي
+ */
+async function stopAutoReply({ taskId }) {
+  if (activeAutoReply.has(taskId)) {
+    const { handler, client, repliedUsers, reconnectInterval } = activeAutoReply.get(taskId);
+    try { if (reconnectInterval) clearInterval(reconnectInterval); } catch {}
+    try { client.removeEventHandler(handler); } catch {}
+    const totalReplied = repliedUsers.size;
+    activeAutoReply.delete(taskId);
+    console.log(`🛑 Auto-reply stopped [${taskId}], replied to ${totalReplied} users`);
+    return { success: true, message: `تم إيقاف الرد التلقائي (تم الرد على ${totalReplied} شخص)` };
+  }
+  return { success: true, message: 'لا يوجد رد تلقائي نشط' };
+}
+
+/**
+ * حالة الرد التلقائي
+ */
+function getAutoReplyStatus({ taskId }) {
+  if (activeAutoReply.has(taskId)) {
+    const { repliedUsers } = activeAutoReply.get(taskId);
+    return { success: true, active: true, repliedCount: repliedUsers.size };
+  }
+  return { success: true, active: false, repliedCount: 0 };
+}
+
 export default {
   fetchGroups,
   fetchContacts,
@@ -1256,4 +1409,7 @@ export default {
   stopMentionsMonitor,
   getMentions,
   getStats,
+  startAutoReply,
+  stopAutoReply,
+  getAutoReplyStatus,
 };

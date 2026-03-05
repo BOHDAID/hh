@@ -246,4 +246,45 @@ router.post('/get-stats', async (req, res) => {
   }
 });
 
+// بدء الرد التلقائي في الخاص
+router.post('/start-auto-reply', async (req, res) => {
+  try {
+    const { sessionString, replyMessage, taskId, mentionsChannelId } = req.body;
+    if (!sessionString || !replyMessage || !taskId) {
+      return res.status(400).json({ success: false, error: 'sessionString, replyMessage, taskId مطلوبة' });
+    }
+    const result = await telegramAuto.startAutoReply({ sessionString, replyMessage, taskId, mentionsChannelId });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Start auto-reply error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// إيقاف الرد التلقائي
+router.post('/stop-auto-reply', async (req, res) => {
+  try {
+    const { taskId } = req.body;
+    if (!taskId) return res.status(400).json({ success: false, error: 'taskId مطلوب' });
+    const result = await telegramAuto.stopAutoReply({ taskId });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Stop auto-reply error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// حالة الرد التلقائي
+router.post('/auto-reply-status', async (req, res) => {
+  try {
+    const { taskId } = req.body;
+    if (!taskId) return res.status(400).json({ success: false, error: 'taskId مطلوب' });
+    const result = telegramAuto.getAutoReplyStatus({ taskId });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Auto-reply status error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 export default router;
