@@ -235,7 +235,7 @@ const AutoDashboard = () => {
           </div>
         </header>
         <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-          <TelegramProfileCard sessionString={activeSession} initialUser={telegramUser} onLogout={handleLogout} />
+          <TelegramProfileCard sessionString={activeSession} initialUser={telegramUser} onLogout={handleLogout} subscriptionEndsAt={subscriptionEndsAt} subscriptionIsTrial={subscriptionIsTrial} />
 
           {/* Feature cards grid */}
           {!activeFeature && !showStats && (
