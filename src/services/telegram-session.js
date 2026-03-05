@@ -25,6 +25,12 @@ function getClientKey(apiId, phone) {
   return `${apiId}:${phone}`;
 }
 
+async function shutdownClient(client) {
+  if (!client) return;
+  try { await client.disconnect(); } catch {}
+  try { await client.destroy(); } catch {}
+}
+
 /**
  * الخطوة 1: إرسال رمز التحقق
  */
@@ -35,20 +41,18 @@ async function sendCode({ apiId, apiHash, phone }) {
   if (pendingClients.has(key)) {
     try {
       const old = pendingClients.get(key);
-      await old.client.disconnect();
+      await shutdownClient(old.client);
     } catch {}
     pendingClients.delete(key);
   }
 
   const stringSession = new StringSession('');
-  const client = new TelegramClient(stringSession, parseInt(apiId), apiHash, {
-    connectionRetries: 10,
-    retryDelay: 2000,
-    autoReconnect: true,
-    deviceModel: 'ninto Store Bot',
-    systemVersion: 'Linux',
-    appVersion: '1.0.0',
-  });
+  const client = new TelegramClient(
+    stringSession,
+    parseInt(apiId),
+    apiHash,
+    createTelegramClientOptions()
+  );
 
   await client.connect();
 
@@ -86,7 +90,7 @@ async function verifyCode({ apiId, phone, code, phoneCodeHash }) {
     throw new Error('لا توجد جلسة معلقة. أعد إرسال الرمز.');
   }
 
-  const { client, apiHash } = pending;
+  const { client } = pending;
   const hash = phoneCodeHash || pending.phoneCodeHash;
 
   try {
@@ -103,6 +107,7 @@ async function verifyCode({ apiId, phone, code, phoneCodeHash }) {
     
     // تنظيف
     pendingClients.delete(key);
+    await shutdownClient(client);
 
     console.log(`✅ Session generated for ${phone} (no 2FA)`);
 
@@ -120,6 +125,9 @@ async function verifyCode({ apiId, phone, code, phoneCodeHash }) {
         sessionString: null,
       };
     }
+
+    pendingClients.delete(key);
+    await shutdownClient(client);
     throw err;
   }
 }
@@ -149,6 +157,7 @@ async function verify2FA({ apiId, phone, password }) {
 
   // تنظيف
   pendingClients.delete(key);
+  await shutdownClient(client);
 
   console.log(`✅ Session generated for ${phone} (with 2FA)`);
 
@@ -165,19 +174,17 @@ async function verify2FA({ apiId, phone, password }) {
 async function connectSession({ sessionString }) {
   const stringSession = new StringSession(sessionString);
   // قيم افتراضية — Session String يكفي للاتصال
-  const client = new TelegramClient(stringSession, 2040, 'b18441a1ff607e10a989891a5462e627', {
-    connectionRetries: 10,
-    retryDelay: 2000,
-    autoReconnect: true,
-    deviceModel: 'ninto Store Bot',
-    systemVersion: 'Linux',
-    appVersion: '1.0.0',
-  });
+  const client = new TelegramClient(
+    stringSession,
+    2040,
+    'b18441a1ff607e10a989891a5462e627',
+    createTelegramClientOptions()
+  );
 
   await client.connect();
 
   const me = await client.getMe();
-  await client.disconnect();
+  await shutdownClient(client);
 
   console.log(`✅ Session validated for ${me.phone || me.username || me.id}`);
 
@@ -194,14 +201,14 @@ async function connectSession({ sessionString }) {
 }
 
 // تنظيف الجلسات المعلقة بعد 10 دقائق
-setInterval(() => {
+setInterval(async () => {
   const now = Date.now();
   const TEN_MINUTES = 10 * 60 * 1000;
   
   for (const [key, val] of pendingClients.entries()) {
     if (now - val.createdAt > TEN_MINUTES) {
       console.log(`🧹 Cleaning expired session: ${key}`);
-      try { val.client.disconnect(); } catch {}
+      await shutdownClient(val.client);
       pendingClients.delete(key);
     }
   }
