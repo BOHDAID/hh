@@ -756,12 +756,13 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
     try {
       const peer = await client.getEntity(BigInt(groupId));
       if (mediaBuffer) {
-        const forceDoc = mediaSendType === 'file';
         const isSticker = mediaSendType === 'sticker';
+        const forceDoc = mediaSendType === 'file';
+        const finalFileName = isSticker ? 'sticker.webp' : (mediaFileName || 'file');
         await client.sendFile(peer, {
           file: mediaBuffer,
           caption: isSticker ? '' : (message || ''),
-          fileName: mediaFileName || 'file',
+          fileName: finalFileName,
           forceDocument: forceDoc,
         });
       } else {
@@ -929,7 +930,8 @@ async function broadcast({ sessionString, message, blacklistIds = [], includeCon
     if (mediaBuffer) {
       const forceDoc = mediaSendType === 'file';
       const isSticker = mediaSendType === 'sticker';
-      await client.sendFile(entity, { file: mediaBuffer, caption: isSticker ? '' : (message || ''), fileName: mediaFileName || 'file', forceDocument: forceDoc });
+      const finalFileName = isSticker ? 'sticker.webp' : (mediaFileName || 'file');
+      await client.sendFile(entity, { file: mediaBuffer, caption: isSticker ? '' : (message || ''), fileName: finalFileName, forceDocument: forceDoc });
     } else {
       await client.sendMessage(entity, { message });
     }
@@ -1464,10 +1466,11 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
         if (mediaBuffer) {
           const forceDoc = mediaSendType === 'file';
           const isSticker = mediaSendType === 'sticker';
+          const finalFileName = isSticker ? 'sticker.webp' : (mediaFileName || 'file');
           await client.sendFile(sender || msg.peerId, {
             file: mediaFile || mediaBuffer,
             caption: isSticker ? '' : (replyMessage || ''),
-            fileName: mediaFileName || 'file',
+            fileName: finalFileName,
             forceDocument: forceDoc,
           });
         } else {
@@ -1477,10 +1480,11 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
         console.warn(`⚠️ Auto-reply [${taskId}]: direct send failed, trying reply fallback ->`, sendErr.message);
         if (mediaBuffer) {
           const isSticker = mediaSendType === 'sticker';
+          const finalFileName = isSticker ? 'sticker.webp' : (mediaFileName || 'file');
           await msg.reply({
             file: mediaFile || mediaBuffer,
             message: isSticker ? '' : (replyMessage || ''),
-            fileName: mediaFileName || 'file',
+            fileName: finalFileName,
             forceDocument: mediaSendType === 'file',
           });
         } else {
