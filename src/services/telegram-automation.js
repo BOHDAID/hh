@@ -268,78 +268,192 @@ async function fetchContacts({ sessionString }) {
  */
 /**
  * محاولة الانضمام التلقائي للقنوات الإجبارية عند فشل الإرسال
- * يكتشف القنوات المطلوبة ويشترك فيها ثم يجدول الخروج بعد 24 ساعة
+ * يكتشف القنوات المطلوبة من الرسائل/الأزرار ويشترك فيها ثم يجدول الخروج بعد 24 ساعة
  */
+function extractJoinLinksFromText(text = '') {
+  const links = new Set();
+  if (!text) return links;
+
+  const normalized = String(text).replace(/\n/g, ' ');
+
+  // روابط t.me المباشرة
+  const tMeMatches = normalized.match(/(?:https?:\/\/)?(?:www\.)?t\.me\/(?:\+|joinchat\/)?[a-zA-Z0-9_]+(?:\?[\w=&-]+)?/g);
+  if (tMeMatches) {
+    for (const link of tMeMatches) links.add(link.trim());
+  }
+
+  // روابط tg://
+  const tgResolveMatches = normalized.match(/tg:\/\/resolve\?domain=[a-zA-Z][a-zA-Z0-9_]{3,}/g);
+  if (tgResolveMatches) {
+    for (const link of tgResolveMatches) links.add(link.trim());
+  }
+
+  const tgInviteMatches = normalized.match(/tg:\/\/join\?invite=[a-zA-Z0-9_-]+/g);
+  if (tgInviteMatches) {
+    for (const link of tgInviteMatches) links.add(link.trim());
+  }
+
+  // @username
+  const usernameMatches = normalized.match(/@([a-zA-Z][a-zA-Z0-9_]{3,})/g);
+  if (usernameMatches) {
+    for (const mention of usernameMatches) {
+      const username = mention.replace('@', '');
+      if (!username.toLowerCase().endsWith('bot')) {
+        links.add(`t.me/${username}`);
+      }
+    }
+  }
+
+  return links;
+}
+
+function normalizeJoinLink(rawLink) {
+  if (!rawLink) return null;
+  const link = String(rawLink).trim();
+
+  // linked channel marker
+  if (link.startsWith('linked:')) return link;
+
+  // tg://resolve
+  if (link.startsWith('tg://resolve?domain=')) {
+    const username = link.replace('tg://resolve?domain=', '').trim();
+    if (!username) return null;
+    return `t.me/${username}`;
+  }
+
+  // tg://join
+  if (link.startsWith('tg://join?invite=')) {
+    const hash = link.replace('tg://join?invite=', '').trim();
+    if (!hash) return null;
+    return `t.me/+${hash}`;
+  }
+
+  // تنظيف عام
+  let cleaned = link
+    .replace(/^https?:\/\/(www\.)?/i, '')
+    .replace(/^t\.me\//i, 't.me/')
+    .replace(/[),.;]$/g, '')
+    .trim();
+
+  if (!cleaned.startsWith('t.me/')) {
+    return null;
+  }
+
+  return cleaned;
+}
+
+function collectJoinLinksFromMessage(msg) {
+  const links = new Set();
+  const callbackButtons = [];
+
+  if (!msg) return { links, callbackButtons };
+
+  // نص الرسالة
+  if (msg.message) {
+    const textLinks = extractJoinLinksFromText(msg.message);
+    for (const l of textLinks) links.add(l);
+  }
+
+  // entities (روابط مخفية / @mentions)
+  if (msg.entities && msg.message) {
+    for (const entity of msg.entities) {
+      if (entity.className === 'MessageEntityMention') {
+        const mention = msg.message.substring(entity.offset, entity.offset + entity.length);
+        const mentionLinks = extractJoinLinksFromText(mention);
+        for (const l of mentionLinks) links.add(l);
+      }
+
+      if (entity.className === 'MessageEntityUrl') {
+        const urlText = msg.message.substring(entity.offset, entity.offset + entity.length);
+        const urlLinks = extractJoinLinksFromText(urlText);
+        for (const l of urlLinks) links.add(l);
+      }
+
+      if (entity.className === 'MessageEntityTextUrl' && entity.url) {
+        const entityLinks = extractJoinLinksFromText(entity.url);
+        for (const l of entityLinks) links.add(l);
+      }
+    }
+  }
+
+  // الأزرار (الرابط / callback)
+  if (msg.replyMarkup?.rows) {
+    for (const row of msg.replyMarkup.rows) {
+      for (const btn of (row.buttons || [])) {
+        if (btn.url) {
+          const btnLinks = extractJoinLinksFromText(btn.url);
+          for (const l of btnLinks) links.add(l);
+        }
+
+        if (btn.text) {
+          const textLinks = extractJoinLinksFromText(btn.text);
+          for (const l of textLinks) links.add(l);
+        }
+
+        // هذا هو "الضغط" الفعلي على زر callback
+        if (btn.data && msg.id) {
+          callbackButtons.push({ msgId: msg.id, button: btn });
+        }
+      }
+    }
+  }
+
+  return { links, callbackButtons };
+}
+
+async function pressCallbackButtonsForJoinLinks({ client, peer, callbackButtons }) {
+  const discoveredLinks = new Set();
+
+  for (const item of callbackButtons) {
+    try {
+      const answer = await client.invoke(new Api.messages.GetBotCallbackAnswer({
+        peer,
+        msgId: item.msgId,
+        data: item.button.data,
+      }));
+
+      if (answer?.message) {
+        const links = extractJoinLinksFromText(answer.message);
+        for (const l of links) discoveredLinks.add(l);
+      }
+
+      if (answer?.url) {
+        const links = extractJoinLinksFromText(answer.url);
+        for (const l of links) discoveredLinks.add(l);
+      }
+    } catch {
+      // بعض الأزرار ليست callback قابل للضغط عبر API
+    }
+  }
+
+  return discoveredLinks;
+}
+
 async function handleForcedSubscription({ client, peer, groupId, channelId }) {
   try {
     // جلب معلومات المجموعة الكاملة للبحث عن القنوات المرتبطة
     const fullChat = await client.invoke(new Api.channels.GetFullChannel({ channel: peer }));
     const linkedChatId = fullChat?.fullChat?.linkedChatId;
-    
-    // جلب آخر رسالة من البوت للبحث عن روابط القنوات الإجبارية
-    const messages = await client.getMessages(peer, { limit: 20 });
-    const joinLinks = new Set();
-    
-    for (const msg of messages) {
-      if (!msg?.message) continue;
-      
-      // البحث عن روابط t.me في الرسائل
-      const linkMatches = msg.message.match(/(?:https?:\/\/)?t\.me\/(?:\+|joinchat\/)?([a-zA-Z0-9_]+)/g);
-      if (linkMatches) {
-        for (const link of linkMatches) joinLinks.add(link);
-      }
-      
-      // البحث عن @username في النص (مثل @x_f_r) - نمط بوتات الاشتراك الإجباري
-      const usernameMatches = msg.message.match(/@([a-zA-Z][a-zA-Z0-9_]{3,})/g);
-      if (usernameMatches) {
-        for (const uMatch of usernameMatches) {
-          const username = uMatch.replace('@', '');
-          // تجاهل اليوزرنيمات القصيرة جداً أو الشائعة (بوتات)
-          if (username.length >= 4 && !username.toLowerCase().endsWith('bot')) {
-            joinLinks.add(`t.me/${username}`);
-          }
-        }
-      }
 
-      // البحث في entities الرسالة عن mentions مباشرة
-      if (msg.entities) {
-        for (const entity of msg.entities) {
-          // MessageEntityMention = @username
-          if (entity.className === 'MessageEntityMention') {
-            const mention = msg.message.substring(entity.offset, entity.offset + entity.length);
-            const username = mention.replace('@', '');
-            if (username.length >= 4 && !username.toLowerCase().endsWith('bot')) {
-              joinLinks.add(`t.me/${username}`);
-            }
-          }
-          // MessageEntityTextUrl = رابط مخفي في النص
-          if (entity.className === 'MessageEntityTextUrl' && entity.url?.includes('t.me/')) {
-            joinLinks.add(entity.url);
-          }
-        }
-      }
-      
-      // البحث عن أزرار inline التي تحتوي على روابط
-      if (msg.replyMarkup?.rows) {
-        for (const row of msg.replyMarkup.rows) {
-          for (const btn of (row.buttons || [])) {
-            if (btn.url && btn.url.includes('t.me/')) {
-              joinLinks.add(btn.url);
-            }
-            // أزرار callback قد تحتوي على معلومات القناة
-            if (btn.text && btn.text.includes('@')) {
-              const btnUsername = btn.text.match(/@([a-zA-Z][a-zA-Z0-9_]{3,})/);
-              if (btnUsername && !btnUsername[1].toLowerCase().endsWith('bot')) {
-                joinLinks.add(`t.me/${btnUsername[1]}`);
-              }
-            }
-          }
-        }
-      }
+    // جلب رسائل أكثر لرفع دقة اكتشاف الاشتراك الإجباري
+    const messages = await client.getMessages(peer, { limit: 50 });
+    const joinLinks = new Set();
+    const callbackButtons = [];
+
+    for (const msg of messages) {
+      const { links, callbackButtons: msgButtons } = collectJoinLinksFromMessage(msg);
+      for (const link of links) joinLinks.add(link);
+      callbackButtons.push(...msgButtons);
     }
 
     if (linkedChatId) {
       joinLinks.add(`linked:${linkedChatId}`);
+    }
+
+    // لو ما لقينا روابط مباشرة، نجرب "ضغط" أزرار callback
+    if (joinLinks.size === 0 && callbackButtons.length > 0) {
+      const discovered = await pressCallbackButtonsForJoinLinks({ client, peer, callbackButtons });
+      for (const link of discovered) joinLinks.add(link);
     }
 
     if (joinLinks.size === 0) {
@@ -347,9 +461,15 @@ async function handleForcedSubscription({ client, peer, groupId, channelId }) {
       return { joined: false, channels: [] };
     }
 
+    const normalizedLinks = Array.from(new Set(
+      Array.from(joinLinks)
+        .map(normalizeJoinLink)
+        .filter(Boolean)
+    ));
+
     const joinedChannels = [];
 
-    for (const link of joinLinks) {
+    for (const link of normalizedLinks) {
       try {
         let targetEntity;
         let channelTitle = '';
@@ -359,60 +479,71 @@ async function handleForcedSubscription({ client, peer, groupId, channelId }) {
           targetEntity = await client.getEntity(BigInt(id));
           channelTitle = targetEntity.title || id;
         } else {
-          // استخراج username أو invite hash
-          const cleanLink = link.replace(/https?:\/\//, '');
-          const parts = cleanLink.replace('t.me/', '').replace('+', '').replace('joinchat/', '');
-          
-          if (parts.includes('/')) continue; // تجاهل روابط الرسائل
-          
-          try {
-            targetEntity = await client.getEntity(parts);
-            channelTitle = targetEntity.title || parts;
-          } catch {
-            // محاولة كـ invite link
+          const path = link.replace(/^https?:\/\/(www\.)?/i, '').replace(/^t\.me\//i, '');
+          if (!path || path.includes('/')) continue;
+
+          const isInvite = path.startsWith('+') || link.includes('joinchat/');
+          const token = path.replace(/^\+/, '').replace(/^joinchat\//, '').replace(/\?.*$/, '').trim();
+          if (!token) continue;
+
+          if (isInvite) {
             try {
-              const inviteResult = await client.invoke(new Api.messages.ImportChatInvite({ hash: parts }));
-              channelTitle = inviteResult?.chats?.[0]?.title || parts;
-              joinedChannels.push({ id: parts, title: channelTitle, link, method: 'invite' });
-              
-              // جدولة الخروج بعد 24 ساعة
-              scheduleForcedLeave(client, inviteResult?.chats?.[0], parts, channelTitle);
+              const inviteResult = await client.invoke(new Api.messages.ImportChatInvite({ hash: token }));
+              const joinedChat = inviteResult?.chats?.[0];
+              if (!joinedChat?.id) continue;
+
+              const joinedId = joinedChat.id.toString();
+              channelTitle = joinedChat.title || token;
+
+              if (!forcedJoins.has(joinedId)) {
+                scheduleForcedLeave(client, joinedChat, joinedId, channelTitle);
+              }
+
+              joinedChannels.push({ id: joinedId, title: channelTitle, link, method: 'invite' });
               continue;
             } catch (invErr) {
               console.log(`⚠️ Can't join via invite ${link}: ${invErr.message}`);
               continue;
             }
           }
+
+          try {
+            targetEntity = await client.getEntity(token);
+            channelTitle = targetEntity.title || token;
+          } catch {
+            continue;
+          }
         }
 
         if (!targetEntity) continue;
+        const targetId = targetEntity.id?.toString();
+        if (!targetId) continue;
 
-        // التحقق هل نحن مشتركين أصلاً
+        // لو سبق الانضمام المجدول لنفس القناة، لا نعيد الانضمام
+        if (forcedJoins.has(targetId)) {
+          joinedChannels.push({ id: targetId, title: channelTitle, link, method: 'already_joined' });
+          continue;
+        }
+
+        // التحقق هل مشتركين بالفعل
+        let alreadySubscribed = false;
         try {
-          const participant = await client.invoke(new Api.channels.GetParticipant({
+          await client.invoke(new Api.channels.GetParticipant({
             channel: targetEntity,
             participant: new Api.InputPeerSelf(),
           }));
-          // مشتركين أصلاً - لا حاجة للانضمام
-          console.log(`✅ Already subscribed to ${channelTitle}`);
-          continue;
+          alreadySubscribed = true;
         } catch {
-          // غير مشتركين - نحتاج للانضمام
+          alreadySubscribed = false;
         }
 
-        // الانضمام
-        await client.invoke(new Api.channels.JoinChannel({ channel: targetEntity }));
-        console.log(`✅ Force-joined: ${channelTitle}`);
-        joinedChannels.push({ 
-          id: targetEntity.id?.toString(), 
-          title: channelTitle, 
-          link,
-          method: 'join'
-        });
+        if (!alreadySubscribed) {
+          await client.invoke(new Api.channels.JoinChannel({ channel: targetEntity }));
+          console.log(`✅ Force-joined: ${channelTitle}`);
+        }
 
-        // جدولة الخروج بعد 24 ساعة
-        scheduleForcedLeave(client, targetEntity, targetEntity.id?.toString(), channelTitle);
-
+        scheduleForcedLeave(client, targetEntity, targetId, channelTitle);
+        joinedChannels.push({ id: targetId, title: channelTitle, link, method: alreadySubscribed ? 'already_member' : 'join' });
       } catch (joinErr) {
         console.error(`❌ Failed to join ${link}: ${joinErr.message}`);
       }
@@ -430,15 +561,15 @@ async function handleForcedSubscription({ client, peer, groupId, channelId }) {
  */
 function scheduleForcedLeave(client, entity, channelId, channelTitle) {
   const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
-  
-  // تسجيل في القائمة
-  forcedJoins.set(channelId, {
-    joinedAt: Date.now(),
-    leaveAt: Date.now() + TWENTY_FOUR_HOURS,
-    title: channelTitle,
-  });
 
-  setTimeout(async () => {
+  // لا نكرر الجدولة لنفس القناة
+  if (forcedJoins.has(channelId)) {
+    return;
+  }
+
+  const leaveAt = Date.now() + TWENTY_FOUR_HOURS;
+
+  const timeoutId = setTimeout(async () => {
     try {
       if (entity) {
         await client.invoke(new Api.channels.LeaveChannel({ channel: entity }));
@@ -458,6 +589,13 @@ function scheduleForcedLeave(client, entity, channelId, channelTitle) {
       forcedJoins.delete(channelId);
     }
   }, TWENTY_FOUR_HOURS);
+
+  forcedJoins.set(channelId, {
+    joinedAt: Date.now(),
+    leaveAt,
+    title: channelTitle,
+    timeoutId,
+  });
 
   console.log(`⏰ Scheduled auto-leave for ${channelTitle} in 24h`);
 }
