@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { User, Edit3, Camera, Loader2, Save, X, Trash2 } from "lucide-react";
+import { User, Edit3, Camera, Loader2, Save, X, Trash2, Clock, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,9 +21,11 @@ interface TelegramProfileCardProps {
   sessionString: string;
   initialUser: { id: string; firstName: string; lastName: string; username: string; phone: string } | null;
   onLogout: () => void;
+  subscriptionEndsAt?: string | null;
+  subscriptionIsTrial?: boolean;
 }
 
-const TelegramProfileCard = ({ sessionString, initialUser, onLogout }: TelegramProfileCardProps) => {
+const TelegramProfileCard = ({ sessionString, initialUser, onLogout, subscriptionEndsAt, subscriptionIsTrial }: TelegramProfileCardProps) => {
   const [profile, setProfile] = useState<TelegramProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState(false);
