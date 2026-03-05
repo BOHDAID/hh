@@ -1646,8 +1646,7 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
   const messageCache = new Map();
   const MAX_CACHE = 5000;
 
-  const { NewMessage } = await import('telegram/events/index.js');
-  const { Api } = await import('telegram');
+  const { NewMessage, Raw } = await import('telegram/events/index.js');
 
   // Handler 1: حفظ نسخة من كل رسالة جديدة
   const newMsgHandler = async (event) => {
@@ -1793,13 +1792,15 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
     }
   };
 
+  const rawDeleteUpdateHandler = (update) => {
+    deleteHandler(update);
+  };
+
   client.addEventHandler(newMsgHandler, new NewMessage({}));
-  // Listen for raw delete updates since DeletedMessage event class doesn't exist in GramJS
-  client.addEventHandler((update) => {
-    if (update instanceof Api.UpdateDeleteMessages || update instanceof Api.UpdateDeleteChannelMessages) {
-      deleteHandler(update);
-    }
-  });
+  client.addEventHandler(
+    rawDeleteUpdateHandler,
+    new Raw({ types: [Api.UpdateDeleteMessages, Api.UpdateDeleteChannelMessages] })
+  );
 
   // Auto-reconnect
   const reconnectInterval = setInterval(async () => {
@@ -1815,7 +1816,7 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
   }, 30000);
 
   activeAntiDelete.set(taskId, { 
-    handlers: [newMsgHandler, deleteHandler], 
+    handlers: [newMsgHandler, rawDeleteUpdateHandler], 
     client, 
     messageCache, 
     reconnectInterval 
