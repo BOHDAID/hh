@@ -1647,27 +1647,7 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
   const MAX_CACHE = 5000;
 
   const { NewMessage } = await import('telegram/events/index.js');
-  let DeletedMessage;
-  try {
-    const eventsModule = await import('telegram/events/index.js');
-    DeletedMessage = eventsModule.DeletedMessage || eventsModule.default?.DeletedMessage;
-  } catch {}
-  if (!DeletedMessage) {
-    try {
-      const eventsAlt = await import('telegram');
-      DeletedMessage = eventsAlt.events?.DeletedMessage;
-    } catch {}
-  }
-  if (!DeletedMessage) {
-    try {
-      const delMod = await import('telegram/events/DeletedMessage.js');
-      DeletedMessage = delMod.DeletedMessage || delMod.default;
-    } catch {}
-  }
-  if (!DeletedMessage) {
-    console.error('❌ DeletedMessage class not found in GramJS');
-    return { success: false, error: 'DeletedMessage غير متوفر في هذا الإصدار من GramJS' };
-  }
+  const { Api } = await import('telegram');
 
   // Handler 1: حفظ نسخة من كل رسالة جديدة
   const newMsgHandler = async (event) => {
@@ -1748,11 +1728,12 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
     }
   };
 
-  // Handler 2: مراقبة الحذف
-  const deleteHandler = async (event) => {
+  // Handler 2: مراقبة الحذف عبر raw update
+  const deleteHandler = async (update) => {
     try {
       markClientAsUsed(client);
-      const deletedIds = event.deletedIds || [];
+      // Handle both UpdateDeleteMessages and UpdateDeleteChannelMessages
+      const deletedIds = update.messages || [];
       
       for (const msgId of deletedIds) {
         const cached = messageCache.get(msgId);
@@ -1813,7 +1794,12 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
   };
 
   client.addEventHandler(newMsgHandler, new NewMessage({}));
-  client.addEventHandler(deleteHandler, new DeletedMessage({}));
+  // Listen for raw delete updates since DeletedMessage event class doesn't exist in GramJS
+  client.addEventHandler((update) => {
+    if (update instanceof Api.UpdateDeleteMessages || update instanceof Api.UpdateDeleteChannelMessages) {
+      deleteHandler(update);
+    }
+  });
 
   // Auto-reconnect
   const reconnectInterval = setInterval(async () => {
