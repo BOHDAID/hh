@@ -722,6 +722,7 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
   }
 
   const client = await getOrCreateClient(sessionString);
+  markClientAsUsed(client);
   
   // تجهيز الملف المرفق
   let mediaBuffer = null;
@@ -745,6 +746,8 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
 
   // إرسال لمجموعة واحدة كل فترة
   async function sendNext() {
+    markClientAsUsed(client);
+
     if (currentIndex >= groupIds.length) {
       currentIndex = 0;
     }
@@ -813,6 +816,7 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
   
   activeAutoPublish.set(taskId, {
     interval,
+    client,
     groupIds,
     message,
     intervalMinutes,
@@ -837,6 +841,7 @@ async function stopAutoPublish({ taskId }) {
     clearInterval(activeAutoPublish.get(taskId).interval);
     const task = activeAutoPublish.get(taskId);
     activeAutoPublish.delete(taskId);
+    await releaseClientIfUnused(task.client, `stop auto-publish ${taskId}`);
     console.log(`🛑 Auto-publish stopped [${taskId}]`);
     return { success: true, message: 'تم إيقاف النشر التلقائي' };
   }
