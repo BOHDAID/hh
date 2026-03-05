@@ -39,6 +39,8 @@ const AutoDashboard = () => {
   const [loggedIn, setLoggedIn] = useState(false);
   const [telegramUser, setTelegramUser] = useState<TelegramUser | null>(null);
   const [maxSessions, setMaxSessions] = useState(1);
+  const [subscriptionEndsAt, setSubscriptionEndsAt] = useState<string | null>(null);
+  const [subscriptionIsTrial, setSubscriptionIsTrial] = useState(false);
   const [activeSession, setActiveSession] = useState("");
   const [autoConnecting, setAutoConnecting] = useState(false);
 
@@ -525,7 +527,7 @@ const AutoDashboard = () => {
   );
 
   return (
-    <SubscriptionGate onSubscriptionLoaded={(sub, max) => setMaxSessions(max)}>
+    <SubscriptionGate onSubscriptionLoaded={(sub, max) => { setMaxSessions(max); if (sub) { setSubscriptionEndsAt(sub.ends_at); setSubscriptionIsTrial(sub.is_trial); } }}>
       {loggedIn ? loggedInView : (autoConnecting ? connectingView : innerContent)}
     </SubscriptionGate>
   );
