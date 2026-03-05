@@ -101,9 +101,10 @@ const AutoDashboard = () => {
   const [loginError, setLoginError] = useState("");
   const [showLoginMode, setShowLoginMode] = useState<"login" | "instructions">("login");
 
-  // Groups state
+  // Groups + automation state
   const [selectedGroups, setSelectedGroups] = useState<TelegramGroup[]>([]);
   const [savedMentionsChannelId, setSavedMentionsChannelId] = useState<string | null>(null);
+  const [automationState, setAutomationState] = useState<AutomationState>({});
 
   // Active section - persist to localStorage
   const [activeFeature, setActiveFeatureState] = useState<string | null>(() => {
@@ -141,12 +142,45 @@ const AutoDashboard = () => {
     return value as T;
   };
 
+  const normalizeStoredSessionPayload = (rawValue: unknown): StoredSessionPayload => {
+    const parsed = parseStoredJson<unknown>(rawValue, []);
+
+    if (Array.isArray(parsed)) {
+      return { groups: parsed as TelegramGroup[], automation: {} };
+    }
+
+    if (parsed && typeof parsed === "object") {
+      const maybeObj = parsed as Record<string, unknown>;
+      const groups = Array.isArray(maybeObj.groups)
+        ? maybeObj.groups as TelegramGroup[]
+        : Array.isArray(maybeObj.selectedGroups)
+          ? maybeObj.selectedGroups as TelegramGroup[]
+          : [];
+
+      const automation = maybeObj.automation && typeof maybeObj.automation === "object"
+        ? (maybeObj.automation as AutomationState)
+        : {};
+
+      return { groups, automation };
+    }
+
+    return { groups: [], automation: {} };
+  };
+
   const saveSessionToAccount = async (sessionStr: string, user: TelegramUser | null, groups?: TelegramGroup[]) => {
     if (!sessionStr) return;
     await callAccountAction("tg-save-account-session", {
       sessionString: sessionStr,
       telegramUser: user,
       selectedGroups: groups ?? selectedGroups,
+      automationState,
+    });
+  };
+
+  const saveAutomationSection = async <K extends keyof AutomationState>(key: K, value: AutomationState[K]) => {
+    setAutomationState((prev) => ({ ...prev, [key]: value }));
+    await callAccountAction("tg-save-automation-state", {
+      automationState: { [key]: value },
     });
   };
 
