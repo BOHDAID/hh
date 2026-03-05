@@ -1686,4 +1686,5 @@ export default {
   startAntiDelete,
   stopAntiDelete,
   getAntiDeleteStatus,
+  getPremiumEmojis,
 };
