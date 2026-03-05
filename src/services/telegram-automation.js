@@ -1370,8 +1370,19 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
   const repliedUsers = new Set();
   
   let mediaBuffer = null;
+  let mediaFile = null;
   if (mediaBase64) {
     mediaBuffer = Buffer.from(mediaBase64, 'base64');
+
+    // مهم: إذا أرسلنا Buffer مباشرة، GramJS يتعامل معها كملف (Document)
+    // لذا نغلفها بـ CustomFile مع الاسم الحقيقي حتى يعرف أنها صورة عند اختيار "photo"
+    try {
+      const { CustomFile } = await import('telegram/client/uploads.js');
+      const safeName = mediaFileName || (mediaMimeType?.startsWith('image/') ? 'photo.jpg' : 'file.bin');
+      mediaFile = new CustomFile(safeName, mediaBuffer.length, '', mediaBuffer);
+    } catch {
+      mediaFile = mediaBuffer;
+    }
   }
 
   // تجهيز قناة الإشعارات
