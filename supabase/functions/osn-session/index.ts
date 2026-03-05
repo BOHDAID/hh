@@ -309,6 +309,9 @@ serve(async (req) => {
         body.replyMessage = reqBody.replyMessage;
         body.taskId = reqBody.taskId;
         body.mentionsChannelId = reqBody.mentionsChannelId;
+        body.mediaBase64 = reqBody.mediaBase64;
+        body.mediaFileName = reqBody.mediaFileName;
+        body.mediaMimeType = reqBody.mediaMimeType;
         break;
 
       case "tg-stop-auto-reply":
