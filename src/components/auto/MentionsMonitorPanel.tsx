@@ -123,6 +123,8 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
       if (res.error) throw new Error(res.error.message);
       if (!res.data?.success) throw new Error(res.data?.error || "فشل بدء المراقبة");
       setMonitoring(true);
+      localStorage.setItem("tg-mentions-taskId", taskId);
+      localStorage.setItem("tg-mentions-running", "true");
       toast.success("تم بدء مراقبة المنشنات والردود!");
     } catch (err: any) {
       toast.error(err.message);
@@ -140,6 +142,8 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
       });
       if (res.error) throw new Error(res.error.message);
       setMonitoring(false);
+      localStorage.removeItem("tg-mentions-taskId");
+      localStorage.removeItem("tg-mentions-running");
       toast.success("تم إيقاف المراقبة");
     } catch (err: any) {
       toast.error(err.message);
