@@ -104,11 +104,11 @@ router.post('/fetch-dialogs', async (req, res) => {
 // البث
 router.post('/broadcast', async (req, res) => {
   try {
-    const { sessionString, message, blacklistIds, includeContacts, taskId } = req.body;
-    if (!sessionString || !message) {
-      return res.status(400).json({ success: false, error: 'sessionString, message مطلوبة' });
+    const { sessionString, message, blacklistIds, includeContacts, taskId, mediaBase64, mediaFileName, mediaMimeType } = req.body;
+    if (!sessionString || (!message && !mediaBase64)) {
+      return res.status(400).json({ success: false, error: 'sessionString, (message أو media) مطلوبة' });
     }
-    const result = await telegramAuto.broadcast({ sessionString, message, blacklistIds, includeContacts, taskId });
+    const result = await telegramAuto.broadcast({ sessionString, message, blacklistIds, includeContacts, taskId, mediaBase64, mediaFileName, mediaMimeType });
     res.json(result);
   } catch (err) {
     console.error('❌ Broadcast error:', err.message);
@@ -249,11 +249,11 @@ router.post('/get-stats', async (req, res) => {
 // بدء الرد التلقائي في الخاص
 router.post('/start-auto-reply', async (req, res) => {
   try {
-    const { sessionString, replyMessage, taskId, mentionsChannelId } = req.body;
-    if (!sessionString || !replyMessage || !taskId) {
-      return res.status(400).json({ success: false, error: 'sessionString, replyMessage, taskId مطلوبة' });
+    const { sessionString, replyMessage, taskId, mentionsChannelId, mediaBase64, mediaFileName, mediaMimeType } = req.body;
+    if (!sessionString || (!replyMessage && !mediaBase64) || !taskId) {
+      return res.status(400).json({ success: false, error: 'sessionString, (replyMessage أو media), taskId مطلوبة' });
     }
-    const result = await telegramAuto.startAutoReply({ sessionString, replyMessage, taskId, mentionsChannelId });
+    const result = await telegramAuto.startAutoReply({ sessionString, replyMessage, taskId, mentionsChannelId, mediaBase64, mediaFileName, mediaMimeType });
     res.json(result);
   } catch (err) {
     console.error('❌ Start auto-reply error:', err.message);
