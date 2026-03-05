@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
+import MediaAttachment from "./MediaAttachment";
 
 interface AutoReplyPanelProps {
   sessionString: string;
@@ -17,22 +18,29 @@ const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProp
   const [taskId, setTaskId] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [repliedCount, setRepliedCount] = useState(0);
+  const [media, setMedia] = useState<{ base64: string; fileName: string; mimeType: string } | null>(null);
 
   const startAutoReply = async () => {
-    if (!replyMessage.trim()) {
-      toast.error("يرجى كتابة رسالة الرد");
+    if (!replyMessage.trim() && !media) {
+      toast.error("يرجى كتابة رسالة أو إرفاق ملف");
       return;
     }
     setLoading(true);
     const newTaskId = `ar-${Date.now()}`;
     try {
-      const result = await invokeCloudFunctionPublic<any>("osn-session", {
+      const payload: any = {
         action: "tg-start-auto-reply",
         sessionString,
         replyMessage: replyMessage.trim(),
         taskId: newTaskId,
         mentionsChannelId: mentionsChannelId || undefined,
-      });
+      };
+      if (media) {
+        payload.mediaBase64 = media.base64;
+        payload.mediaFileName = media.fileName;
+        payload.mediaMimeType = media.mimeType;
+      }
+      const result = await invokeCloudFunctionPublic<any>("osn-session", payload);
       if (result.error) throw new Error(result.error.message);
       if (!result.data?.success) throw new Error(result.data?.error || "فشل البدء");
 
@@ -88,7 +96,7 @@ const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProp
           <p className="text-sm font-medium text-foreground">الرد التلقائي في الخاص</p>
         </div>
         <p className="text-xs text-muted-foreground">
-          يرد تلقائياً على أي شخص يراسلك في الخاص <strong>لأول مرة فقط</strong>. لن يكرر الرد على نفس الشخص مرتين.
+          يرد تلقائياً على أي شخص يراسلك في الخاص <strong>لأول مرة فقط</strong>. يدعم النصوص والصور والإيموجي البريميوم ✨
         </p>
       </div>
 
@@ -96,13 +104,16 @@ const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProp
       <div className="space-y-2">
         <Label>رسالة الرد التلقائي</Label>
         <Textarea
-          placeholder="مرحباً! شكراً لتواصلك، سأرد عليك في أقرب وقت..."
+          placeholder="مرحباً! شكراً لتواصلك، سأرد عليك في أقرب وقت... ✨"
           value={replyMessage}
           onChange={(e) => setReplyMessage(e.target.value)}
           className="min-h-[120px]"
           disabled={isRunning}
         />
       </div>
+
+      {/* المرفقات */}
+      <MediaAttachment onMediaChange={setMedia} disabled={isRunning} />
 
       {/* حالة الرد */}
       {isRunning && (
@@ -127,7 +138,7 @@ const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProp
       {/* الأزرار */}
       <div className="flex gap-3">
         {!isRunning ? (
-          <Button onClick={startAutoReply} disabled={loading || !replyMessage.trim()} className="gap-2">
+          <Button onClick={startAutoReply} disabled={loading || (!replyMessage.trim() && !media)} className="gap-2">
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
             بدء الرد التلقائي
           </Button>

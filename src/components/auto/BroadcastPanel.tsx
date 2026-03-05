@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
+import MediaAttachment from "./MediaAttachment";
 
 const AVATAR_COLORS = [
   "bg-red-500/20 text-red-600 dark:text-red-400",
@@ -58,6 +59,7 @@ const BroadcastPanel = ({ sessionString }: BroadcastPanelProps) => {
   const [page, setPage] = useState(0);
   const [result, setResult] = useState<any>(null);
   const [includeContacts, setIncludeContacts] = useState(false);
+  const [media, setMedia] = useState<{ base64: string; fileName: string; mimeType: string } | null>(null);
 
   const fetchDialogs = async () => {
     setLoading(true);
@@ -88,18 +90,24 @@ const BroadcastPanel = ({ sessionString }: BroadcastPanelProps) => {
   };
 
   const sendBroadcast = async () => {
-    if (!message.trim()) { toast.error("يرجى كتابة الرسالة"); return; }
+    if (!message.trim() && !media) { toast.error("يرجى كتابة رسالة أو إرفاق ملف"); return; }
     setSending(true);
     setResult(null);
     try {
-      const res = await invokeCloudFunctionPublic<any>("osn-session", {
+      const payload: any = {
         action: "tg-broadcast",
         sessionString,
         message: message.trim(),
         blacklistIds: Array.from(blacklist),
         includeContacts,
         taskId: `bc-${Date.now()}`,
-      });
+      };
+      if (media) {
+        payload.mediaBase64 = media.base64;
+        payload.mediaFileName = media.fileName;
+        payload.mediaMimeType = media.mimeType;
+      }
+      const res = await invokeCloudFunctionPublic<any>("osn-session", payload);
       if (res.error) throw new Error(res.error.message);
       if (!res.data?.success) throw new Error(res.data?.error || "فشل البث");
       setResult(res.data);
@@ -142,10 +150,12 @@ const BroadcastPanel = ({ sessionString }: BroadcastPanelProps) => {
       <div className="space-y-2 max-w-2xl">
         <Label>رسالة البث</Label>
         <Textarea
-          placeholder="اكتب الرسالة التي ستُرسل لجميع الأشخاص الذين راسلوك..."
+          placeholder="اكتب الرسالة... (يدعم إيموجي بريميوم ✨)"
           value={message}
           onChange={e => setMessage(e.target.value)}
           className="min-h-[100px]"
+        />
+        <MediaAttachment onMediaChange={setMedia} disabled={sending} />
         />
       </div>
 
