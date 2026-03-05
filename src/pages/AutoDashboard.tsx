@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Bot, Home, LogIn, BookOpen, Users, Send, MessageSquare, User, CheckCircle2, Loader2, AlertCircle, Key, ExternalLink, Eye, EyeOff, Copy, Shield, AtSign, BarChart3 } from "lucide-react";
+import { Bot, Home, LogIn, BookOpen, Users, Send, MessageSquare, User, CheckCircle2, Loader2, AlertCircle, Key, ExternalLink, Eye, EyeOff, Copy, Shield, AtSign, BarChart3, ChevronLeft, Sparkles, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { invokeCloudFunction, invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
