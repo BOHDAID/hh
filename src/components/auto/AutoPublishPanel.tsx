@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Send, Loader2, Clock, Square, Activity } from "lucide-react";
+import { Send, Loader2, Clock, Square, Activity, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
 
@@ -24,6 +25,7 @@ interface AutoPublishPanelProps {
 const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: AutoPublishPanelProps) => {
   const [message, setMessage] = useState("");
   const [interval, setInterval] = useState("1");
+  const [forcedSubscription, setForcedSubscription] = useState(true);
   const [loading, setLoading] = useState(false);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
@@ -44,6 +46,7 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
         intervalMinutes: parseFloat(interval) || 1,
         taskId: newTaskId,
         mentionsChannelId: mentionsChannelId || undefined,
+        forcedSubscription,
       });
       if (result.error) throw new Error(result.error.message);
       if (!result.data?.success) throw new Error(result.data?.error || "فشل البدء");
@@ -144,6 +147,24 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
           />
           <span className="text-xs text-muted-foreground">دقيقة بين كل مجموعة</span>
         </div>
+      </div>
+
+      {/* الاشتراك الإجباري */}
+      <div className="flex items-center justify-between bg-muted/50 rounded-xl p-4 border border-border">
+        <div className="flex items-center gap-3">
+          <ShieldCheck className="h-5 w-5 text-primary" />
+          <div>
+            <p className="text-sm font-medium text-foreground">الاشتراك الإجباري التلقائي</p>
+            <p className="text-xs text-muted-foreground">
+              الانضمام تلقائياً للقنوات المطلوبة والخروج بعد 24 ساعة
+            </p>
+          </div>
+        </div>
+        <Switch
+          checked={forcedSubscription}
+          onCheckedChange={setForcedSubscription}
+          disabled={isRunning}
+        />
       </div>
 
       {/* حالة النشر */}
