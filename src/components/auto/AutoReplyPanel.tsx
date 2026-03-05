@@ -21,6 +21,13 @@ const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProp
   const [isRunning, setIsRunning] = useState(false);
   const [repliedCount, setRepliedCount] = useState(0);
   const [media, setMedia] = useState<{ base64: string; fileName: string; mimeType: string } | null>(null);
+  const [customEmojis, setCustomEmojis] = useState<Array<{ documentId: string; accessHash: string; emoticon: string; offset: number }>>([]);
+
+  const handlePremiumEmojiSelect = (emoji: any) => {
+    const offset = replyMessage.length;
+    setReplyMessage(prev => prev + emoji.emoticon);
+    setCustomEmojis(prev => [...prev, { documentId: emoji.documentId, accessHash: emoji.accessHash, emoticon: emoji.emoticon, offset }]);
+  };
 
   const startAutoReply = async () => {
     if (!replyMessage.trim() && !media) {
@@ -106,15 +113,16 @@ const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProp
       <div className="space-y-2">
         <Label>رسالة الرد التلقائي</Label>
         <Textarea
-          placeholder="مرحباً! شكراً لتواصلك، سأرد عليك في أقرب وقت... ✨"
+          placeholder="مرحباً! شكراً لتواصلك، سأرد عليك في أقرب وقت..."
           value={replyMessage}
           onChange={(e) => setReplyMessage(e.target.value)}
           className="min-h-[120px]"
           disabled={isRunning}
         />
+        <div className="flex gap-2">
+          <PremiumEmojiPicker sessionString={sessionString} onEmojiSelect={handlePremiumEmojiSelect} disabled={isRunning} />
+        </div>
       </div>
-
-      {/* معاينة الرسالة */}
       <TelegramMessagePreview message={replyMessage} />
 
       {/* المرفقات */}
