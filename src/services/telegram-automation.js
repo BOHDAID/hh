@@ -1479,8 +1479,8 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
       repliedUsers.add(senderId);
       stats.autoReply.totalReplied++;
 
-      const senderName = [sender.firstName, sender.lastName].filter(Boolean).join(' ') || 'مجهول';
-      const senderTag = sender.username ? ` (@${sender.username})` : '';
+      const senderName = [senderMeta.firstName, senderMeta.lastName].filter(Boolean).join(' ') || 'مجهول';
+      const senderTag = senderMeta.username ? ` (@${senderMeta.username})` : '';
 
       recordStat('autoReply', {
         userId: senderId,
