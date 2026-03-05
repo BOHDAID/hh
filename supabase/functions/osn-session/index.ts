@@ -138,7 +138,7 @@ serve(async (req) => {
     let method = "POST";
     let body: Record<string, unknown> = { secret: QR_AUTOMATION_SECRET };
 
-    const EXTERNAL_SUPABASE_URL = Deno.env.get("EXTERNAL_SUPABASE_URL");
+    const EXTERNAL_SUPABASE_URL = Deno.env.get("EXTERNAL_SUPABASE_URL") || Deno.env.get("VITE_EXTERNAL_SUPABASE_URL");
     const EXTERNAL_SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
 
     const needsAccountSessionAccess = ACCOUNT_SESSION_ACTIONS.has(action);
@@ -154,17 +154,14 @@ serve(async (req) => {
         );
       }
 
-      // Use Lovable Cloud DB (where telegram_sessions table exists)
-      const cloudUrl = Deno.env.get("SUPABASE_URL");
-      const cloudServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-      if (!cloudUrl || !cloudServiceKey) {
+      if (!EXTERNAL_SUPABASE_URL || !EXTERNAL_SUPABASE_SERVICE_ROLE_KEY) {
         return new Response(
-          JSON.stringify({ success: false, error: "إعدادات قاعدة بيانات Cloud غير مكتملة" }),
+          JSON.stringify({ success: false, error: "إعدادات قاعدة البيانات الخارجية غير مكتملة" }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-      sessionClient = createClient(cloudUrl, cloudServiceKey, {
+      sessionClient = createClient(EXTERNAL_SUPABASE_URL, EXTERNAL_SUPABASE_SERVICE_ROLE_KEY, {
         auth: { persistSession: false, autoRefreshToken: false },
       });
     }
