@@ -1376,11 +1376,13 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
   if (mediaBase64) {
     mediaBuffer = Buffer.from(mediaBase64, 'base64');
 
-    // مهم: إذا أرسلنا Buffer مباشرة، GramJS يتعامل معها كملف (Document)
-    // لذا نغلفها بـ CustomFile مع الاسم الحقيقي حتى يعرف أنها صورة عند اختيار "photo"
+    // مهم: تجهيز اسم ومواصفات الملف حسب نوع الإرسال (خصوصاً الستيكر)
     try {
       const { CustomFile } = await import('telegram/client/uploads.js');
-      const safeName = mediaFileName || (mediaMimeType?.startsWith('image/') ? 'photo.jpg' : 'file.bin');
+      const isStickerMedia = mediaSendType === 'sticker';
+      const safeName = isStickerMedia
+        ? 'sticker.webp'
+        : (mediaFileName || (mediaMimeType?.startsWith('image/') ? 'photo.jpg' : 'file.bin'));
       mediaFile = new CustomFile(safeName, mediaBuffer.length, '', mediaBuffer);
     } catch {
       mediaFile = mediaBuffer;
@@ -1464,14 +1466,29 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
       // الرد (مع fallback آمن عند فشل resolve للـ entity)
       try {
         if (mediaBuffer) {
-          const forceDoc = mediaSendType === 'file';
           const isSticker = mediaSendType === 'sticker';
+          const forceDoc = mediaSendType === 'file' || isSticker;
           const finalFileName = isSticker ? 'sticker.webp' : (mediaFileName || 'file');
+          const stickerOptions = isSticker
+            ? {
+                mimeType: 'image/webp',
+                attributes: [
+                  new Api.DocumentAttributeFilename({ fileName: finalFileName }),
+                  new Api.DocumentAttributeSticker({
+                    alt: '🙂',
+                    stickerset: new Api.InputStickerSetEmpty(),
+                    mask: false,
+                  }),
+                ],
+              }
+            : {};
+
           await client.sendFile(sender || msg.peerId, {
             file: mediaFile || mediaBuffer,
             caption: isSticker ? '' : (replyMessage || ''),
             fileName: finalFileName,
             forceDocument: forceDoc,
+            ...stickerOptions,
           });
         } else {
           await client.sendMessage(sender || msg.peerId, { message: replyMessage });
@@ -1481,11 +1498,27 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
         if (mediaBuffer) {
           const isSticker = mediaSendType === 'sticker';
           const finalFileName = isSticker ? 'sticker.webp' : (mediaFileName || 'file');
+          const forceDoc = mediaSendType === 'file' || isSticker;
+          const stickerOptions = isSticker
+            ? {
+                mimeType: 'image/webp',
+                attributes: [
+                  new Api.DocumentAttributeFilename({ fileName: finalFileName }),
+                  new Api.DocumentAttributeSticker({
+                    alt: '🙂',
+                    stickerset: new Api.InputStickerSetEmpty(),
+                    mask: false,
+                  }),
+                ],
+              }
+            : {};
+
           await msg.reply({
             file: mediaFile || mediaBuffer,
             message: isSticker ? '' : (replyMessage || ''),
             fileName: finalFileName,
-            forceDocument: mediaSendType === 'file',
+            forceDocument: forceDoc,
+            ...stickerOptions,
           });
         } else {
           await msg.reply({ message: replyMessage });
