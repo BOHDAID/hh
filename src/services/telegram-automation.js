@@ -840,14 +840,27 @@ async function fetchDialogs({ sessionString }) {
 /**
  * بث رسالة خاصة لجميع الأشخاص الذين راسلوني + اختيارياً جهات الاتصال (مع استثناء blacklist)
  */
-async function broadcast({ sessionString, message, blacklistIds = [], includeContacts = false, taskId }) {
+async function broadcast({ sessionString, message, blacklistIds = [], includeContacts = false, taskId, mediaBase64, mediaFileName, mediaMimeType }) {
   const client = await getOrCreateClient(sessionString);
   
+  let mediaBuffer = null;
+  if (mediaBase64) {
+    mediaBuffer = Buffer.from(mediaBase64, 'base64');
+  }
+
   const blacklistSet = new Set(blacklistIds.map(String));
   const sentIds = new Set();
   let sentCount = 0;
   let failedCount = 0;
   const errors = [];
+
+  async function sendToEntity(entity) {
+    if (mediaBuffer) {
+      await client.sendFile(entity, { file: mediaBuffer, caption: message || '', fileName: mediaFileName || 'file' });
+    } else {
+      await client.sendMessage(entity, { message });
+    }
+  }
 
   // 1) جلب الأشخاص من المحادثات الخاصة (الذين كلموني)
   const dialogs = await client.getDialogs({ limit: 500 });
@@ -861,7 +874,7 @@ async function broadcast({ sessionString, message, blacklistIds = [], includeCon
     sentIds.add(idStr);
 
     try {
-      await client.sendMessage(entity, { message });
+      await sendToEntity(entity);
       sentCount++;
       console.log(`📤 Broadcast [${taskId}]: Sent to ${entity.firstName || entity.id}`);
       await new Promise(r => setTimeout(r, 1500));
@@ -883,7 +896,7 @@ async function broadcast({ sessionString, message, blacklistIds = [], includeCon
         sentIds.add(idStr);
 
         try {
-          await client.sendMessage(user, { message });
+          await sendToEntity(user);
           sentCount++;
           console.log(`📤 Broadcast [${taskId}]: Sent to contact ${user.firstName || user.id}`);
           await new Promise(r => setTimeout(r, 1500));
