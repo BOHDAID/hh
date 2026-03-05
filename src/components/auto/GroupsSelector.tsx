@@ -147,11 +147,11 @@ const GroupsSelector = ({ sessionString, selectedGroups, onSave }: GroupsSelecto
               key={group.id}
               className="flex items-center gap-3 p-3 rounded-xl border border-primary/20 bg-primary/5 transition-all"
             >
-              <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center shrink-0 overflow-hidden">
+              <div className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 overflow-hidden ${group.photo ? '' : getAvatarColor(group.id)}`}>
                 {group.photo ? (
                   <img src={group.photo} alt="" className="h-10 w-10 rounded-full object-cover" />
                 ) : (
-                  <Users className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-sm font-bold">{getInitials(group.title)}</span>
                 )}
               </div>
               <div className="flex-1 min-w-0">
@@ -246,13 +246,13 @@ const GroupsSelector = ({ sessionString, selectedGroups, onSave }: GroupsSelecto
             }`}
           >
             <Checkbox checked={selected.has(group.id)} />
-            <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center shrink-0 overflow-hidden">
-              {group.photo ? (
-                <img src={group.photo} alt="" className="h-10 w-10 rounded-full object-cover" />
-              ) : (
-                <Users className="h-5 w-5 text-muted-foreground" />
-              )}
-            </div>
+             <div className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 overflow-hidden ${group.photo ? '' : getAvatarColor(group.id)}`}>
+               {group.photo ? (
+                 <img src={group.photo} alt="" className="h-10 w-10 rounded-full object-cover" />
+               ) : (
+                 <span className="text-sm font-bold">{getInitials(group.title)}</span>
+               )}
+             </div>
             <div className="flex-1 min-w-0">
               <p className="font-medium text-sm text-foreground truncate">{group.title}</p>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">

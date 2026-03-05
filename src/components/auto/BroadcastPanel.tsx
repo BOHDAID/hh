@@ -218,11 +218,11 @@ const BroadcastPanel = ({ sessionString }: BroadcastPanelProps) => {
               }`}
             >
               <Checkbox checked={blacklist.has(person.id)} />
-              <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center shrink-0 overflow-hidden">
+              <div className={`h-9 w-9 rounded-full flex items-center justify-center shrink-0 overflow-hidden ${person.photo ? '' : getAvatarColor(person.id)}`}>
                 {person.photo ? (
                   <img src={person.photo} alt="" className="h-9 w-9 rounded-full object-cover" />
                 ) : (
-                  <User className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-xs font-bold">{getInitials(`${person.firstName} ${person.lastName}`)}</span>
                 )}
               </div>
               <div className="flex-1 min-w-0">
