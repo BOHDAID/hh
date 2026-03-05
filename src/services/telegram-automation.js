@@ -714,7 +714,7 @@ async function notifyForcedJoin(client, channelEntity, groupTitle, joinedChannel
 /**
  * النشر التلقائي - إرسال رسالة لكل المجموعات المختارة بفاصل زمني
  */
-async function startAutoPublish({ sessionString, groupIds, message, intervalMinutes, taskId, mentionsChannelId, mediaBase64, mediaFileName, mediaMimeType }) {
+async function startAutoPublish({ sessionString, groupIds, message, intervalMinutes, taskId, mentionsChannelId, mediaBase64, mediaFileName, mediaMimeType, mediaSendType }) {
   // إيقاف أي نشر سابق لنفس المهمة
   if (activeAutoPublish.has(taskId)) {
     clearInterval(activeAutoPublish.get(taskId).interval);
@@ -910,7 +910,7 @@ async function fetchDialogs({ sessionString }) {
 /**
  * بث رسالة خاصة لجميع الأشخاص الذين راسلوني + اختيارياً جهات الاتصال (مع استثناء blacklist)
  */
-async function broadcast({ sessionString, message, blacklistIds = [], includeContacts = false, taskId, mediaBase64, mediaFileName, mediaMimeType }) {
+async function broadcast({ sessionString, message, blacklistIds = [], includeContacts = false, taskId, mediaBase64, mediaFileName, mediaMimeType, mediaSendType }) {
   const client = await getOrCreateClient(sessionString);
   
   let mediaBuffer = null;
@@ -1358,7 +1358,7 @@ setInterval(async () => {
 /**
  * بدء الرد التلقائي - يرد مرة واحدة فقط لكل شخص يراسل لأول مرة
  */
-async function startAutoReply({ sessionString, replyMessage, taskId, mentionsChannelId, mediaBase64, mediaFileName, mediaMimeType }) {
+async function startAutoReply({ sessionString, replyMessage, taskId, mentionsChannelId, mediaBase64, mediaFileName, mediaMimeType, mediaSendType }) {
   if (activeAutoReply.has(taskId)) {
     return { success: false, error: 'الرد التلقائي يعمل بالفعل بهذا المعرف' };
   }
