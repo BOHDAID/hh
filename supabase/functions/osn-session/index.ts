@@ -216,6 +216,7 @@ serve(async (req) => {
         body.mediaBase64 = reqBody.mediaBase64;
         body.mediaFileName = reqBody.mediaFileName;
         body.mediaMimeType = reqBody.mediaMimeType;
+        body.mediaSendType = reqBody.mediaSendType;
         break;
 
       case "tg-stop-auto-publish":
@@ -238,6 +239,7 @@ serve(async (req) => {
         body.mediaBase64 = reqBody.mediaBase64;
         body.mediaFileName = reqBody.mediaFileName;
         body.mediaMimeType = reqBody.mediaMimeType;
+        body.mediaSendType = reqBody.mediaSendType;
         break;
 
       // === Telegram Dialogs ===
@@ -312,6 +314,7 @@ serve(async (req) => {
         body.mediaBase64 = reqBody.mediaBase64;
         body.mediaFileName = reqBody.mediaFileName;
         body.mediaMimeType = reqBody.mediaMimeType;
+        body.mediaSendType = reqBody.mediaSendType;
         break;
 
       case "tg-stop-auto-reply":

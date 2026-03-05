@@ -714,7 +714,7 @@ async function notifyForcedJoin(client, channelEntity, groupTitle, joinedChannel
 /**
  * النشر التلقائي - إرسال رسالة لكل المجموعات المختارة بفاصل زمني
  */
-async function startAutoPublish({ sessionString, groupIds, message, intervalMinutes, taskId, mentionsChannelId, mediaBase64, mediaFileName, mediaMimeType }) {
+async function startAutoPublish({ sessionString, groupIds, message, intervalMinutes, taskId, mentionsChannelId, mediaBase64, mediaFileName, mediaMimeType, mediaSendType }) {
   // إيقاف أي نشر سابق لنفس المهمة
   if (activeAutoPublish.has(taskId)) {
     clearInterval(activeAutoPublish.get(taskId).interval);
@@ -756,12 +756,13 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
     try {
       const peer = await client.getEntity(BigInt(groupId));
       if (mediaBuffer) {
-        const isImage = (mediaMimeType || '').startsWith('image/') && !mediaFileName?.endsWith('.tgs');
+        const forceDoc = mediaSendType === 'file';
+        const isSticker = mediaSendType === 'sticker';
         await client.sendFile(peer, {
           file: mediaBuffer,
-          caption: message || '',
+          caption: isSticker ? '' : (message || ''),
           fileName: mediaFileName || 'file',
-          forceDocument: !isImage,
+          forceDocument: forceDoc,
         });
       } else {
         await client.sendMessage(peer, { message });
@@ -910,7 +911,7 @@ async function fetchDialogs({ sessionString }) {
 /**
  * بث رسالة خاصة لجميع الأشخاص الذين راسلوني + اختيارياً جهات الاتصال (مع استثناء blacklist)
  */
-async function broadcast({ sessionString, message, blacklistIds = [], includeContacts = false, taskId, mediaBase64, mediaFileName, mediaMimeType }) {
+async function broadcast({ sessionString, message, blacklistIds = [], includeContacts = false, taskId, mediaBase64, mediaFileName, mediaMimeType, mediaSendType }) {
   const client = await getOrCreateClient(sessionString);
   
   let mediaBuffer = null;
@@ -926,8 +927,9 @@ async function broadcast({ sessionString, message, blacklistIds = [], includeCon
 
   async function sendToEntity(entity) {
     if (mediaBuffer) {
-      const isImage = (mediaMimeType || '').startsWith('image/') && !mediaFileName?.endsWith('.tgs');
-      await client.sendFile(entity, { file: mediaBuffer, caption: message || '', fileName: mediaFileName || 'file', forceDocument: !isImage });
+      const forceDoc = mediaSendType === 'file';
+      const isSticker = mediaSendType === 'sticker';
+      await client.sendFile(entity, { file: mediaBuffer, caption: isSticker ? '' : (message || ''), fileName: mediaFileName || 'file', forceDocument: forceDoc });
     } else {
       await client.sendMessage(entity, { message });
     }
@@ -1358,7 +1360,7 @@ setInterval(async () => {
 /**
  * بدء الرد التلقائي - يرد مرة واحدة فقط لكل شخص يراسل لأول مرة
  */
-async function startAutoReply({ sessionString, replyMessage, taskId, mentionsChannelId, mediaBase64, mediaFileName, mediaMimeType }) {
+async function startAutoReply({ sessionString, replyMessage, taskId, mentionsChannelId, mediaBase64, mediaFileName, mediaMimeType, mediaSendType }) {
   if (activeAutoReply.has(taskId)) {
     return { success: false, error: 'الرد التلقائي يعمل بالفعل بهذا المعرف' };
   }
@@ -1418,8 +1420,9 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
 
       // الرد
       if (mediaBuffer) {
-        const isImage = (mediaMimeType || '').startsWith('image/') && !mediaFileName?.endsWith('.tgs');
-        await client.sendFile(BigInt(senderId), { file: mediaBuffer, caption: replyMessage || '', fileName: mediaFileName || 'file', forceDocument: !isImage });
+        const forceDoc = mediaSendType === 'file';
+        const isSticker = mediaSendType === 'sticker';
+        await client.sendFile(BigInt(senderId), { file: mediaBuffer, caption: isSticker ? '' : (replyMessage || ''), fileName: mediaFileName || 'file', forceDocument: forceDoc });
       } else {
         await client.sendMessage(BigInt(senderId), { message: replyMessage });
       }

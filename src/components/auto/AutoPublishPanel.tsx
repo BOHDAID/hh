@@ -33,7 +33,7 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
   const [taskId, setTaskId] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [statusInfo, setStatusInfo] = useState<any>(null);
-  const [media, setMedia] = useState<{ base64: string; fileName: string; mimeType: string } | null>(null);
+  const [media, setMedia] = useState<{ base64: string; fileName: string; mimeType: string; sendType: string } | null>(null);
   const [customEmojis, setCustomEmojis] = useState<Array<{ documentId: string; accessHash: string; emoticon: string; offset: number }>>([]);
 
   const handlePremiumEmojiSelect = (emoji: any) => {
@@ -63,6 +63,7 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
         payload.mediaBase64 = media.base64;
         payload.mediaFileName = media.fileName;
         payload.mediaMimeType = media.mimeType;
+        payload.mediaSendType = media.sendType;
       }
       const result = await invokeCloudFunctionPublic<any>("osn-session", payload);
       if (result.error) throw new Error(result.error.message);
