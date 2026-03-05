@@ -36,8 +36,21 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
   const [starting, setStarting] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [mentions, setMentions] = useState<MentionEvent[]>([]);
-  const [taskId] = useState(`mentions-${Date.now()}`);
+  const [taskId, setTaskId] = useState(() => {
+    try { return localStorage.getItem("tg-mentions-taskId") || `mentions-${Date.now()}`; } catch { return `mentions-${Date.now()}`; }
+  });
   const [fetched, setFetched] = useState(false);
+
+  // Restore running state on mount
+  useEffect(() => {
+    const storedTaskId = localStorage.getItem("tg-mentions-taskId");
+    const storedRunning = localStorage.getItem("tg-mentions-running");
+    if (storedTaskId && storedRunning === "true") {
+      setTaskId(storedTaskId);
+      setMonitoring(true);
+      setFetched(true);
+    }
+  }, []);
 
   // Pre-select saved channel
   useEffect(() => {
