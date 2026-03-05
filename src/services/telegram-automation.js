@@ -1185,7 +1185,21 @@ async function startMentionsMonitor({ sessionString, channelId, taskId }) {
   const me = await client.getMe();
   const myId = me.id?.toString();
   const myUsername = me.username?.toLowerCase();
-  const channelEntity = await client.getEntity(BigInt(channelId));
+  let channelEntity;
+  try {
+    channelEntity = await client.getEntity(BigInt(channelId));
+  } catch (entityErr) {
+    console.log('⚠️ getEntity failed, trying with PeerChannel...', entityErr.message);
+    try {
+      const { Api } = await import('telegram');
+      channelEntity = await client.getEntity(new Api.PeerChannel({ channelId: BigInt(channelId) }));
+    } catch (peerErr) {
+      console.log('⚠️ PeerChannel failed, trying getDialogs first...', peerErr.message);
+      // Force cache refresh by fetching dialogs
+      await client.getDialogs({ limit: 100 });
+      channelEntity = await client.getEntity(BigInt(channelId));
+    }
+  }
   
   // تعيين قناة الإشعارات العامة لاستخدامها في الاشتراكات الإجبارية
   notificationClient = client;
