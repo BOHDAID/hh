@@ -1819,32 +1819,26 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
         const senderTag = cached.senderUsername ? ` (@${cached.senderUsername})` : '';
 
         const notifLines = [
-          `🗑️ **رسالة محذوفة**`,
+          `🗑️ رسالة محذوفة`,
           `━━━━━━━━━━━━━━━`,
-          ``,
-          `👤 **من:** ${cached.senderName}${senderTag}`,
-          `💬 **المحادثة:** ${cached.chatTitle}`,
-          ``,
+          `👤 من: ${cached.senderName}${senderTag}`,
+          `💬 المحادثة: ${cached.chatTitle}`,
         ];
 
         if (cached.text) {
-          notifLines.push(`📝 **النص:**`);
-          notifLines.push(`> ${cached.text.substring(0, 500)}`);
-          notifLines.push(``);
+          notifLines.push(`📝 النص: ${cached.text.substring(0, 500)}`);
         }
 
         if (cached.hasMedia) {
-          notifLines.push(`📎 **نوع المرفق:** ${cached.mediaType || 'ملف'}`);
-          notifLines.push(``);
+          notifLines.push(`📎 نوع المرفق: ${cached.mediaType || 'ملف'}`);
         }
 
         notifLines.push(`━━━━━━━━━━━━━━━`);
         notifLines.push(`🕐 حُذفت: ${new Date().toLocaleString('ar-u-nu-latn')}`);
         notifLines.push(`📅 أُرسلت: ${new Date(cached.date).toLocaleString('ar-u-nu-latn')}`);
 
-        await client.sendMessage(channelEntity, { 
-          message: notifLines.join('\n'), 
-          parseMode: 'md' 
+        await client.sendMessage(channelEntity, {
+          message: notifLines.join('\n'),
         });
 
         // إرسال الميديا المحفوظة
