@@ -1378,7 +1378,23 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
   let channelEntity = null;
   if (mentionsChannelId) {
     try {
-      channelEntity = await client.getEntity(BigInt(mentionsChannelId));
+      const rawId = String(mentionsChannelId).trim();
+      const candidateIds = rawId.startsWith('-100')
+        ? [rawId]
+        : [rawId, `-100${rawId}`];
+
+      for (const id of candidateIds) {
+        try {
+          channelEntity = await client.getEntity(BigInt(id));
+          break;
+        } catch {
+          // try next format
+        }
+      }
+
+      if (!channelEntity) {
+        console.warn(`⚠️ Auto-reply: Could not resolve notification channel for id ${rawId}`);
+      }
     } catch (err) {
       console.error(`⚠️ Auto-reply: Could not resolve notification channel:`, err.message);
     }
@@ -1416,29 +1432,55 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
       // يرد على كل رسالة بدون قيود
 
       // جلب معلومات المرسل
-      let sender;
+      let sender = null;
       try {
-        sender = await client.getEntity(BigInt(senderId));
-      } catch {
-        sender = { firstName: 'مجهول', lastName: '', username: null, id: senderId };
+        sender = await msg.getSender();
+      } catch {}
+
+      if (!sender) {
+        try {
+          sender = await client.getEntity(msg.peerId);
+        } catch {}
       }
 
-      // تجاهل البوتات
-      if (sender.bot) return;
+      const senderMeta = sender || { firstName: 'مجهول', lastName: '', username: null, id: senderId, bot: false };
 
-      // الرد
-      if (mediaBuffer) {
-        const forceDoc = mediaSendType === 'file';
-        const isSticker = mediaSendType === 'sticker';
-        await client.sendFile(BigInt(senderId), { file: mediaBuffer, caption: isSticker ? '' : (replyMessage || ''), fileName: mediaFileName || 'file', forceDocument: forceDoc });
-      } else {
-        await client.sendMessage(BigInt(senderId), { message: replyMessage });
+      // تجاهل البوتات
+      if (senderMeta.bot) return;
+
+      // الرد (مع fallback آمن عند فشل resolve للـ entity)
+      try {
+        if (mediaBuffer) {
+          const forceDoc = mediaSendType === 'file';
+          const isSticker = mediaSendType === 'sticker';
+          await client.sendFile(sender || msg.peerId, {
+            file: mediaBuffer,
+            caption: isSticker ? '' : (replyMessage || ''),
+            fileName: mediaFileName || 'file',
+            forceDocument: forceDoc,
+          });
+        } else {
+          await client.sendMessage(sender || msg.peerId, { message: replyMessage });
+        }
+      } catch (sendErr) {
+        console.warn(`⚠️ Auto-reply [${taskId}]: direct send failed, trying reply fallback ->`, sendErr.message);
+        if (mediaBuffer) {
+          const isSticker = mediaSendType === 'sticker';
+          await msg.reply({
+            file: mediaBuffer,
+            message: isSticker ? '' : (replyMessage || ''),
+            fileName: mediaFileName || 'file',
+            forceDocument: mediaSendType === 'file',
+          });
+        } else {
+          await msg.reply({ message: replyMessage });
+        }
       }
       repliedUsers.add(senderId);
       stats.autoReply.totalReplied++;
 
-      const senderName = [sender.firstName, sender.lastName].filter(Boolean).join(' ') || 'مجهول';
-      const senderTag = sender.username ? ` (@${sender.username})` : '';
+      const senderName = [senderMeta.firstName, senderMeta.lastName].filter(Boolean).join(' ') || 'مجهول';
+      const senderTag = senderMeta.username ? ` (@${senderMeta.username})` : '';
 
       recordStat('autoReply', {
         userId: senderId,
