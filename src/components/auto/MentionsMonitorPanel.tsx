@@ -54,6 +54,7 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
   const saveChannelToAccount = async (channelId: string | null) => {
     try {
       await callAccountAction("tg-save-mentions-channel", { mentionsChannelId: channelId });
+      onChannelSave?.(channelId);
     } catch {}
   };
 
