@@ -1182,6 +1182,12 @@ async function startMentionsMonitor({ sessionString, channelId, taskId }) {
 
   const client = await getOrCreateClient(sessionString);
   markClientAsUsed(client);
+
+  // تحميل المحادثات لتفعيل تدفق التحديثات بشكل موثوق بعد إعادة التشغيل
+  try {
+    await client.getDialogs({ limit: 100 });
+  } catch {}
+
   const me = await client.getMe();
   const myId = me.id?.toString();
   const myUsername = me.username?.toLowerCase();
