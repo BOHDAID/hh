@@ -17,9 +17,84 @@ const MediaAttachment = ({ onMediaChange, disabled }: MediaAttachmentProps) => {
   const [sendType, setSendType] = useState<MediaSendType>("photo");
   const [currentBase64, setCurrentBase64] = useState<string | null>(null);
   const [currentMimeType, setCurrentMimeType] = useState<string | null>(null);
+  const [originalFile, setOriginalFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const readFileAsDataUrl = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error("فشل قراءة الملف"));
+      reader.readAsDataURL(file);
+    });
+
+  const blobToDataUrl = (blob: Blob): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error("فشل تحويل الملف"));
+      reader.readAsDataURL(blob);
+    });
+
+  const convertImageToWebp = async (file: File): Promise<{ dataUrl: string; base64: string }> => {
+    const bitmap = await createImageBitmap(file);
+    const maxSize = 512;
+    const scale = Math.min(1, maxSize / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("تعذّر تجهيز صورة الستيكر");
+
+    ctx.drawImage(bitmap, 0, 0, width, height);
+
+    const webpBlob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (!blob) return reject(new Error("فشل تحويل الصورة إلى WEBP"));
+        resolve(blob);
+      }, "image/webp", 0.95);
+    });
+
+    const dataUrl = await blobToDataUrl(webpBlob);
+    const base64 = dataUrl.split(",")[1];
+    return { dataUrl, base64 };
+  };
+
+  const applyMediaByType = async (file: File, type: MediaSendType) => {
+    if (type === "sticker") {
+      if (!file.type.startsWith("image/")) {
+        alert("الستيكر لازم يكون صورة (PNG/JPG/WEBP)");
+        return;
+      }
+
+      const { dataUrl, base64 } = await convertImageToWebp(file);
+      const nextFileName = "sticker.webp";
+      const mimeType = "image/webp";
+
+      setPreview(dataUrl);
+      setFileName(nextFileName);
+      setCurrentBase64(base64);
+      setCurrentMimeType(mimeType);
+      onMediaChange({ base64, fileName: nextFileName, mimeType, sendType: type });
+      return;
+    }
+
+    const dataUrl = await readFileAsDataUrl(file);
+    const base64 = dataUrl.split(",")[1];
+    const mimeType = file.type || "application/octet-stream";
+
+    setPreview(dataUrl);
+    setFileName(file.name);
+    setCurrentBase64(base64);
+    setCurrentMimeType(mimeType);
+    onMediaChange({ base64, fileName: file.name, mimeType, sendType: type });
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -28,23 +103,25 @@ const MediaAttachment = ({ onMediaChange, disabled }: MediaAttachmentProps) => {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = (reader.result as string).split(",")[1];
-      const mimeType = file.type || "application/octet-stream";
-      setPreview(reader.result as string);
-      setFileName(file.name);
-      setCurrentBase64(base64);
-      setCurrentMimeType(mimeType);
-      onMediaChange({ base64, fileName: file.name, mimeType, sendType });
-    };
-    reader.readAsDataURL(file);
+    try {
+      setOriginalFile(file);
+      await applyMediaByType(file, sendType);
+    } catch (err) {
+      console.error(err);
+      alert("فشل تجهيز الملف، جرّب ملفاً آخر");
+    }
   };
 
-  const handleSendTypeChange = (newType: MediaSendType) => {
+  const handleSendTypeChange = async (newType: MediaSendType) => {
     setSendType(newType);
-    if (currentBase64 && currentMimeType && fileName) {
-      onMediaChange({ base64: currentBase64, fileName, mimeType: currentMimeType, sendType: newType });
+
+    if (!originalFile) return;
+
+    try {
+      await applyMediaByType(originalFile, newType);
+    } catch (err) {
+      console.error(err);
+      alert("فشل تحويل نوع الإرسال");
     }
   };
 
@@ -53,6 +130,7 @@ const MediaAttachment = ({ onMediaChange, disabled }: MediaAttachmentProps) => {
     setFileName(null);
     setCurrentBase64(null);
     setCurrentMimeType(null);
+    setOriginalFile(null);
     onMediaChange(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -93,7 +171,7 @@ const MediaAttachment = ({ onMediaChange, disabled }: MediaAttachmentProps) => {
             <p className="text-xs font-medium text-foreground">إرسال كـ:</p>
             <RadioGroup
               value={sendType}
-              onValueChange={(v) => handleSendTypeChange(v as MediaSendType)}
+              onValueChange={(v) => void handleSendTypeChange(v as MediaSendType)}
               className="flex gap-4"
               disabled={disabled}
             >
@@ -147,3 +225,4 @@ const MediaAttachment = ({ onMediaChange, disabled }: MediaAttachmentProps) => {
 };
 
 export default MediaAttachment;
+
