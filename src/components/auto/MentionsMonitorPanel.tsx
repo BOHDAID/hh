@@ -41,7 +41,7 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
   });
   const [fetched, setFetched] = useState(false);
 
-  // Restore running state on mount
+  // Restore running state on mount and auto-fetch channels
   useEffect(() => {
     const storedTaskId = localStorage.getItem("tg-mentions-taskId");
     const storedRunning = localStorage.getItem("tg-mentions-running");
@@ -49,8 +49,19 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: 
       setTaskId(storedTaskId);
       setMonitoring(true);
       setFetched(true);
+      // Auto-fetch channels to restore the list
+      if (sessionString) {
+        invokeCloudFunctionPublic<any>("osn-session", {
+          action: "tg-fetch-channels",
+          sessionString,
+        }).then(res => {
+          if (res.data?.success) {
+            setChannels(res.data.channels || []);
+          }
+        }).catch(() => {});
+      }
     }
-  }, []);
+  }, [sessionString]);
 
   // Pre-select saved channel
   useEffect(() => {
