@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
+import MediaAttachment from "./MediaAttachment";
 
 interface TelegramGroup {
   id: string;
@@ -30,15 +31,16 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
   const [taskId, setTaskId] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [statusInfo, setStatusInfo] = useState<any>(null);
+  const [media, setMedia] = useState<{ base64: string; fileName: string; mimeType: string } | null>(null);
 
   const startPublish = async () => {
-    if (!message.trim()) { toast.error("يرجى كتابة الرسالة"); return; }
+    if (!message.trim() && !media) { toast.error("يرجى كتابة رسالة أو إرفاق ملف"); return; }
     if (selectedGroups.length === 0) { toast.error("يرجى اختيار المجموعات أولاً"); return; }
 
     setLoading(true);
     const newTaskId = `ap-${Date.now()}`;
     try {
-      const result = await invokeCloudFunctionPublic<any>("osn-session", {
+      const payload: any = {
         action: "tg-start-auto-publish",
         sessionString,
         groupIds: selectedGroups.map(g => g.id),
@@ -47,7 +49,13 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
         taskId: newTaskId,
         mentionsChannelId: mentionsChannelId || undefined,
         forcedSubscription,
-      });
+      };
+      if (media) {
+        payload.mediaBase64 = media.base64;
+        payload.mediaFileName = media.fileName;
+        payload.mediaMimeType = media.mimeType;
+      }
+      const result = await invokeCloudFunctionPublic<any>("osn-session", payload);
       if (result.error) throw new Error(result.error.message);
       if (!result.data?.success) throw new Error(result.data?.error || "فشل البدء");
 
@@ -122,13 +130,16 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
       <div className="space-y-2">
         <Label>الرسالة</Label>
         <Textarea
-          placeholder="اكتب الرسالة التي ستُنشر في المجموعات..."
+          placeholder="اكتب الرسالة التي ستُنشر في المجموعات... (يدعم إيموجي بريميوم ✨)"
           value={message}
           onChange={e => setMessage(e.target.value)}
           className="min-h-[120px]"
           disabled={isRunning}
         />
       </div>
+
+      {/* المرفقات */}
+      <MediaAttachment onMediaChange={setMedia} disabled={isRunning} />
 
       {/* الفاصل الزمني */}
       <div className="space-y-2">
@@ -184,7 +195,7 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
       {/* الأزرار */}
       <div className="flex gap-3">
         {!isRunning ? (
-          <Button onClick={startPublish} disabled={loading || !message.trim()} className="gap-2">
+          <Button onClick={startPublish} disabled={loading || (!message.trim() && !media)} className="gap-2">
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             بدء النشر التلقائي
           </Button>

@@ -213,6 +213,9 @@ serve(async (req) => {
         body.intervalMinutes = reqBody.intervalMinutes;
         body.taskId = reqBody.taskId;
         body.mentionsChannelId = reqBody.mentionsChannelId;
+        body.mediaBase64 = reqBody.mediaBase64;
+        body.mediaFileName = reqBody.mediaFileName;
+        body.mediaMimeType = reqBody.mediaMimeType;
         break;
 
       case "tg-stop-auto-publish":
@@ -232,6 +235,9 @@ serve(async (req) => {
         body.blacklistIds = reqBody.blacklistIds;
         body.includeContacts = reqBody.includeContacts;
         body.taskId = reqBody.taskId;
+        body.mediaBase64 = reqBody.mediaBase64;
+        body.mediaFileName = reqBody.mediaFileName;
+        body.mediaMimeType = reqBody.mediaMimeType;
         break;
 
       // === Telegram Dialogs ===
@@ -303,6 +309,9 @@ serve(async (req) => {
         body.replyMessage = reqBody.replyMessage;
         body.taskId = reqBody.taskId;
         body.mentionsChannelId = reqBody.mentionsChannelId;
+        body.mediaBase64 = reqBody.mediaBase64;
+        body.mediaFileName = reqBody.mediaFileName;
+        body.mediaMimeType = reqBody.mediaMimeType;
         break;
 
       case "tg-stop-auto-reply":

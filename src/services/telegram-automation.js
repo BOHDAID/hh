@@ -651,7 +651,7 @@ async function notifyForcedJoin(client, channelEntity, groupTitle, joinedChannel
 /**
  * النشر التلقائي - إرسال رسالة لكل المجموعات المختارة بفاصل زمني
  */
-async function startAutoPublish({ sessionString, groupIds, message, intervalMinutes, taskId, mentionsChannelId }) {
+async function startAutoPublish({ sessionString, groupIds, message, intervalMinutes, taskId, mentionsChannelId, mediaBase64, mediaFileName, mediaMimeType }) {
   // إيقاف أي نشر سابق لنفس المهمة
   if (activeAutoPublish.has(taskId)) {
     clearInterval(activeAutoPublish.get(taskId).interval);
@@ -660,6 +660,12 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
 
   const client = await getOrCreateClient(sessionString);
   
+  // تجهيز الملف المرفق
+  let mediaBuffer = null;
+  if (mediaBase64) {
+    mediaBuffer = Buffer.from(mediaBase64, 'base64');
+  }
+
   // تجهيز قناة الإشعارات إن وجدت
   let notifChannelEntity = null;
   if (mentionsChannelId) {
@@ -677,13 +683,21 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
   // إرسال لمجموعة واحدة كل فترة
   async function sendNext() {
     if (currentIndex >= groupIds.length) {
-      currentIndex = 0; // إعادة من البداية (دورة)
+      currentIndex = 0;
     }
 
     const groupId = groupIds[currentIndex];
     try {
       const peer = await client.getEntity(BigInt(groupId));
-      await client.sendMessage(peer, { message });
+      if (mediaBuffer) {
+        await client.sendFile(peer, {
+          file: mediaBuffer,
+          caption: message || '',
+          fileName: mediaFileName || 'file',
+        });
+      } else {
+        await client.sendMessage(peer, { message });
+      }
       sentCount++;
       currentIndex++;
       stats.autoPublish.totalSent++;
@@ -826,14 +840,27 @@ async function fetchDialogs({ sessionString }) {
 /**
  * بث رسالة خاصة لجميع الأشخاص الذين راسلوني + اختيارياً جهات الاتصال (مع استثناء blacklist)
  */
-async function broadcast({ sessionString, message, blacklistIds = [], includeContacts = false, taskId }) {
+async function broadcast({ sessionString, message, blacklistIds = [], includeContacts = false, taskId, mediaBase64, mediaFileName, mediaMimeType }) {
   const client = await getOrCreateClient(sessionString);
   
+  let mediaBuffer = null;
+  if (mediaBase64) {
+    mediaBuffer = Buffer.from(mediaBase64, 'base64');
+  }
+
   const blacklistSet = new Set(blacklistIds.map(String));
   const sentIds = new Set();
   let sentCount = 0;
   let failedCount = 0;
   const errors = [];
+
+  async function sendToEntity(entity) {
+    if (mediaBuffer) {
+      await client.sendFile(entity, { file: mediaBuffer, caption: message || '', fileName: mediaFileName || 'file' });
+    } else {
+      await client.sendMessage(entity, { message });
+    }
+  }
 
   // 1) جلب الأشخاص من المحادثات الخاصة (الذين كلموني)
   const dialogs = await client.getDialogs({ limit: 500 });
@@ -847,7 +874,7 @@ async function broadcast({ sessionString, message, blacklistIds = [], includeCon
     sentIds.add(idStr);
 
     try {
-      await client.sendMessage(entity, { message });
+      await sendToEntity(entity);
       sentCount++;
       console.log(`📤 Broadcast [${taskId}]: Sent to ${entity.firstName || entity.id}`);
       await new Promise(r => setTimeout(r, 1500));
@@ -869,7 +896,7 @@ async function broadcast({ sessionString, message, blacklistIds = [], includeCon
         sentIds.add(idStr);
 
         try {
-          await client.sendMessage(user, { message });
+          await sendToEntity(user);
           sentCount++;
           console.log(`📤 Broadcast [${taskId}]: Sent to contact ${user.firstName || user.id}`);
           await new Promise(r => setTimeout(r, 1500));
@@ -1254,13 +1281,18 @@ setInterval(() => {
 /**
  * بدء الرد التلقائي - يرد مرة واحدة فقط لكل شخص يراسل لأول مرة
  */
-async function startAutoReply({ sessionString, replyMessage, taskId, mentionsChannelId }) {
+async function startAutoReply({ sessionString, replyMessage, taskId, mentionsChannelId, mediaBase64, mediaFileName, mediaMimeType }) {
   if (activeAutoReply.has(taskId)) {
     return { success: false, error: 'الرد التلقائي يعمل بالفعل بهذا المعرف' };
   }
 
   const client = await getOrCreateClient(sessionString);
-  const repliedUsers = new Set(); // تتبع المستخدمين الذين تم الرد عليهم
+  const repliedUsers = new Set();
+  
+  let mediaBuffer = null;
+  if (mediaBase64) {
+    mediaBuffer = Buffer.from(mediaBase64, 'base64');
+  }
 
   // تجهيز قناة الإشعارات
   let channelEntity = null;
@@ -1306,7 +1338,11 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
       if (sender.bot) return;
 
       // الرد
-      await client.sendMessage(BigInt(senderId), { message: replyMessage });
+      if (mediaBuffer) {
+        await client.sendFile(BigInt(senderId), { file: mediaBuffer, caption: replyMessage || '', fileName: mediaFileName || 'file' });
+      } else {
+        await client.sendMessage(BigInt(senderId), { message: replyMessage });
+      }
       repliedUsers.add(senderId);
       stats.autoReply.totalReplied++;
 
