@@ -1478,7 +1478,7 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
         if (mediaBuffer) {
           const isSticker = mediaSendType === 'sticker';
           await msg.reply({
-            file: mediaBuffer,
+            file: mediaFile || mediaBuffer,
             message: isSticker ? '' : (replyMessage || ''),
             fileName: mediaFileName || 'file',
             forceDocument: mediaSendType === 'file',
