@@ -1333,14 +1333,16 @@ async function getMentions({ taskId }) {
 }
 
 // تنظيف العملاء غير المستخدمين كل 15 دقيقة
-setInterval(() => {
+setInterval(async () => {
   const now = Date.now();
   const THIRTY_MINUTES = 30 * 60 * 1000;
   
   for (const [hash, val] of activeClients.entries()) {
+    if (isClientProtected(val.client)) continue;
+
     if (now - val.lastUsed > THIRTY_MINUTES) {
       console.log(`🧹 Cleaning idle client: ${hash}`);
-      try { val.client.disconnect(); } catch {}
+      await shutdownClient(val.client, `idle cleanup ${hash}`);
       activeClients.delete(hash);
     }
   }
@@ -1359,6 +1361,7 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
   }
 
   const client = await getOrCreateClient(sessionString);
+  markClientAsUsed(client);
   const repliedUsers = new Set();
   
   let mediaBuffer = null;
@@ -1380,6 +1383,7 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
 
   const handler = async (event) => {
     try {
+      markClientAsUsed(client);
       const msg = event.message;
       if (!msg || !msg.peerId) return;
 
@@ -1462,6 +1466,7 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
       if (!client.connected) {
         console.log(`🔄 Reconnecting auto-reply [${taskId}]...`);
         await client.connect();
+        markClientAsUsed(client);
       }
     } catch (err) {
       console.error(`❌ Auto-reply reconnect failed [${taskId}]:`, err.message);
@@ -1484,6 +1489,7 @@ async function stopAutoReply({ taskId }) {
     try { client.removeEventHandler(handler); } catch {}
     const totalReplied = repliedUsers.size;
     activeAutoReply.delete(taskId);
+    await releaseClientIfUnused(client, `stop auto-reply ${taskId}`);
     console.log(`🛑 Auto-reply stopped [${taskId}], replied to ${totalReplied} users`);
     return { success: true, message: `تم إيقاف الرد التلقائي (تم الرد على ${totalReplied} شخص)` };
   }
