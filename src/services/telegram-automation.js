@@ -1867,8 +1867,8 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
     deleteHandler(update);
   };
 
-  // ★ تسجيل الـ handlers - incoming فقط لا نريد حفظ رسائلنا
-  client.addEventHandler(newMsgHandler, new NewMessage({ incoming: true }));
+  // تسجيل الـ handlers (incoming + outgoing) لضمان التقاط أي رسالة قد تُحذف لاحقاً
+  client.addEventHandler(newMsgHandler, new NewMessage({}));
   client.addEventHandler(
     rawDeleteUpdateHandler,
     new Raw({ types: [Api.UpdateDeleteMessages, Api.UpdateDeleteChannelMessages] })
