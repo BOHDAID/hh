@@ -113,6 +113,9 @@ const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProp
         />
       </div>
 
+      {/* معاينة الرسالة */}
+      <TelegramMessagePreview message={replyMessage} />
+
       {/* المرفقات */}
       <MediaAttachment onMediaChange={setMedia} disabled={isRunning} />
 

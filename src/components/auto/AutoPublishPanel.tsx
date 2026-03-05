@@ -139,6 +139,9 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
         />
       </div>
 
+      {/* معاينة الرسالة */}
+      <TelegramMessagePreview message={message} />
+
       {/* المرفقات */}
       <MediaAttachment onMediaChange={setMedia} disabled={isRunning} />
 
