@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { User, Edit3, Camera, Loader2, Save, X, Trash2 } from "lucide-react";
+import { User, Edit3, Camera, Loader2, Save, X, Trash2, Clock, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,9 +21,11 @@ interface TelegramProfileCardProps {
   sessionString: string;
   initialUser: { id: string; firstName: string; lastName: string; username: string; phone: string } | null;
   onLogout: () => void;
+  subscriptionEndsAt?: string | null;
+  subscriptionIsTrial?: boolean;
 }
 
-const TelegramProfileCard = ({ sessionString, initialUser, onLogout }: TelegramProfileCardProps) => {
+const TelegramProfileCard = ({ sessionString, initialUser, onLogout, subscriptionEndsAt, subscriptionIsTrial }: TelegramProfileCardProps) => {
   const [profile, setProfile] = useState<TelegramProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -231,10 +233,59 @@ const TelegramProfileCard = ({ sessionString, initialUser, onLogout }: TelegramP
 
         {/* Bio (view) */}
         {profile && !editing && profile.about && (
-          <p className="text-sm text-muted-foreground bg-muted/50 rounded-xl p-3 border border-border">
+          <p className="text-sm text-muted-foreground bg-muted/50 rounded-xl p-3 border border-border mb-3">
             {profile.about}
           </p>
         )}
+
+        {/* Subscription info */}
+        {subscriptionEndsAt && (() => {
+          const now = new Date();
+          const end = new Date(subscriptionEndsAt);
+          const diffMs = end.getTime() - now.getTime();
+          const diffDays = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+          const diffHours = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60)));
+          const isExpiringSoon = diffDays <= 3;
+
+          let timeText = '';
+          if (diffDays > 30) {
+            const months = Math.floor(diffDays / 30);
+            const remainDays = diffDays % 30;
+            timeText = `${months} شهر${remainDays > 0 ? ` و ${remainDays} يوم` : ''}`;
+          } else if (diffDays > 1) {
+            timeText = `${diffDays} يوم`;
+          } else if (diffHours > 0) {
+            timeText = `${diffHours} ساعة`;
+          } else {
+            timeText = 'منتهي';
+          }
+
+          return (
+            <div className={`flex items-center gap-3 rounded-xl p-3 border ${
+              isExpiringSoon
+                ? 'bg-destructive/5 border-destructive/20'
+                : 'bg-primary/5 border-primary/20'
+            }`}>
+              <div className={`p-1.5 rounded-lg ${isExpiringSoon ? 'bg-destructive/10' : 'bg-primary/10'}`}>
+                {subscriptionIsTrial
+                  ? <Clock className={`h-4 w-4 ${isExpiringSoon ? 'text-destructive' : 'text-primary'}`} />
+                  : <Crown className={`h-4 w-4 ${isExpiringSoon ? 'text-destructive' : 'text-primary'}`} />
+                }
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-muted-foreground">
+                  {subscriptionIsTrial ? 'تجربة مجانية' : 'الاشتراك'}
+                </p>
+                <p className={`text-sm font-bold ${isExpiringSoon ? 'text-destructive' : 'text-foreground'}`}>
+                  {diffMs <= 0 ? 'منتهي' : `باقي ${timeText}`}
+                </p>
+              </div>
+              <span className="text-[10px] text-muted-foreground">
+                {end.toLocaleDateString('ar-SA')}
+              </span>
+            </div>
+          );
+        })()}
 
         {/* Edit form */}
         {editing && (
