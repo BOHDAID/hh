@@ -1,29 +1,34 @@
-import { Eye } from "lucide-react";
+import { Eye, Sparkles, Image, Sticker, Bold, Italic, Strikethrough, Code, SmilePlus } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 interface TelegramMessagePreviewProps {
   message: string;
 }
 
+const features = [
+  { icon: Sparkles, label: "إيموجي بريميوم", color: "text-yellow-500" },
+  { icon: Image, label: "صور ومرفقات", color: "text-blue-500" },
+  { icon: Sticker, label: "ستيكرات", color: "text-pink-500" },
+  { icon: SmilePlus, label: "ردود فعل", color: "text-orange-500" },
+  { icon: Bold, label: "عريض", color: "text-foreground" },
+  { icon: Italic, label: "مائل", color: "text-foreground" },
+  { icon: Strikethrough, label: "يتوسطه خط", color: "text-foreground" },
+  { icon: Code, label: "كود", color: "text-foreground" },
+];
+
 const TelegramMessagePreview = ({ message }: TelegramMessagePreviewProps) => {
-  // Convert Telegram markdown to HTML for preview
   const formatTelegramText = (text: string): string => {
     if (!text.trim()) return '<span class="text-muted-foreground italic text-xs">اكتب رسالة لمعاينتها...</span>';
     
     let html = text
-      // Escape HTML
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
-      // Bold **text** or *text*
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.+?)\*/g, '<strong>$1</strong>')
-      // Italic __text__
       .replace(/__(.+?)__/g, '<em>$1</em>')
-      // Strikethrough ~~text~~
       .replace(/~~(.+?)~~/g, '<del>$1</del>')
-      // Monospace `text`
       .replace(/`(.+?)`/g, '<code class="bg-muted px-1 rounded text-xs font-mono">$1</code>')
-      // Newlines
       .replace(/\n/g, "<br/>");
     
     return html;
@@ -31,6 +36,23 @@ const TelegramMessagePreview = ({ message }: TelegramMessagePreviewProps) => {
 
   return (
     <div className="space-y-3">
+      {/* المميزات المدعومة */}
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-foreground">⚡ المميزات المدعومة:</p>
+        <div className="flex flex-wrap gap-1.5">
+          {features.map((f) => (
+            <Badge
+              key={f.label}
+              variant="outline"
+              className="gap-1.5 px-2.5 py-1 text-[11px] font-medium bg-muted/50 border-border hover:bg-muted transition-colors"
+            >
+              <f.icon className={`h-3 w-3 ${f.color}`} />
+              {f.label}
+            </Badge>
+          ))}
+        </div>
+      </div>
+
       {/* Preview */}
       <div className="bg-muted/30 rounded-xl border border-border overflow-hidden">
         <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/50">
@@ -47,7 +69,7 @@ const TelegramMessagePreview = ({ message }: TelegramMessagePreviewProps) => {
         </div>
       </div>
 
-      {/* Formatting guide */}
+      {/* طريقة التنسيق */}
       <div className="bg-muted/30 rounded-xl border border-border p-3 space-y-2">
         <p className="text-xs font-medium text-foreground mb-2">📝 طريقة التنسيق:</p>
         <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
@@ -72,8 +94,6 @@ const TelegramMessagePreview = ({ message }: TelegramMessagePreviewProps) => {
           <p className="text-xs font-medium text-foreground mb-1">✨ إيموجي بريميوم:</p>
           <p className="text-[11px] text-muted-foreground leading-relaxed">
             انسخ الإيموجي البريميوم من تليجرام (📱 اضغط مطولاً على الإيموجي ← نسخ) والصقه هنا مباشرة.
-            <br />
-            النظام يرسلها كما هي بدون تعديل ✨🎉⭐
           </p>
         </div>
       </div>
