@@ -25,9 +25,10 @@ interface MentionEvent {
 interface MentionsMonitorPanelProps {
   sessionString: string;
   savedChannelId?: string | null;
+  onChannelSave?: (channelId: string | null) => void;
 }
 
-const MentionsMonitorPanel = ({ sessionString, savedChannelId }: MentionsMonitorPanelProps) => {
+const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: MentionsMonitorPanelProps) => {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(false);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(savedChannelId || null);
@@ -53,6 +54,7 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId }: MentionsMonitor
   const saveChannelToAccount = async (channelId: string | null) => {
     try {
       await callAccountAction("tg-save-mentions-channel", { mentionsChannelId: channelId });
+      onChannelSave?.(channelId);
     } catch {}
   };
 

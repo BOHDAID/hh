@@ -353,7 +353,7 @@ const AutoDashboard = () => {
               <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
                 <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
               </Button>
-              <MentionsMonitorPanel sessionString={activeSession} savedChannelId={savedMentionsChannelId} />
+              <MentionsMonitorPanel sessionString={activeSession} savedChannelId={savedMentionsChannelId} onChannelSave={(channelId) => setSavedMentionsChannelId(channelId)} />
             </div>
           )}
 
