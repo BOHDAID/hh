@@ -480,9 +480,11 @@ async function handleForcedSubscription({ client, peer, groupId, channelId }) {
           channelTitle = targetEntity.title || id;
         } else {
           const path = link.replace(/^https?:\/\/(www\.)?/i, '').replace(/^t\.me\//i, '');
-          if (!path || path.includes('/')) continue;
+          if (!path) continue;
 
-          const isInvite = path.startsWith('+') || link.includes('joinchat/');
+          const isInvite = path.startsWith('+') || path.startsWith('joinchat/') || link.includes('joinchat/');
+          if (!isInvite && path.includes('/')) continue;
+
           const token = path.replace(/^\+/, '').replace(/^joinchat\//, '').replace(/\?.*$/, '').trim();
           if (!token) continue;
 
