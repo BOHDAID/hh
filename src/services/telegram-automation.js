@@ -14,6 +14,8 @@ const activeAutoPublish = new Map();
 const forcedJoins = new Map();
 // الرد التلقائي في الخاص (taskId → { handler, client, repliedUsers, reconnectInterval })
 const activeAutoReply = new Map();
+// مراقب الرسائل المحذوفة (taskId → { handlers, client, messageCache, reconnectInterval })
+const activeAntiDelete = new Map();
 // قناة المنشنات للإشعارات
 let notificationChannelEntity = null;
 let notificationClient = null;
@@ -1391,6 +1393,239 @@ function getAutoReplyStatus({ taskId }) {
   return { success: true, active: false, repliedCount: 0 };
 }
 
+// ============================================================
+// مراقب الرسائل المحذوفة (Anti-Delete)
+// ============================================================
+
+/**
+ * بدء مراقبة الرسائل المحذوفة
+ * يحفظ نسخة من كل رسالة واردة، وعند حذفها يرسلها للقناة
+ */
+async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
+  if (activeAntiDelete.has(taskId)) {
+    return { success: false, error: 'مراقب الحذف يعمل بالفعل' };
+  }
+
+  const client = await getOrCreateClient(sessionString);
+
+  // قناة الإشعارات
+  let channelEntity = null;
+  if (mentionsChannelId) {
+    try {
+      channelEntity = await client.getEntity(BigInt(mentionsChannelId));
+    } catch (err) {
+      console.error(`⚠️ Anti-delete: Could not resolve notification channel:`, err.message);
+    }
+  }
+
+  if (!channelEntity) {
+    return { success: false, error: 'يجب تحديد قناة الإشعارات أولاً من "مراقب المنشنات"' };
+  }
+
+  // كاش الرسائل: msgId → { text, senderId, senderName, chatTitle, chatId, media, date }
+  const messageCache = new Map();
+  const MAX_CACHE = 5000;
+
+  const { NewMessage } = await import('telegram/events/index.js');
+  const { DeletedMessage } = await import('telegram/events/index.js');
+
+  // Handler 1: حفظ نسخة من كل رسالة جديدة
+  const newMsgHandler = async (event) => {
+    try {
+      const msg = event.message;
+      if (!msg) return;
+
+      // جلب معلومات المرسل والمحادثة
+      let senderName = 'مجهول';
+      let senderId = '';
+      let senderUsername = null;
+      let chatTitle = 'محادثة خاصة';
+      let chatId = '';
+
+      try {
+        if (msg.senderId) {
+          senderId = msg.senderId.toString();
+          const sender = await client.getEntity(msg.senderId);
+          senderName = [sender.firstName, sender.lastName].filter(Boolean).join(' ') || 'مجهول';
+          senderUsername = sender.username || null;
+        }
+      } catch {}
+
+      try {
+        if (msg.peerId) {
+          if (msg.peerId.className === 'PeerUser') {
+            chatId = msg.peerId.userId?.toString() || '';
+            chatTitle = senderName; // في الخاص = اسم المرسل
+          } else if (msg.peerId.className === 'PeerChannel' || msg.peerId.className === 'PeerChat') {
+            const chatEntityId = msg.peerId.channelId || msg.peerId.chatId;
+            chatId = chatEntityId?.toString() || '';
+            try {
+              const chat = await client.getEntity(BigInt('-100' + chatId));
+              chatTitle = chat.title || chatId;
+            } catch {
+              chatTitle = `مجموعة (${chatId})`;
+            }
+          }
+        }
+      } catch {}
+
+      // حفظ في الكاش
+      const cacheEntry = {
+        text: msg.text || '',
+        senderId,
+        senderName,
+        senderUsername,
+        chatTitle,
+        chatId,
+        hasMedia: !!msg.media,
+        mediaType: msg.media?.className || null,
+        date: new Date().toISOString(),
+      };
+
+      // محاولة حفظ الميديا كـ buffer
+      if (msg.media) {
+        try {
+          const buffer = await client.downloadMedia(msg.media, { workers: 1 });
+          if (buffer && buffer.length < 10 * 1024 * 1024) { // أقل من 10MB
+            cacheEntry.mediaBuffer = buffer;
+            cacheEntry.mediaFileName = msg.file?.name || null;
+          }
+        } catch {}
+      }
+
+      messageCache.set(msg.id, cacheEntry);
+
+      // تنظيف الكاش القديم
+      if (messageCache.size > MAX_CACHE) {
+        const keys = Array.from(messageCache.keys());
+        for (let i = 0; i < keys.length - MAX_CACHE; i++) {
+          messageCache.delete(keys[i]);
+        }
+      }
+    } catch (err) {
+      // صامت - لا نريد إيقاف التدفق
+    }
+  };
+
+  // Handler 2: مراقبة الحذف
+  const deleteHandler = async (event) => {
+    try {
+      const deletedIds = event.deletedIds || [];
+      
+      for (const msgId of deletedIds) {
+        const cached = messageCache.get(msgId);
+        if (!cached) continue;
+
+        messageCache.delete(msgId);
+
+        const senderTag = cached.senderUsername ? ` (@${cached.senderUsername})` : '';
+
+        // إرسال إشعار نصي
+        const notifLines = [
+          `🗑️ **رسالة محذوفة**`,
+          `━━━━━━━━━━━━━━━`,
+          ``,
+          `👤 **من:** ${cached.senderName}${senderTag}`,
+          `💬 **المحادثة:** ${cached.chatTitle}`,
+          ``,
+        ];
+
+        if (cached.text) {
+          notifLines.push(`📝 **النص:**`);
+          notifLines.push(`> ${cached.text.substring(0, 500)}`);
+          notifLines.push(``);
+        }
+
+        if (cached.hasMedia) {
+          notifLines.push(`📎 **نوع المرفق:** ${cached.mediaType || 'ملف'}`);
+          notifLines.push(``);
+        }
+
+        notifLines.push(`━━━━━━━━━━━━━━━`);
+        notifLines.push(`🕐 حُذفت: ${new Date().toLocaleString('ar-u-nu-latn')}`);
+        notifLines.push(`📅 أُرسلت: ${new Date(cached.date).toLocaleString('ar-u-nu-latn')}`);
+
+        await client.sendMessage(channelEntity, { 
+          message: notifLines.join('\n'), 
+          parseMode: 'md' 
+        });
+
+        // إرسال الميديا المحفوظة
+        if (cached.mediaBuffer) {
+          try {
+            await client.sendFile(channelEntity, {
+              file: Buffer.from(cached.mediaBuffer),
+              caption: `📎 مرفق الرسالة المحذوفة من ${cached.senderName}`,
+              fileName: cached.mediaFileName || 'deleted_media',
+            });
+          } catch (mediaErr) {
+            console.error(`⚠️ Anti-delete: Could not send cached media:`, mediaErr.message);
+          }
+        }
+
+        console.log(`🗑️ Anti-delete [${taskId}]: Captured deleted msg from ${cached.senderName} in ${cached.chatTitle}`);
+      }
+    } catch (err) {
+      console.error(`❌ Anti-delete handler error [${taskId}]:`, err.message);
+    }
+  };
+
+  client.addEventHandler(newMsgHandler, new NewMessage({}));
+  client.addEventHandler(deleteHandler, new DeletedMessage({}));
+
+  // Auto-reconnect
+  const reconnectInterval = setInterval(async () => {
+    try {
+      if (!client.connected) {
+        console.log(`🔄 Reconnecting anti-delete [${taskId}]...`);
+        await client.connect();
+      }
+    } catch (err) {
+      console.error(`❌ Anti-delete reconnect failed [${taskId}]:`, err.message);
+    }
+  }, 30000);
+
+  activeAntiDelete.set(taskId, { 
+    handlers: [newMsgHandler, deleteHandler], 
+    client, 
+    messageCache, 
+    reconnectInterval 
+  });
+
+  console.log(`✅ Anti-delete started [${taskId}]`);
+  return { success: true, message: 'تم بدء مراقبة الرسائل المحذوفة' };
+}
+
+/**
+ * إيقاف مراقب الحذف
+ */
+async function stopAntiDelete({ taskId }) {
+  if (activeAntiDelete.has(taskId)) {
+    const { handlers, client, messageCache, reconnectInterval } = activeAntiDelete.get(taskId);
+    try { if (reconnectInterval) clearInterval(reconnectInterval); } catch {}
+    for (const handler of handlers) {
+      try { client.removeEventHandler(handler); } catch {}
+    }
+    const cachedCount = messageCache.size;
+    messageCache.clear();
+    activeAntiDelete.delete(taskId);
+    console.log(`🛑 Anti-delete stopped [${taskId}], had ${cachedCount} cached msgs`);
+    return { success: true, message: 'تم إيقاف مراقب الحذف' };
+  }
+  return { success: true, message: 'لا يوجد مراقب حذف نشط' };
+}
+
+/**
+ * حالة مراقب الحذف
+ */
+function getAntiDeleteStatus({ taskId }) {
+  if (activeAntiDelete.has(taskId)) {
+    const { messageCache } = activeAntiDelete.get(taskId);
+    return { success: true, active: true, cachedMessages: messageCache.size };
+  }
+  return { success: true, active: false, cachedMessages: 0 };
+}
+
 export default {
   fetchGroups,
   fetchContacts,
@@ -1412,4 +1647,7 @@ export default {
   startAutoReply,
   stopAutoReply,
   getAutoReplyStatus,
+  startAntiDelete,
+  stopAntiDelete,
+  getAntiDeleteStatus,
 };

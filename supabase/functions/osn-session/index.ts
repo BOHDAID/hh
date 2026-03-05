@@ -315,7 +315,24 @@ serve(async (req) => {
         body.taskId = reqBody.taskId;
         break;
 
-      case "tg-save-account-session": {
+      case "tg-start-anti-delete":
+        endpoint = "/api/telegram-auto/start-anti-delete";
+        body.sessionString = reqBody.sessionString;
+        body.taskId = reqBody.taskId;
+        body.mentionsChannelId = reqBody.mentionsChannelId;
+        break;
+
+      case "tg-stop-anti-delete":
+        endpoint = "/api/telegram-auto/stop-anti-delete";
+        body.taskId = reqBody.taskId;
+        break;
+
+      case "tg-anti-delete-status":
+        endpoint = "/api/telegram-auto/anti-delete-status";
+        body.taskId = reqBody.taskId;
+        break;
+
+
         const sessionString = typeof reqBody.sessionString === "string" ? reqBody.sessionString.trim() : "";
         if (!sessionString) {
           return new Response(

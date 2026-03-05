@@ -287,4 +287,45 @@ router.post('/auto-reply-status', async (req, res) => {
   }
 });
 
+// بدء مراقب الرسائل المحذوفة
+router.post('/start-anti-delete', async (req, res) => {
+  try {
+    const { sessionString, taskId, mentionsChannelId } = req.body;
+    if (!sessionString || !taskId) {
+      return res.status(400).json({ success: false, error: 'sessionString, taskId مطلوبة' });
+    }
+    const result = await telegramAuto.startAntiDelete({ sessionString, taskId, mentionsChannelId });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Start anti-delete error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// إيقاف مراقب الحذف
+router.post('/stop-anti-delete', async (req, res) => {
+  try {
+    const { taskId } = req.body;
+    if (!taskId) return res.status(400).json({ success: false, error: 'taskId مطلوب' });
+    const result = await telegramAuto.stopAntiDelete({ taskId });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Stop anti-delete error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// حالة مراقب الحذف
+router.post('/anti-delete-status', async (req, res) => {
+  try {
+    const { taskId } = req.body;
+    if (!taskId) return res.status(400).json({ success: false, error: 'taskId مطلوب' });
+    const result = telegramAuto.getAntiDeleteStatus({ taskId });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Anti-delete status error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 export default router;
