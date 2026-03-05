@@ -366,6 +366,15 @@ const AutoDashboard = () => {
             </div>
           )}
 
+          {activeFeature === "anti-delete" && (
+            <div className="space-y-4">
+              <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
+                <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
+              </Button>
+              <AntiDeletePanel sessionString={activeSession} mentionsChannelId={savedMentionsChannelId} />
+            </div>
+          )}
+
           {/* Stats expanded view */}
           {showStats && (
             <div className="space-y-4">
