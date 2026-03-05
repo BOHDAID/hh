@@ -53,8 +53,9 @@ const AutoDashboard = () => {
   const [selectedGroups, setSelectedGroups] = useState<TelegramGroup[]>([]);
   const [savedMentionsChannelId, setSavedMentionsChannelId] = useState<string | null>(null);
 
-  // Active tab
-  const [activeTab, setActiveTab] = useState("groups");
+  // Active section
+  const [activeFeature, setActiveFeature] = useState<string | null>(null);
+  const [showStats, setShowStats] = useState(false);
 
   const callAction = async (action: string, extra: Record<string, unknown> = {}) => {
     const { data, error } = await invokeCloudFunctionPublic<any>("osn-session", { action, ...extra });
