@@ -225,15 +225,6 @@ const AutoDashboard = () => {
     if (resumeKeyRef.current === activeSession) return;
     resumeKeyRef.current = activeSession;
 
-    const safeParse = <T,>(raw: string | null, fallback: T): T => {
-      if (!raw) return fallback;
-      try {
-        return JSON.parse(raw) as T;
-      } catch {
-        return fallback;
-      }
-    };
-
     const tryStart = async (action: string, payload: Record<string, unknown>) => {
       try {
         await callAction(action, payload);
@@ -246,70 +237,64 @@ const AutoDashboard = () => {
     };
 
     const resume = async () => {
-      const mentionsTaskId = localStorage.getItem("tg-mentions-taskId");
-      const mentionsRunning = localStorage.getItem("tg-mentions-running") === "true";
-      const channelId = savedMentionsChannelId || localStorage.getItem("tg-mentions-channel-id");
+      const mentionsState = automationState.mentions;
+      const channelId = savedMentionsChannelId || mentionsState?.channelId || null;
 
-      if (mentionsRunning && mentionsTaskId && channelId) {
+      if (mentionsState?.running && mentionsState.taskId && channelId) {
         await tryStart("tg-start-mentions-monitor", {
           sessionString: activeSession,
           channelId,
-          taskId: mentionsTaskId,
+          taskId: mentionsState.taskId,
         });
       }
 
-      const antiDeleteTaskId = localStorage.getItem("tg-antidelete-taskId");
-      const antiDeleteRunning = localStorage.getItem("tg-antidelete-running") === "true";
-      if (antiDeleteRunning && antiDeleteTaskId && channelId) {
+      const antiDeleteState = automationState.antiDelete;
+      if (antiDeleteState?.running && antiDeleteState.taskId && channelId) {
         await tryStart("tg-start-anti-delete", {
           sessionString: activeSession,
-          taskId: antiDeleteTaskId,
+          taskId: antiDeleteState.taskId,
           mentionsChannelId: channelId,
         });
       }
 
-      const autoReplyTaskId = localStorage.getItem("tg-autoreply-taskId");
-      const autoReplyRunning = localStorage.getItem("tg-autoreply-running") === "true";
-      const autoReplyConfig = safeParse<any>(localStorage.getItem("tg-autoreply-config"), null);
-      if (autoReplyRunning && autoReplyTaskId && autoReplyConfig && (autoReplyConfig.replyMessage || autoReplyConfig.media)) {
+      const autoReplyState = automationState.autoReply;
+      if (autoReplyState?.running && autoReplyState.taskId && (autoReplyState.replyMessage || autoReplyState.media)) {
         await tryStart("tg-start-auto-reply", {
           sessionString: activeSession,
-          taskId: autoReplyTaskId,
-          replyMessage: autoReplyConfig.replyMessage || "",
-          mentionsChannelId: channelId || autoReplyConfig.mentionsChannelId || undefined,
-          mediaBase64: autoReplyConfig.media?.base64,
-          mediaFileName: autoReplyConfig.media?.fileName,
-          mediaMimeType: autoReplyConfig.media?.mimeType,
-          mediaSendType: autoReplyConfig.media?.sendType,
+          taskId: autoReplyState.taskId,
+          replyMessage: autoReplyState.replyMessage || "",
+          mentionsChannelId: channelId || autoReplyState.mentionsChannelId || undefined,
+          mediaBase64: autoReplyState.media?.base64,
+          mediaFileName: autoReplyState.media?.fileName,
+          mediaMimeType: autoReplyState.media?.mimeType,
+          mediaSendType: autoReplyState.media?.sendType,
         });
       }
 
-      const autoPublishTaskId = localStorage.getItem("tg-autopublish-taskId");
-      const autoPublishRunning = localStorage.getItem("tg-autopublish-running") === "true";
-      const autoPublishConfig = safeParse<any>(localStorage.getItem("tg-autopublish-config"), null);
-      const groupIds = Array.isArray(autoPublishConfig?.groupIds)
-        ? autoPublishConfig.groupIds.filter((id: unknown) => typeof id === "string")
+      const autoPublishState = automationState.autoPublish;
+      const groupIds = Array.isArray(autoPublishState?.groupIds)
+        ? autoPublishState.groupIds.filter((id) => typeof id === "string")
         : [];
 
-      if (autoPublishRunning && autoPublishTaskId && autoPublishConfig && (autoPublishConfig.message || autoPublishConfig.media) && groupIds.length > 0) {
+      if (autoPublishState?.running && autoPublishState.taskId && (autoPublishState.message || autoPublishState.media) && groupIds.length > 0) {
         await tryStart("tg-start-auto-publish", {
           sessionString: activeSession,
-          taskId: autoPublishTaskId,
+          taskId: autoPublishState.taskId,
           groupIds,
-          message: autoPublishConfig.message || "",
-          intervalMinutes: autoPublishConfig.intervalMinutes || 1,
-          mentionsChannelId: channelId || autoPublishConfig.mentionsChannelId || undefined,
-          mediaBase64: autoPublishConfig.media?.base64,
-          mediaFileName: autoPublishConfig.media?.fileName,
-          mediaMimeType: autoPublishConfig.media?.mimeType,
-          mediaSendType: autoPublishConfig.media?.sendType,
-          forcedSubscription: autoPublishConfig.forcedSubscription ?? true,
+          message: autoPublishState.message || "",
+          intervalMinutes: autoPublishState.intervalMinutes || 1,
+          mentionsChannelId: channelId || autoPublishState.mentionsChannelId || undefined,
+          mediaBase64: autoPublishState.media?.base64,
+          mediaFileName: autoPublishState.media?.fileName,
+          mediaMimeType: autoPublishState.media?.mimeType,
+          mediaSendType: autoPublishState.media?.sendType,
+          forcedSubscription: autoPublishState.forcedSubscription ?? true,
         });
       }
     };
 
     resume();
-  }, [loggedIn, activeSession, savedMentionsChannelId]);
+  }, [loggedIn, activeSession, savedMentionsChannelId, automationState]);
 
   // === Login ===
   const handleSessionLogin = async () => {
