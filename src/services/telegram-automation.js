@@ -1390,16 +1390,28 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
     try {
       markClientAsUsed(client);
       const msg = event.message;
-      if (!msg || !msg.peerId) return;
+      console.log(`📥 Auto-reply [${taskId}]: New message event received, peerId:`, msg?.peerId?.className, 'out:', msg?.out);
+      if (!msg || !msg.peerId) {
+        console.log(`⚠️ Auto-reply [${taskId}]: No msg or peerId, skipping`);
+        return;
+      }
 
       // فقط الرسائل الخاصة (PeerUser)
-      if (msg.peerId.className !== 'PeerUser') return;
+      if (msg.peerId.className !== 'PeerUser') {
+        console.log(`⏭️ Auto-reply [${taskId}]: Not PeerUser (${msg.peerId.className}), skipping`);
+        return;
+      }
 
       // تجاهل الرسائل الصادرة منا
-      if (msg.out) return;
+      if (msg.out) {
+        console.log(`⏭️ Auto-reply [${taskId}]: Outgoing message, skipping`);
+        return;
+      }
 
       const senderId = msg.peerId.userId?.toString();
       if (!senderId) return;
+
+      console.log(`💬 Auto-reply [${taskId}]: Processing message from ${senderId}...`);
 
       // يرد على كل رسالة بدون قيود
 
