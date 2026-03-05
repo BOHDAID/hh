@@ -1174,6 +1174,7 @@ async function startMentionsMonitor({ sessionString, channelId, taskId }) {
   }
 
   const client = await getOrCreateClient(sessionString);
+  markClientAsUsed(client);
   const me = await client.getMe();
   const myId = me.id?.toString();
   const myUsername = me.username?.toLowerCase();
@@ -1190,6 +1191,7 @@ async function startMentionsMonitor({ sessionString, channelId, taskId }) {
   
   const handler = async (event) => {
     try {
+      markClientAsUsed(client);
       const msg = event.message;
       if (!msg || !msg.peerId) return;
       
@@ -1290,6 +1292,7 @@ async function startMentionsMonitor({ sessionString, channelId, taskId }) {
       if (!client.connected) {
         console.log(`🔄 Reconnecting mentions monitor [${taskId}]...`);
         await client.connect();
+        markClientAsUsed(client);
         console.log(`✅ Reconnected mentions monitor [${taskId}]`);
       }
     } catch (err) {
@@ -1312,6 +1315,7 @@ async function stopMentionsMonitor({ taskId }) {
     try { if (reconnectInterval) clearInterval(reconnectInterval); } catch {}
     try { client.removeEventHandler(handler); } catch {}
     activeMentionsMonitors.delete(taskId);
+    await releaseClientIfUnused(client, `stop mentions monitor ${taskId}`);
     console.log(`🛑 Mentions monitor stopped [${taskId}]`);
     return { success: true, message: 'تم إيقاف المراقبة' };
   }
