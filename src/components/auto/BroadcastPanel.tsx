@@ -111,6 +111,7 @@ const BroadcastPanel = ({ sessionString }: BroadcastPanelProps) => {
         payload.mediaBase64 = media.base64;
         payload.mediaFileName = media.fileName;
         payload.mediaMimeType = media.mimeType;
+        payload.mediaSendType = media.sendType;
       }
       const res = await invokeCloudFunctionPublic<any>("osn-session", payload);
       if (res.error) throw new Error(res.error.message);

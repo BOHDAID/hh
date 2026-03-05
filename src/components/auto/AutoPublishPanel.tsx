@@ -63,6 +63,7 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
         payload.mediaBase64 = media.base64;
         payload.mediaFileName = media.fileName;
         payload.mediaMimeType = media.mimeType;
+        payload.mediaSendType = media.sendType;
       }
       const result = await invokeCloudFunctionPublic<any>("osn-session", payload);
       if (result.error) throw new Error(result.error.message);
