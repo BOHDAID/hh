@@ -36,6 +36,55 @@ interface TelegramGroup {
   type: "channel" | "supergroup" | "group";
 }
 
+interface MediaConfig {
+  base64: string;
+  fileName: string;
+  mimeType: string;
+  sendType: string;
+}
+
+interface MentionsAutomationState {
+  taskId: string | null;
+  running: boolean;
+  channelId?: string | null;
+}
+
+interface AntiDeleteAutomationState {
+  taskId: string | null;
+  running: boolean;
+}
+
+interface AutoReplyAutomationState {
+  taskId: string | null;
+  running: boolean;
+  replyMessage: string;
+  mentionsChannelId?: string | null;
+  media: MediaConfig | null;
+}
+
+interface AutoPublishAutomationState {
+  taskId: string | null;
+  running: boolean;
+  message: string;
+  intervalMinutes: number;
+  forcedSubscription: boolean;
+  groupIds: string[];
+  mentionsChannelId?: string | null;
+  media: MediaConfig | null;
+}
+
+interface AutomationState {
+  mentions?: MentionsAutomationState;
+  antiDelete?: AntiDeleteAutomationState;
+  autoReply?: AutoReplyAutomationState;
+  autoPublish?: AutoPublishAutomationState;
+}
+
+interface StoredSessionPayload {
+  groups: TelegramGroup[];
+  automation: AutomationState;
+}
+
 const AutoDashboard = () => {
   // Auth state
   const [loggedIn, setLoggedIn] = useState(false);
@@ -52,9 +101,10 @@ const AutoDashboard = () => {
   const [loginError, setLoginError] = useState("");
   const [showLoginMode, setShowLoginMode] = useState<"login" | "instructions">("login");
 
-  // Groups state
+  // Groups + automation state
   const [selectedGroups, setSelectedGroups] = useState<TelegramGroup[]>([]);
   const [savedMentionsChannelId, setSavedMentionsChannelId] = useState<string | null>(null);
+  const [automationState, setAutomationState] = useState<AutomationState>({});
 
   // Active section - persist to localStorage
   const [activeFeature, setActiveFeatureState] = useState<string | null>(() => {
@@ -92,12 +142,45 @@ const AutoDashboard = () => {
     return value as T;
   };
 
+  const normalizeStoredSessionPayload = (rawValue: unknown): StoredSessionPayload => {
+    const parsed = parseStoredJson<unknown>(rawValue, []);
+
+    if (Array.isArray(parsed)) {
+      return { groups: parsed as TelegramGroup[], automation: {} };
+    }
+
+    if (parsed && typeof parsed === "object") {
+      const maybeObj = parsed as Record<string, unknown>;
+      const groups = Array.isArray(maybeObj.groups)
+        ? maybeObj.groups as TelegramGroup[]
+        : Array.isArray(maybeObj.selectedGroups)
+          ? maybeObj.selectedGroups as TelegramGroup[]
+          : [];
+
+      const automation = maybeObj.automation && typeof maybeObj.automation === "object"
+        ? (maybeObj.automation as AutomationState)
+        : {};
+
+      return { groups, automation };
+    }
+
+    return { groups: [], automation: {} };
+  };
+
   const saveSessionToAccount = async (sessionStr: string, user: TelegramUser | null, groups?: TelegramGroup[]) => {
     if (!sessionStr) return;
     await callAccountAction("tg-save-account-session", {
       sessionString: sessionStr,
       telegramUser: user,
       selectedGroups: groups ?? selectedGroups,
+      automationState,
+    });
+  };
+
+  const saveAutomationSection = async <K extends keyof AutomationState>(key: K, value: AutomationState[K]) => {
+    setAutomationState((prev) => ({ ...prev, [key]: value }));
+    await callAccountAction("tg-save-automation-state", {
+      automationState: { [key]: value },
     });
   };
 
@@ -114,15 +197,15 @@ const AutoDashboard = () => {
           const result = await callAction("tg-connect-session", { sessionString: saved.session_string });
           if (!mounted) return;
           const savedUser = parseStoredJson<TelegramUser | null>(saved.telegram_user, null);
-          const savedGroups = parseStoredJson<TelegramGroup[]>(saved.selected_groups, []);
+          const storedPayload = normalizeStoredSessionPayload(saved.selected_groups);
+          const restoredMentionsChannel = saved.mentions_channel_id || storedPayload.automation.mentions?.channelId || null;
+
           setLoggedIn(true);
           setTelegramUser(result.user || savedUser);
           setActiveSession(saved.session_string);
-          setSelectedGroups(savedGroups);
-          if (saved.mentions_channel_id) {
-            setSavedMentionsChannelId(saved.mentions_channel_id);
-            localStorage.setItem("tg-mentions-channel-id", saved.mentions_channel_id);
-          }
+          setSelectedGroups(storedPayload.groups);
+          setAutomationState(storedPayload.automation);
+          setSavedMentionsChannelId(restoredMentionsChannel);
         } catch {
           await callAccountAction("tg-delete-account-session");
         }
@@ -142,15 +225,6 @@ const AutoDashboard = () => {
     if (resumeKeyRef.current === activeSession) return;
     resumeKeyRef.current = activeSession;
 
-    const safeParse = <T,>(raw: string | null, fallback: T): T => {
-      if (!raw) return fallback;
-      try {
-        return JSON.parse(raw) as T;
-      } catch {
-        return fallback;
-      }
-    };
-
     const tryStart = async (action: string, payload: Record<string, unknown>) => {
       try {
         await callAction(action, payload);
@@ -163,70 +237,64 @@ const AutoDashboard = () => {
     };
 
     const resume = async () => {
-      const mentionsTaskId = localStorage.getItem("tg-mentions-taskId");
-      const mentionsRunning = localStorage.getItem("tg-mentions-running") === "true";
-      const channelId = savedMentionsChannelId || localStorage.getItem("tg-mentions-channel-id");
+      const mentionsState = automationState.mentions;
+      const channelId = savedMentionsChannelId || mentionsState?.channelId || null;
 
-      if (mentionsRunning && mentionsTaskId && channelId) {
+      if (mentionsState?.running && mentionsState.taskId && channelId) {
         await tryStart("tg-start-mentions-monitor", {
           sessionString: activeSession,
           channelId,
-          taskId: mentionsTaskId,
+          taskId: mentionsState.taskId,
         });
       }
 
-      const antiDeleteTaskId = localStorage.getItem("tg-antidelete-taskId");
-      const antiDeleteRunning = localStorage.getItem("tg-antidelete-running") === "true";
-      if (antiDeleteRunning && antiDeleteTaskId && channelId) {
+      const antiDeleteState = automationState.antiDelete;
+      if (antiDeleteState?.running && antiDeleteState.taskId && channelId) {
         await tryStart("tg-start-anti-delete", {
           sessionString: activeSession,
-          taskId: antiDeleteTaskId,
+          taskId: antiDeleteState.taskId,
           mentionsChannelId: channelId,
         });
       }
 
-      const autoReplyTaskId = localStorage.getItem("tg-autoreply-taskId");
-      const autoReplyRunning = localStorage.getItem("tg-autoreply-running") === "true";
-      const autoReplyConfig = safeParse<any>(localStorage.getItem("tg-autoreply-config"), null);
-      if (autoReplyRunning && autoReplyTaskId && autoReplyConfig && (autoReplyConfig.replyMessage || autoReplyConfig.media)) {
+      const autoReplyState = automationState.autoReply;
+      if (autoReplyState?.running && autoReplyState.taskId && (autoReplyState.replyMessage || autoReplyState.media)) {
         await tryStart("tg-start-auto-reply", {
           sessionString: activeSession,
-          taskId: autoReplyTaskId,
-          replyMessage: autoReplyConfig.replyMessage || "",
-          mentionsChannelId: channelId || autoReplyConfig.mentionsChannelId || undefined,
-          mediaBase64: autoReplyConfig.media?.base64,
-          mediaFileName: autoReplyConfig.media?.fileName,
-          mediaMimeType: autoReplyConfig.media?.mimeType,
-          mediaSendType: autoReplyConfig.media?.sendType,
+          taskId: autoReplyState.taskId,
+          replyMessage: autoReplyState.replyMessage || "",
+          mentionsChannelId: channelId || autoReplyState.mentionsChannelId || undefined,
+          mediaBase64: autoReplyState.media?.base64,
+          mediaFileName: autoReplyState.media?.fileName,
+          mediaMimeType: autoReplyState.media?.mimeType,
+          mediaSendType: autoReplyState.media?.sendType,
         });
       }
 
-      const autoPublishTaskId = localStorage.getItem("tg-autopublish-taskId");
-      const autoPublishRunning = localStorage.getItem("tg-autopublish-running") === "true";
-      const autoPublishConfig = safeParse<any>(localStorage.getItem("tg-autopublish-config"), null);
-      const groupIds = Array.isArray(autoPublishConfig?.groupIds)
-        ? autoPublishConfig.groupIds.filter((id: unknown) => typeof id === "string")
+      const autoPublishState = automationState.autoPublish;
+      const groupIds = Array.isArray(autoPublishState?.groupIds)
+        ? autoPublishState.groupIds.filter((id) => typeof id === "string")
         : [];
 
-      if (autoPublishRunning && autoPublishTaskId && autoPublishConfig && (autoPublishConfig.message || autoPublishConfig.media) && groupIds.length > 0) {
+      if (autoPublishState?.running && autoPublishState.taskId && (autoPublishState.message || autoPublishState.media) && groupIds.length > 0) {
         await tryStart("tg-start-auto-publish", {
           sessionString: activeSession,
-          taskId: autoPublishTaskId,
+          taskId: autoPublishState.taskId,
           groupIds,
-          message: autoPublishConfig.message || "",
-          intervalMinutes: autoPublishConfig.intervalMinutes || 1,
-          mentionsChannelId: channelId || autoPublishConfig.mentionsChannelId || undefined,
-          mediaBase64: autoPublishConfig.media?.base64,
-          mediaFileName: autoPublishConfig.media?.fileName,
-          mediaMimeType: autoPublishConfig.media?.mimeType,
-          mediaSendType: autoPublishConfig.media?.sendType,
-          forcedSubscription: autoPublishConfig.forcedSubscription ?? true,
+          message: autoPublishState.message || "",
+          intervalMinutes: autoPublishState.intervalMinutes || 1,
+          mentionsChannelId: channelId || autoPublishState.mentionsChannelId || undefined,
+          mediaBase64: autoPublishState.media?.base64,
+          mediaFileName: autoPublishState.media?.fileName,
+          mediaMimeType: autoPublishState.media?.mimeType,
+          mediaSendType: autoPublishState.media?.sendType,
+          forcedSubscription: autoPublishState.forcedSubscription ?? true,
         });
       }
     };
 
     resume();
-  }, [loggedIn, activeSession, savedMentionsChannelId]);
+  }, [loggedIn, activeSession, savedMentionsChannelId, automationState]);
 
   // === Login ===
   const handleSessionLogin = async () => {
@@ -259,6 +327,8 @@ const AutoDashboard = () => {
     setActiveSession("");
     setSessionInput("");
     setSelectedGroups([]);
+    setSavedMentionsChannelId(null);
+    setAutomationState({});
   };
 
   // Wizard state
@@ -436,7 +506,17 @@ const AutoDashboard = () => {
             <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
               <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
             </Button>
-            <AutoPublishPanel sessionString={activeSession} selectedGroups={selectedGroups} mentionsChannelId={savedMentionsChannelId} />
+            <AutoPublishPanel
+              sessionString={activeSession}
+              selectedGroups={selectedGroups}
+              mentionsChannelId={savedMentionsChannelId}
+              persistedState={automationState.autoPublish}
+              onStateChange={(nextState) => {
+                saveAutomationSection("autoPublish", nextState).catch((err: any) => {
+                  toast.error(err?.message || "تعذر حفظ حالة النشر التلقائي");
+                });
+              }}
+            />
           </div>
 
           <div className={activeFeature === "broadcast" ? "space-y-4" : "hidden"}>
@@ -450,21 +530,56 @@ const AutoDashboard = () => {
             <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
               <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
             </Button>
-            <MentionsMonitorPanel sessionString={activeSession} savedChannelId={savedMentionsChannelId} onChannelSave={(channelId) => setSavedMentionsChannelId(channelId)} />
+            <MentionsMonitorPanel
+              sessionString={activeSession}
+              savedChannelId={savedMentionsChannelId}
+              persistedState={automationState.mentions}
+              onChannelSave={(channelId) => {
+                setSavedMentionsChannelId(channelId);
+                saveAutomationSection("mentions", {
+                  taskId: automationState.mentions?.taskId || null,
+                  running: automationState.mentions?.running || false,
+                  channelId,
+                }).catch(() => {});
+              }}
+              onStateChange={(nextState) => {
+                saveAutomationSection("mentions", nextState).catch((err: any) => {
+                  toast.error(err?.message || "تعذر حفظ حالة مراقب المنشنات");
+                });
+              }}
+            />
           </div>
 
           <div className={activeFeature === "auto-reply" ? "space-y-4" : "hidden"}>
             <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
               <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
             </Button>
-            <AutoReplyPanel sessionString={activeSession} mentionsChannelId={savedMentionsChannelId} />
+            <AutoReplyPanel
+              sessionString={activeSession}
+              mentionsChannelId={savedMentionsChannelId}
+              persistedState={automationState.autoReply}
+              onStateChange={(nextState) => {
+                saveAutomationSection("autoReply", nextState).catch((err: any) => {
+                  toast.error(err?.message || "تعذر حفظ حالة الرد التلقائي");
+                });
+              }}
+            />
           </div>
 
           <div className={activeFeature === "anti-delete" ? "space-y-4" : "hidden"}>
             <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
               <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
             </Button>
-            <AntiDeletePanel sessionString={activeSession} mentionsChannelId={savedMentionsChannelId} />
+            <AntiDeletePanel
+              sessionString={activeSession}
+              mentionsChannelId={savedMentionsChannelId}
+              persistedState={automationState.antiDelete}
+              onStateChange={(nextState) => {
+                saveAutomationSection("antiDelete", nextState).catch((err: any) => {
+                  toast.error(err?.message || "تعذر حفظ حالة مراقب الحذف");
+                });
+              }}
+            />
           </div>
 
           {/* Stats expanded view */}

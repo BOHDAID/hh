@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { MessageCircleReply, Loader2, Play, Square, Activity, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -9,47 +9,59 @@ import MediaAttachment from "./MediaAttachment";
 import TelegramMessagePreview from "./TelegramMessagePreview";
 import PremiumEmojiPicker from "./PremiumEmojiPicker";
 
+interface MediaConfig {
+  base64: string;
+  fileName: string;
+  mimeType: string;
+  sendType: string;
+}
+
+interface AutoReplyState {
+  taskId: string | null;
+  running: boolean;
+  replyMessage: string;
+  mentionsChannelId?: string | null;
+  media: MediaConfig | null;
+}
+
 interface AutoReplyPanelProps {
   sessionString: string;
   mentionsChannelId?: string | null;
+  persistedState?: AutoReplyState;
+  onStateChange?: (state: AutoReplyState) => void;
 }
 
-const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProps) => {
-  const [replyMessage, setReplyMessage] = useState("");
+const AutoReplyPanel = ({ sessionString, mentionsChannelId, persistedState, onStateChange }: AutoReplyPanelProps) => {
+  const [replyMessage, setReplyMessage] = useState(persistedState?.replyMessage || "");
   const [loading, setLoading] = useState(false);
-  const [taskId, setTaskId] = useState<string | null>(() => {
-    try { return localStorage.getItem("tg-autoreply-taskId") || null; } catch { return null; }
-  });
-  const [isRunning, setIsRunning] = useState(() => {
-    try { return localStorage.getItem("tg-autoreply-running") === "true"; } catch { return false; }
-  });
+  const [taskId, setTaskId] = useState<string | null>(persistedState?.taskId || null);
+  const [isRunning, setIsRunning] = useState(Boolean(persistedState?.running));
   const [repliedCount, setRepliedCount] = useState(0);
-  const [media, setMedia] = useState<{ base64: string; fileName: string; mimeType: string; sendType: string } | null>(null);
+  const [media, setMedia] = useState<MediaConfig | null>(persistedState?.media || null);
   const [customEmojis, setCustomEmojis] = useState<Array<{ documentId: string; accessHash: string; emoticon: string; offset: number }>>([]);
+
+  useEffect(() => {
+    setTaskId(persistedState?.taskId || null);
+    setIsRunning(Boolean(persistedState?.running));
+    if (typeof persistedState?.replyMessage === "string") setReplyMessage(persistedState.replyMessage);
+    if (persistedState?.media !== undefined) setMedia(persistedState.media || null);
+  }, [persistedState?.taskId, persistedState?.running, persistedState?.replyMessage, persistedState?.media]);
 
   const handlePremiumEmojiSelect = (emoji: any) => {
     const offset = replyMessage.length;
-    setReplyMessage(prev => prev + emoji.emoticon);
-    setCustomEmojis(prev => [...prev, { documentId: emoji.documentId, accessHash: emoji.accessHash, emoticon: emoji.emoticon, offset }]);
+    setReplyMessage((prev) => prev + emoji.emoticon);
+    setCustomEmojis((prev) => [...prev, { documentId: emoji.documentId, accessHash: emoji.accessHash, emoticon: emoji.emoticon, offset }]);
   };
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("tg-autoreply-config");
-      if (!raw) return;
-      const config = JSON.parse(raw);
-      if (typeof config?.replyMessage === "string") setReplyMessage(config.replyMessage);
-      if (config?.media) setMedia(config.media);
-    } catch {}
-  }, []);
 
   const startAutoReply = async () => {
     if (!replyMessage.trim() && !media) {
       toast.error("يرجى كتابة رسالة أو إرفاق ملف");
       return;
     }
+
     setLoading(true);
     const newTaskId = `ar-${Date.now()}`;
+
     try {
       const payload: any = {
         action: "tg-start-auto-reply",
@@ -58,27 +70,31 @@ const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProp
         taskId: newTaskId,
         mentionsChannelId: mentionsChannelId || undefined,
       };
+
       if (media) {
         payload.mediaBase64 = media.base64;
         payload.mediaFileName = media.fileName;
         payload.mediaMimeType = media.mimeType;
         payload.mediaSendType = media.sendType;
       }
+
       const result = await invokeCloudFunctionPublic<any>("osn-session", payload);
       if (result.error) throw new Error(result.error.message);
       if (!result.data?.success) throw new Error(result.data?.error || "فشل البدء");
 
-      setTaskId(newTaskId);
-      setIsRunning(true);
-      setRepliedCount(0);
-      localStorage.setItem("tg-autoreply-taskId", newTaskId);
-      localStorage.setItem("tg-autoreply-running", "true");
       const mediaForResume = media && media.base64.length <= 600000 ? media : null;
-      localStorage.setItem("tg-autoreply-config", JSON.stringify({
+      const nextState: AutoReplyState = {
+        taskId: newTaskId,
+        running: true,
         replyMessage: replyMessage.trim(),
         mentionsChannelId: mentionsChannelId || null,
         media: mediaForResume,
-      }));
+      };
+
+      setTaskId(newTaskId);
+      setIsRunning(true);
+      setRepliedCount(0);
+      onStateChange?.(nextState);
       toast.success("تم بدء الرد التلقائي في الخاص!");
     } catch (err: any) {
       toast.error(err.message);
@@ -89,6 +105,7 @@ const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProp
 
   const stopAutoReply = async () => {
     if (!taskId) return;
+
     setLoading(true);
     try {
       const result = await invokeCloudFunctionPublic<any>("osn-session", {
@@ -96,10 +113,16 @@ const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProp
         taskId,
       });
       if (result.error) throw new Error(result.error.message);
+
       setIsRunning(false);
       setTaskId(null);
-      localStorage.removeItem("tg-autoreply-taskId");
-      localStorage.removeItem("tg-autoreply-running");
+      onStateChange?.({
+        taskId: null,
+        running: false,
+        replyMessage,
+        mentionsChannelId: mentionsChannelId || null,
+        media,
+      });
       toast.success(result.data?.message || "تم إيقاف الرد التلقائي");
     } catch (err: any) {
       toast.error(err.message);
@@ -123,7 +146,6 @@ const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProp
 
   return (
     <div className="space-y-6 max-w-2xl">
-      {/* الشرح */}
       <div className="bg-muted/50 rounded-xl p-4 border border-border space-y-2">
         <div className="flex items-center gap-2">
           <MessageCircleReply className="h-5 w-5 text-primary" />
@@ -134,7 +156,6 @@ const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProp
         </p>
       </div>
 
-      {/* رسالة الرد */}
       <div className="space-y-2">
         <Label>رسالة الرد التلقائي</Label>
         <Textarea
@@ -150,10 +171,8 @@ const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProp
       </div>
       <TelegramMessagePreview message={replyMessage} />
 
-      {/* المرفقات */}
       <MediaAttachment onMediaChange={setMedia} disabled={isRunning} />
 
-      {/* حالة الرد */}
       {isRunning && (
         <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4 space-y-3">
           <div className="flex items-center justify-between">
@@ -173,7 +192,6 @@ const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProp
         </div>
       )}
 
-      {/* الأزرار */}
       <div className="flex gap-3">
         {!isRunning ? (
           <Button onClick={startAutoReply} disabled={loading || (!replyMessage.trim() && !media)} className="gap-2">
