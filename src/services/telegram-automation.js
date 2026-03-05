@@ -1794,7 +1794,12 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
   };
 
   client.addEventHandler(newMsgHandler, new NewMessage({}));
-  client.addEventHandler(deleteHandler, new DeletedMessage({}));
+  // Listen for raw delete updates since DeletedMessage event class doesn't exist in GramJS
+  client.addEventHandler((update) => {
+    if (update instanceof Api.UpdateDeleteMessages || update instanceof Api.UpdateDeleteChannelMessages) {
+      deleteHandler(update);
+    }
+  });
 
   // Auto-reconnect
   const reconnectInterval = setInterval(async () => {
