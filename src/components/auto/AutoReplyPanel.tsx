@@ -20,7 +20,7 @@ const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProp
   const [taskId, setTaskId] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [repliedCount, setRepliedCount] = useState(0);
-  const [media, setMedia] = useState<{ base64: string; fileName: string; mimeType: string } | null>(null);
+  const [media, setMedia] = useState<{ base64: string; fileName: string; mimeType: string; sendType: string } | null>(null);
   const [customEmojis, setCustomEmojis] = useState<Array<{ documentId: string; accessHash: string; emoticon: string; offset: number }>>([]);
 
   const handlePremiumEmojiSelect = (emoji: any) => {

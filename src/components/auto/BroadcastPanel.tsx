@@ -60,7 +60,7 @@ const BroadcastPanel = ({ sessionString }: BroadcastPanelProps) => {
   const [page, setPage] = useState(0);
   const [result, setResult] = useState<any>(null);
   const [includeContacts, setIncludeContacts] = useState(false);
-  const [media, setMedia] = useState<{ base64: string; fileName: string; mimeType: string } | null>(null);
+  const [media, setMedia] = useState<{ base64: string; fileName: string; mimeType: string; sendType: string } | null>(null);
 
   const handlePremiumEmojiSelect = (emoji: any) => {
     setMessage(prev => prev + emoji.emoticon);
