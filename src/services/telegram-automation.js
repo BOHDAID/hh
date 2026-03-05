@@ -1521,6 +1521,7 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
   }
 
   const client = await getOrCreateClient(sessionString);
+  markClientAsUsed(client);
 
   // قناة الإشعارات
   let channelEntity = null;
@@ -1546,6 +1547,7 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
   // Handler 1: حفظ نسخة من كل رسالة جديدة
   const newMsgHandler = async (event) => {
     try {
+      markClientAsUsed(client);
       const msg = event.message;
       if (!msg) return;
 
@@ -1624,6 +1626,7 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
   // Handler 2: مراقبة الحذف
   const deleteHandler = async (event) => {
     try {
+      markClientAsUsed(client);
       const deletedIds = event.deletedIds || [];
       
       for (const msgId of deletedIds) {
@@ -1693,6 +1696,7 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
       if (!client.connected) {
         console.log(`🔄 Reconnecting anti-delete [${taskId}]...`);
         await client.connect();
+        markClientAsUsed(client);
       }
     } catch (err) {
       console.error(`❌ Anti-delete reconnect failed [${taskId}]:`, err.message);
@@ -1723,6 +1727,7 @@ async function stopAntiDelete({ taskId }) {
     const cachedCount = messageCache.size;
     messageCache.clear();
     activeAntiDelete.delete(taskId);
+    await releaseClientIfUnused(client, `stop anti-delete ${taskId}`);
     console.log(`🛑 Anti-delete stopped [${taskId}], had ${cachedCount} cached msgs`);
     return { success: true, message: 'تم إيقاف مراقب الحذف' };
   }
