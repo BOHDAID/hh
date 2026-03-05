@@ -506,7 +506,17 @@ const AutoDashboard = () => {
             <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
               <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
             </Button>
-            <AutoPublishPanel sessionString={activeSession} selectedGroups={selectedGroups} mentionsChannelId={savedMentionsChannelId} />
+            <AutoPublishPanel
+              sessionString={activeSession}
+              selectedGroups={selectedGroups}
+              mentionsChannelId={savedMentionsChannelId}
+              persistedState={automationState.autoPublish}
+              onStateChange={(nextState) => {
+                saveAutomationSection("autoPublish", nextState).catch((err: any) => {
+                  toast.error(err?.message || "تعذر حفظ حالة النشر التلقائي");
+                });
+              }}
+            />
           </div>
 
           <div className={activeFeature === "broadcast" ? "space-y-4" : "hidden"}>
@@ -520,21 +530,56 @@ const AutoDashboard = () => {
             <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
               <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
             </Button>
-            <MentionsMonitorPanel sessionString={activeSession} savedChannelId={savedMentionsChannelId} onChannelSave={(channelId) => setSavedMentionsChannelId(channelId)} />
+            <MentionsMonitorPanel
+              sessionString={activeSession}
+              savedChannelId={savedMentionsChannelId}
+              persistedState={automationState.mentions}
+              onChannelSave={(channelId) => {
+                setSavedMentionsChannelId(channelId);
+                saveAutomationSection("mentions", {
+                  taskId: automationState.mentions?.taskId || null,
+                  running: automationState.mentions?.running || false,
+                  channelId,
+                }).catch(() => {});
+              }}
+              onStateChange={(nextState) => {
+                saveAutomationSection("mentions", nextState).catch((err: any) => {
+                  toast.error(err?.message || "تعذر حفظ حالة مراقب المنشنات");
+                });
+              }}
+            />
           </div>
 
           <div className={activeFeature === "auto-reply" ? "space-y-4" : "hidden"}>
             <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
               <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
             </Button>
-            <AutoReplyPanel sessionString={activeSession} mentionsChannelId={savedMentionsChannelId} />
+            <AutoReplyPanel
+              sessionString={activeSession}
+              mentionsChannelId={savedMentionsChannelId}
+              persistedState={automationState.autoReply}
+              onStateChange={(nextState) => {
+                saveAutomationSection("autoReply", nextState).catch((err: any) => {
+                  toast.error(err?.message || "تعذر حفظ حالة الرد التلقائي");
+                });
+              }}
+            />
           </div>
 
           <div className={activeFeature === "anti-delete" ? "space-y-4" : "hidden"}>
             <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
               <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
             </Button>
-            <AntiDeletePanel sessionString={activeSession} mentionsChannelId={savedMentionsChannelId} />
+            <AntiDeletePanel
+              sessionString={activeSession}
+              mentionsChannelId={savedMentionsChannelId}
+              persistedState={automationState.antiDelete}
+              onStateChange={(nextState) => {
+                saveAutomationSection("antiDelete", nextState).catch((err: any) => {
+                  toast.error(err?.message || "تعذر حفظ حالة مراقب الحذف");
+                });
+              }}
+            />
           </div>
 
           {/* Stats expanded view */}
