@@ -159,17 +159,75 @@ function getSessionHash(sessionString) {
   return sessionString.substring(0, 20);
 }
 
+function markClientAsUsed(client) {
+  for (const entry of activeClients.values()) {
+    if (entry.client === client) {
+      entry.lastUsed = Date.now();
+      return;
+    }
+  }
+}
+
+async function shutdownClient(client, reason = '') {
+  if (!client) return;
+  try {
+    await client.disconnect();
+  } catch (err) {
+    if (reason) console.warn(`⚠️ Disconnect warning (${reason}):`, err.message);
+  }
+  try {
+    await client.destroy();
+  } catch (err) {
+    if (reason) console.warn(`⚠️ Destroy warning (${reason}):`, err.message);
+  }
+}
+
+function isClientProtected(client) {
+  if (!client) return false;
+
+  for (const task of activeAutoPublish.values()) {
+    if (task.client === client) return true;
+  }
+  for (const task of activeMentionsMonitors.values()) {
+    if (task.client === client) return true;
+  }
+  for (const task of activeAutoReply.values()) {
+    if (task.client === client) return true;
+  }
+  for (const task of activeAntiDelete.values()) {
+    if (task.client === client) return true;
+  }
+
+  return false;
+}
+
+async function releaseClientIfUnused(client, reason = '') {
+  if (!client || isClientProtected(client)) return;
+
+  let hashToDelete = null;
+  for (const [hash, entry] of activeClients.entries()) {
+    if (entry.client === client) {
+      hashToDelete = hash;
+      break;
+    }
+  }
+
+  await shutdownClient(client, reason);
+  if (hashToDelete) {
+    activeClients.delete(hashToDelete);
+  }
+}
+
 async function getOrCreateClient(sessionString) {
   const hash = getSessionHash(sessionString);
-  
+
   if (activeClients.has(hash)) {
     const existing = activeClients.get(hash);
     if (existing.client.connected) {
       existing.lastUsed = Date.now();
       return existing.client;
     }
-    // إعادة الاتصال
-    try { await existing.client.disconnect(); } catch {}
+    await shutdownClient(existing.client, `stale client ${hash}`);
     activeClients.delete(hash);
   }
 
@@ -177,14 +235,7 @@ async function getOrCreateClient(sessionString) {
     new StringSession(sessionString),
     2040,
     'b18441a1ff607e10a989891a5462e627',
-    {
-      connectionRetries: 10,
-      retryDelay: 2000,
-      autoReconnect: true,
-      deviceModel: 'ninto Store Bot',
-      systemVersion: 'Linux',
-      appVersion: '1.0.0',
-    }
+    createTelegramClientOptions()
   );
 
   await client.connect();
