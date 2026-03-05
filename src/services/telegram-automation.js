@@ -1281,13 +1281,18 @@ setInterval(() => {
 /**
  * بدء الرد التلقائي - يرد مرة واحدة فقط لكل شخص يراسل لأول مرة
  */
-async function startAutoReply({ sessionString, replyMessage, taskId, mentionsChannelId }) {
+async function startAutoReply({ sessionString, replyMessage, taskId, mentionsChannelId, mediaBase64, mediaFileName, mediaMimeType }) {
   if (activeAutoReply.has(taskId)) {
     return { success: false, error: 'الرد التلقائي يعمل بالفعل بهذا المعرف' };
   }
 
   const client = await getOrCreateClient(sessionString);
-  const repliedUsers = new Set(); // تتبع المستخدمين الذين تم الرد عليهم
+  const repliedUsers = new Set();
+  
+  let mediaBuffer = null;
+  if (mediaBase64) {
+    mediaBuffer = Buffer.from(mediaBase64, 'base64');
+  }
 
   // تجهيز قناة الإشعارات
   let channelEntity = null;
@@ -1333,7 +1338,11 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
       if (sender.bot) return;
 
       // الرد
-      await client.sendMessage(BigInt(senderId), { message: replyMessage });
+      if (mediaBuffer) {
+        await client.sendFile(BigInt(senderId), { file: mediaBuffer, caption: replyMessage || '', fileName: mediaFileName || 'file' });
+      } else {
+        await client.sendMessage(BigInt(senderId), { message: replyMessage });
+      }
       repliedUsers.add(senderId);
       stats.autoReply.totalReplied++;
 
