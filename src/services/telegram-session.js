@@ -5,6 +5,18 @@
 
 import { TelegramClient, Api } from 'telegram';
 import { StringSession } from 'telegram/sessions/index.js';
+import { Logger, LogLevel } from 'telegram/extensions/Logger.js';
+
+const createTelegramClientOptions = () => ({
+  connectionRetries: 10,
+  retryDelay: 2000,
+  autoReconnect: true,
+  timeout: 20,
+  deviceModel: 'ninto Store Bot',
+  systemVersion: 'Linux',
+  appVersion: '1.0.0',
+  baseLogger: new Logger(LogLevel.NONE),
+});
 
 // تخزين مؤقت للعمليات الجارية (apiId+phone → client)
 const pendingClients = new Map();
