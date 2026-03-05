@@ -327,6 +327,8 @@ const AutoDashboard = () => {
     setActiveSession("");
     setSessionInput("");
     setSelectedGroups([]);
+    setSavedMentionsChannelId(null);
+    setAutomationState({});
   };
 
   // Wizard state
