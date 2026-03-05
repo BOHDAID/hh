@@ -156,7 +156,6 @@ const BroadcastPanel = ({ sessionString }: BroadcastPanelProps) => {
           className="min-h-[100px]"
         />
         <MediaAttachment onMediaChange={setMedia} disabled={sending} />
-        />
       </div>
 
       {/* خيار تضمين جهات الاتصال */}
