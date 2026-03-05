@@ -651,7 +651,7 @@ async function notifyForcedJoin(client, channelEntity, groupTitle, joinedChannel
 /**
  * النشر التلقائي - إرسال رسالة لكل المجموعات المختارة بفاصل زمني
  */
-async function startAutoPublish({ sessionString, groupIds, message, intervalMinutes, taskId, mentionsChannelId }) {
+async function startAutoPublish({ sessionString, groupIds, message, intervalMinutes, taskId, mentionsChannelId, mediaBase64, mediaFileName, mediaMimeType }) {
   // إيقاف أي نشر سابق لنفس المهمة
   if (activeAutoPublish.has(taskId)) {
     clearInterval(activeAutoPublish.get(taskId).interval);
@@ -660,6 +660,12 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
 
   const client = await getOrCreateClient(sessionString);
   
+  // تجهيز الملف المرفق
+  let mediaBuffer = null;
+  if (mediaBase64) {
+    mediaBuffer = Buffer.from(mediaBase64, 'base64');
+  }
+
   // تجهيز قناة الإشعارات إن وجدت
   let notifChannelEntity = null;
   if (mentionsChannelId) {
@@ -677,13 +683,21 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
   // إرسال لمجموعة واحدة كل فترة
   async function sendNext() {
     if (currentIndex >= groupIds.length) {
-      currentIndex = 0; // إعادة من البداية (دورة)
+      currentIndex = 0;
     }
 
     const groupId = groupIds[currentIndex];
     try {
       const peer = await client.getEntity(BigInt(groupId));
-      await client.sendMessage(peer, { message });
+      if (mediaBuffer) {
+        await client.sendFile(peer, {
+          file: mediaBuffer,
+          caption: message || '',
+          fileName: mediaFileName || 'file',
+        });
+      } else {
+        await client.sendMessage(peer, { message });
+      }
       sentCount++;
       currentIndex++;
       stats.autoPublish.totalSent++;
