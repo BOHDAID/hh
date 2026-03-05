@@ -28,7 +28,7 @@ interface MentionsMonitorPanelProps {
   onChannelSave?: (channelId: string | null) => void;
 }
 
-const MentionsMonitorPanel = ({ sessionString, savedChannelId }: MentionsMonitorPanelProps) => {
+const MentionsMonitorPanel = ({ sessionString, savedChannelId, onChannelSave }: MentionsMonitorPanelProps) => {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(false);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(savedChannelId || null);
