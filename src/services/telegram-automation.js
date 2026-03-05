@@ -1401,11 +1401,7 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
       const senderId = msg.peerId.userId?.toString();
       if (!senderId) return;
 
-      // تحقق: هل تم الرد على هذا الشخص مسبقاً؟
-      if (repliedUsers.has(senderId)) {
-        stats.autoReply.totalIgnored++;
-        return;
-      }
+      // يرد على كل رسالة بدون قيود
 
       // جلب معلومات المرسل
       let sender;

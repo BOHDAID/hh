@@ -114,7 +114,7 @@ const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProp
           <p className="text-sm font-medium text-foreground">الرد التلقائي في الخاص</p>
         </div>
         <p className="text-xs text-muted-foreground">
-          يرد تلقائياً على أي شخص يراسلك في الخاص <strong>لأول مرة فقط</strong>. يدعم النصوص والصور والإيموجي البريميوم ✨
+          يرد تلقائياً على أي شخص يراسلك في الخاص — بدون حدود. يدعم النصوص والصور والإيموجي البريميوم ✨
         </p>
       </div>
 
