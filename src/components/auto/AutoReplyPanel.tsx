@@ -61,6 +61,8 @@ const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProp
       setTaskId(newTaskId);
       setIsRunning(true);
       setRepliedCount(0);
+      localStorage.setItem("tg-autoreply-taskId", newTaskId);
+      localStorage.setItem("tg-autoreply-running", "true");
       toast.success("تم بدء الرد التلقائي في الخاص!");
     } catch (err: any) {
       toast.error(err.message);
@@ -80,6 +82,8 @@ const AutoReplyPanel = ({ sessionString, mentionsChannelId }: AutoReplyPanelProp
       if (result.error) throw new Error(result.error.message);
       setIsRunning(false);
       setTaskId(null);
+      localStorage.removeItem("tg-autoreply-taskId");
+      localStorage.removeItem("tg-autoreply-running");
       toast.success(result.data?.message || "تم إيقاف الرد التلقائي");
     } catch (err: any) {
       toast.error(err.message);
