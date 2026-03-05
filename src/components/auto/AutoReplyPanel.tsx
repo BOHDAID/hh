@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
 import MediaAttachment from "./MediaAttachment";
+import TelegramMessagePreview from "./TelegramMessagePreview";
 
 interface AutoReplyPanelProps {
   sessionString: string;
