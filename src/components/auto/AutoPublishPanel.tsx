@@ -34,6 +34,13 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
   const [isRunning, setIsRunning] = useState(false);
   const [statusInfo, setStatusInfo] = useState<any>(null);
   const [media, setMedia] = useState<{ base64: string; fileName: string; mimeType: string } | null>(null);
+  const [customEmojis, setCustomEmojis] = useState<Array<{ documentId: string; accessHash: string; emoticon: string; offset: number }>>([]);
+
+  const handlePremiumEmojiSelect = (emoji: any) => {
+    const offset = message.length;
+    setMessage(prev => prev + emoji.emoticon);
+    setCustomEmojis(prev => [...prev, { documentId: emoji.documentId, accessHash: emoji.accessHash, emoticon: emoji.emoticon, offset }]);
+  };
 
   const startPublish = async () => {
     if (!message.trim() && !media) { toast.error("يرجى كتابة رسالة أو إرفاق ملف"); return; }
@@ -132,12 +139,15 @@ const AutoPublishPanel = ({ sessionString, selectedGroups, mentionsChannelId }: 
       <div className="space-y-2">
         <Label>الرسالة</Label>
         <Textarea
-          placeholder="اكتب الرسالة التي ستُنشر في المجموعات... (يدعم إيموجي بريميوم ✨)"
+          placeholder="اكتب الرسالة التي ستُنشر في المجموعات..."
           value={message}
           onChange={e => setMessage(e.target.value)}
           className="min-h-[120px]"
           disabled={isRunning}
         />
+        <div className="flex gap-2">
+          <PremiumEmojiPicker sessionString={sessionString} onEmojiSelect={handlePremiumEmojiSelect} disabled={isRunning} />
+        </div>
       </div>
 
       {/* معاينة الرسالة */}
