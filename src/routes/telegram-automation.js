@@ -50,11 +50,11 @@ router.post('/fetch-contacts', async (req, res) => {
 // بدء النشر التلقائي
 router.post('/start-auto-publish', async (req, res) => {
   try {
-    const { sessionString, groupIds, message, intervalMinutes, taskId, mentionsChannelId } = req.body;
-    if (!sessionString || !groupIds?.length || !message) {
-      return res.status(400).json({ success: false, error: 'sessionString, groupIds, message مطلوبة' });
+    const { sessionString, groupIds, message, intervalMinutes, taskId, mentionsChannelId, mediaBase64, mediaFileName, mediaMimeType } = req.body;
+    if (!sessionString || !groupIds?.length || (!message && !mediaBase64)) {
+      return res.status(400).json({ success: false, error: 'sessionString, groupIds, (message أو media) مطلوبة' });
     }
-    const result = await telegramAuto.startAutoPublish({ sessionString, groupIds, message, intervalMinutes, taskId, mentionsChannelId });
+    const result = await telegramAuto.startAutoPublish({ sessionString, groupIds, message, intervalMinutes, taskId, mentionsChannelId, mediaBase64, mediaFileName, mediaMimeType });
     res.json(result);
   } catch (err) {
     console.error('❌ Auto-publish error:', err.message);
