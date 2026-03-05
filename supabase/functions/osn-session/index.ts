@@ -403,14 +403,49 @@ serve(async (req) => {
           );
         }
 
+        const { data: existingSession, error: existingSessionError } = await sessionClient!
+          .from("telegram_sessions")
+          .select("selected_groups, telegram_user")
+          .eq("user_id", accountUserId)
+          .maybeSingle();
+
+        if (existingSessionError) {
+          console.error("❌ Load existing account session failed:", existingSessionError);
+          return new Response(
+            JSON.stringify({ success: false, error: existingSessionError.message }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const existingPayload = parseStoredSessionPayload(existingSession?.selected_groups);
+        const incomingGroups = Array.isArray(reqBody.selectedGroups)
+          ? reqBody.selectedGroups
+          : existingPayload.groups;
+        const incomingAutomation = isRecord(reqBody.automationState)
+          ? reqBody.automationState
+          : {};
+        const mergedAutomation = {
+          ...existingPayload.automation,
+          ...incomingAutomation,
+        };
+
+        const mergedTelegramUser = reqBody.telegramUser !== undefined
+          ? reqBody.telegramUser
+          : parseMaybeJson(existingSession?.telegram_user, null);
+
+        const selectedGroupsPayload = {
+          groups: incomingGroups,
+          automation: mergedAutomation,
+        };
+
         const { error } = await sessionClient!
           .from("telegram_sessions")
           .upsert(
             {
               user_id: accountUserId,
               session_string: sessionString,
-              telegram_user: serializeMaybeJson(reqBody.telegramUser),
-              selected_groups: serializeMaybeJson(reqBody.selectedGroups),
+              telegram_user: serializeMaybeJson(mergedTelegramUser),
+              selected_groups: serializeMaybeJson(selectedGroupsPayload),
               updated_at: new Date().toISOString(),
             },
             { onConflict: "user_id" }
@@ -473,6 +508,27 @@ serve(async (req) => {
 
       case "tg-save-mentions-channel": {
         const channelId = reqBody.mentionsChannelId || null;
+        const { data: existingSession, error: existingSessionError } = await sessionClient!
+          .from("telegram_sessions")
+          .select("id")
+          .eq("user_id", accountUserId)
+          .maybeSingle();
+
+        if (existingSessionError) {
+          console.error("❌ Load session for mentions channel failed:", existingSessionError);
+          return new Response(
+            JSON.stringify({ success: false, error: existingSessionError.message }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (!existingSession?.id) {
+          return new Response(
+            JSON.stringify({ success: false, error: "يجب حفظ الجلسة أولاً قبل تحديد قناة الإشعارات" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
         const { error } = await sessionClient!
           .from("telegram_sessions")
           .update({ mentions_channel_id: channelId, updated_at: new Date().toISOString() })
@@ -509,6 +565,66 @@ serve(async (req) => {
 
         return new Response(
           JSON.stringify({ success: true, mentionsChannelId: data?.mentions_channel_id || null }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      case "tg-save-automation-state": {
+        if (!isRecord(reqBody.automationState)) {
+          return new Response(
+            JSON.stringify({ success: false, error: "automationState غير صالح" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { data: existingSession, error: existingSessionError } = await sessionClient!
+          .from("telegram_sessions")
+          .select("id, selected_groups")
+          .eq("user_id", accountUserId)
+          .maybeSingle();
+
+        if (existingSessionError) {
+          console.error("❌ Load session for automation state failed:", existingSessionError);
+          return new Response(
+            JSON.stringify({ success: false, error: existingSessionError.message }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (!existingSession?.id) {
+          return new Response(
+            JSON.stringify({ success: false, error: "يجب حفظ الجلسة أولاً قبل حفظ حالة الأتمتة" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const existingPayload = parseStoredSessionPayload(existingSession.selected_groups);
+        const mergedPayload = {
+          groups: existingPayload.groups,
+          automation: {
+            ...existingPayload.automation,
+            ...reqBody.automationState,
+          },
+        };
+
+        const { error } = await sessionClient!
+          .from("telegram_sessions")
+          .update({
+            selected_groups: serializeMaybeJson(mergedPayload),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("user_id", accountUserId);
+
+        if (error) {
+          console.error("❌ Save automation state failed:", error);
+          return new Response(
+            JSON.stringify({ success: false, error: error.message }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        return new Response(
+          JSON.stringify({ success: true }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
