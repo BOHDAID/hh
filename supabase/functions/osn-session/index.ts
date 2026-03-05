@@ -332,7 +332,7 @@ serve(async (req) => {
         body.taskId = reqBody.taskId;
         break;
 
-
+      case "tg-save-account-session": {
         const sessionString = typeof reqBody.sessionString === "string" ? reqBody.sessionString.trim() : "";
         if (!sessionString) {
           return new Response(
