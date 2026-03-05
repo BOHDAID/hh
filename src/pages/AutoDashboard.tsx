@@ -36,6 +36,55 @@ interface TelegramGroup {
   type: "channel" | "supergroup" | "group";
 }
 
+interface MediaConfig {
+  base64: string;
+  fileName: string;
+  mimeType: string;
+  sendType: string;
+}
+
+interface MentionsAutomationState {
+  taskId: string | null;
+  running: boolean;
+  channelId?: string | null;
+}
+
+interface AntiDeleteAutomationState {
+  taskId: string | null;
+  running: boolean;
+}
+
+interface AutoReplyAutomationState {
+  taskId: string | null;
+  running: boolean;
+  replyMessage: string;
+  mentionsChannelId?: string | null;
+  media: MediaConfig | null;
+}
+
+interface AutoPublishAutomationState {
+  taskId: string | null;
+  running: boolean;
+  message: string;
+  intervalMinutes: number;
+  forcedSubscription: boolean;
+  groupIds: string[];
+  mentionsChannelId?: string | null;
+  media: MediaConfig | null;
+}
+
+interface AutomationState {
+  mentions?: MentionsAutomationState;
+  antiDelete?: AntiDeleteAutomationState;
+  autoReply?: AutoReplyAutomationState;
+  autoPublish?: AutoPublishAutomationState;
+}
+
+interface StoredSessionPayload {
+  groups: TelegramGroup[];
+  automation: AutomationState;
+}
+
 const AutoDashboard = () => {
   // Auth state
   const [loggedIn, setLoggedIn] = useState(false);
