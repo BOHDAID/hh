@@ -673,42 +673,39 @@ serve(async (req) => {
 
       case "tg-save-mentions-channel": {
         const channelId = reqBody.mentionsChannelId || null;
-        const { data: existingSession, error: existingSessionError } = await sessionClient!
-          .from("telegram_sessions")
-          .select("id")
-          .eq("user_id", accountUserId)
-          .maybeSingle();
+        const loaded = await loadAccountSession(sessionClient!, accountUserId!);
 
-        if (existingSessionError) {
-          console.error("❌ Load session for mentions channel failed:", existingSessionError);
+        if (loaded.error) {
+          console.error("❌ Load session for mentions channel failed:", loaded.error);
           return new Response(
-            JSON.stringify({ success: false, error: existingSessionError.message }),
+            JSON.stringify({ success: false, error: loaded.error.message }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
-        if (!existingSession?.id) {
+        if (!loaded.session?.session_string) {
           return new Response(
             JSON.stringify({ success: false, error: "يجب حفظ الجلسة أولاً قبل تحديد قناة الإشعارات" }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
-        const { error } = await sessionClient!
-          .from("telegram_sessions")
-          .update({ mentions_channel_id: channelId, updated_at: new Date().toISOString() })
-          .eq("user_id", accountUserId);
+        const saveResult = await upsertAccountSession(sessionClient!, accountUserId!, {
+          ...loaded.session,
+          mentions_channel_id: channelId,
+          updated_at: new Date().toISOString(),
+        });
 
-        if (error) {
-          console.error("❌ Save mentions channel failed:", error);
+        if (saveResult.error) {
+          console.error("❌ Save mentions channel failed:", saveResult.error);
           return new Response(
-            JSON.stringify({ success: false, error: error.message }),
+            JSON.stringify({ success: false, error: saveResult.error.message }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
         return new Response(
-          JSON.stringify({ success: true }),
+          JSON.stringify({ success: true, storage_source: saveResult.source }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
