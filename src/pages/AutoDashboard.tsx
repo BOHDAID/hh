@@ -9,7 +9,6 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { invokeCloudFunction, invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
 import { getAuthClient } from "@/lib/supabaseClient";
-import TelegramProfileCard from "@/components/auto/TelegramProfileCard";
 import SessionsPanel from "@/components/auto/SessionsPanel";
 import GroupsSelector from "@/components/auto/GroupsSelector";
 import AutoPublishPanel from "@/components/auto/AutoPublishPanel";
