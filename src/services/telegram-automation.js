@@ -1907,7 +1907,8 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
   };
 
   // تسجيل الـ handlers (incoming + outgoing) لضمان التقاط أي رسالة قد تُحذف لاحقاً
-  client.addEventHandler(newMsgHandler, new NewMessage({}));
+  client.addEventHandler(incomingMsgHandler, new NewMessage({ incoming: true }));
+  client.addEventHandler(outgoingMsgHandler, new NewMessage({ outgoing: true }));
   client.addEventHandler(
     rawDeleteUpdateHandler,
     new Raw({ types: [Api.UpdateDeleteMessages, Api.UpdateDeleteChannelMessages] })
@@ -1929,7 +1930,7 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
   }, 30000);
 
   activeAntiDelete.set(taskId, { 
-    handlers: [newMsgHandler, rawDeleteUpdateHandler], 
+    handlers: [incomingMsgHandler, outgoingMsgHandler, rawDeleteUpdateHandler], 
     client, 
     messageCache, 
     reconnectInterval 
