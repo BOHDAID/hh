@@ -313,15 +313,25 @@ const AutoDashboard = () => {
     setLoginLoading(true);
     setLoginError("");
     try {
-      const result = await callAction("tg-connect-session", { sessionString: sessionInput.trim() });
+      const nextSession = sessionInput.trim();
+      const result = await callAction("tg-connect-session", { sessionString: nextSession });
       setLoggedIn(true);
       setTelegramUser(result.user || null);
-      setActiveSession(sessionInput.trim());
+      setActiveSession(nextSession);
+
       try {
-        await saveSessionToAccount(sessionInput.trim(), result.user || null);
+        await saveSessionToAccount(nextSession, result.user || null);
+        const data = await callAccountAction("tg-get-account-session", { sessionString: nextSession });
+        const saved = data?.session;
+        const storedPayload = normalizeStoredSessionPayload(saved?.selected_groups);
+        const restoredMentionsChannel = saved?.mentions_channel_id || storedPayload.automation.mentions?.channelId || null;
+        setSelectedGroups(storedPayload.groups);
+        setAutomationState(storedPayload.automation);
+        setSavedMentionsChannelId(restoredMentionsChannel);
       } catch (saveErr: any) {
         toast.error(saveErr.message || "تعذر حفظ الجلسة في الحساب");
       }
+
       toast.success("تم الاتصال بنجاح!");
     } catch (err: any) {
       setLoginError(err.message);
