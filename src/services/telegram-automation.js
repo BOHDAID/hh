@@ -1642,6 +1642,19 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
   const client = await getOrCreateClient(sessionString);
   markClientAsUsed(client);
 
+  // منع تكرار المراقب على نفس الجلسة (سبب شائع لإرسال التنبيه مرتين)
+  const duplicateTasks = Array.from(activeAntiDelete.entries()).filter(([, task]) => task.client === client);
+  for (const [existingTaskId, existingTask] of duplicateTasks) {
+    try { if (existingTask.reconnectInterval) clearInterval(existingTask.reconnectInterval); } catch {}
+    for (const handler of existingTask.handlers || []) {
+      try { client.removeEventHandler(handler); } catch {}
+    }
+    try { existingTask.messageCache?.clear?.(); } catch {}
+    try { existingTask.processedDeletes?.clear?.(); } catch {}
+    activeAntiDelete.delete(existingTaskId);
+    console.warn(`♻️ Anti-delete: cleaned duplicate task [${existingTaskId}] before starting [${taskId}]`);
+  }
+
   // ★ مهم جداً: تحميل المحادثات لتفعيل استقبال التحديثات في GramJS
   try {
     console.log(`📥 Anti-delete [${taskId}]: Loading dialogs to initialize update loop...`);
@@ -1675,7 +1688,9 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
   const messageCache = new Map();
   const MAX_CACHE = 5000;
 
-  const { NewMessage, Raw } = await import('telegram/events/index.js');
+  // منع تكرار إشعار نفس الرسالة المحذوفة خلال نافذة قصيرة
+  const processedDeletes = new Map();
+  const DELETE_DEDUP_MS = 15000;
 
   const trimCache = () => {
     if (messageCache.size <= MAX_CACHE) return;
@@ -1684,6 +1699,29 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
       messageCache.delete(keys[i]);
     }
   };
+
+  const shouldSkipDelete = (scope, msgId) => {
+    const now = Date.now();
+    const key = `${scope || 'global'}_${msgId}`;
+    const seenAt = processedDeletes.get(key);
+
+    if (seenAt && now - seenAt < DELETE_DEDUP_MS) {
+      return true;
+    }
+
+    processedDeletes.set(key, now);
+
+    // تنظيف entries القديمة لتقليل الذاكرة
+    if (processedDeletes.size > 3000) {
+      for (const [k, ts] of processedDeletes.entries()) {
+        if (now - ts > DELETE_DEDUP_MS * 3) processedDeletes.delete(k);
+      }
+    }
+
+    return false;
+  };
+
+  const { NewMessage, Raw } = await import('telegram/events/index.js');
 
   const cacheMessage = async (msg, source = 'live') => {
     if (!msg || msg.action || !msg.id) return;
@@ -1827,6 +1865,13 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
 
       for (const msgIdRaw of deletedIds) {
         const msgId = String(msgIdRaw);
+        const dedupScope = updateChatId || update.className || 'unknown';
+
+        if (shouldSkipDelete(dedupScope, msgId)) {
+          console.log(`↩️ Anti-delete [${taskId}]: Duplicate delete skipped for ${dedupScope}_${msgId}`);
+          continue;
+        }
+
         // البحث في الكاش بعدة احتمالات
         let cached = null;
         let foundKey = null;
@@ -1932,7 +1977,8 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
   activeAntiDelete.set(taskId, { 
     handlers: [incomingMsgHandler, outgoingMsgHandler, rawDeleteUpdateHandler], 
     client, 
-    messageCache, 
+    messageCache,
+    processedDeletes,
     reconnectInterval 
   });
 
@@ -1945,13 +1991,14 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
  */
 async function stopAntiDelete({ taskId }) {
   if (activeAntiDelete.has(taskId)) {
-    const { handlers, client, messageCache, reconnectInterval } = activeAntiDelete.get(taskId);
+    const { handlers, client, messageCache, processedDeletes, reconnectInterval } = activeAntiDelete.get(taskId);
     try { if (reconnectInterval) clearInterval(reconnectInterval); } catch {}
     for (const handler of handlers) {
       try { client.removeEventHandler(handler); } catch {}
     }
     const cachedCount = messageCache.size;
     messageCache.clear();
+    processedDeletes?.clear?.();
     activeAntiDelete.delete(taskId);
     await releaseClientIfUnused(client, `stop anti-delete ${taskId}`);
     console.log(`🛑 Anti-delete stopped [${taskId}], had ${cachedCount} cached msgs`);

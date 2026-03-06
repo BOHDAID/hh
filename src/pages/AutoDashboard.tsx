@@ -347,17 +347,19 @@ const AutoDashboard = () => {
   const [needs2FA, setNeeds2FA] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
+  const normalizePhone = (value: string) => {
+    const cleaned = String(value || "").replace(/[\s\-\(\)]/g, "");
+    if (!cleaned) return "";
+    return cleaned.startsWith("+") ? cleaned : `+${cleaned}`;
+  };
+
   const handleSendCode = async () => {
     if (!apiId || !apiHash || !phone) { toast.error("يرجى ملء جميع الحقول"); return; }
-    // تنظيف رقم الهاتف - إزالة المسافات والشرطات وإضافة + إذا لم تكن موجودة
-    let cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
-    if (!cleanPhone.startsWith('+')) {
-      cleanPhone = '+' + cleanPhone;
-    }
-    if (cleanPhone.length < 8) { toast.error("رقم الهاتف قصير جداً. تأكد من إدخال رمز الدولة (مثل: +966...)"); return; }
+    const normalizedPhone = normalizePhone(phone);
+    if (normalizedPhone.length < 8) { toast.error("رقم الهاتف قصير جداً. تأكد من إدخال رمز الدولة (مثل: +966...)"); return; }
     setLoading(true); setErrorMsg("");
     try {
-      const result = await callAction("tg-send-code", { apiId, apiHash, phone: cleanPhone });
+      const result = await callAction("tg-send-code", { apiId, apiHash, phone: normalizedPhone });
       setPhoneCodeHash(result.phoneCodeHash || "");
       setCurrentStep("otp");
       toast.success("تم إرسال الرمز إلى حسابك على Telegram");
@@ -367,9 +369,10 @@ const AutoDashboard = () => {
 
   const handleVerifyOTP = async () => {
     if (!otpCode) { toast.error("يرجى إدخال الرمز"); return; }
+    const normalizedPhone = normalizePhone(phone);
     setLoading(true); setErrorMsg("");
     try {
-      const result = await callAction("tg-verify-code", { apiId, phone, code: otpCode, phoneCodeHash });
+      const result = await callAction("tg-verify-code", { apiId, phone: normalizedPhone, code: otpCode, phoneCodeHash });
       if (result.needs2FA) { setNeeds2FA(true); setCurrentStep("2fa"); }
       else { setSessionString(result.sessionString || ""); setCurrentStep("result"); }
     } catch (err: any) { setErrorMsg(err.message); toast.error(err.message); }
@@ -378,9 +381,10 @@ const AutoDashboard = () => {
 
   const handleVerify2FA = async () => {
     if (!password2FA) { toast.error("يرجى إدخال كلمة المرور"); return; }
+    const normalizedPhone = normalizePhone(phone);
     setLoading(true); setErrorMsg("");
     try {
-      const result = await callAction("tg-verify-2fa", { apiId, phone, password: password2FA });
+      const result = await callAction("tg-verify-2fa", { apiId, phone: normalizedPhone, password: password2FA });
       setSessionString(result.sessionString || "");
       setCurrentStep("result");
     } catch (err: any) { setErrorMsg(err.message); toast.error(err.message); }
