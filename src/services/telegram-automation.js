@@ -828,7 +828,23 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
 
     const groupId = groupIds[currentIndex];
     try {
-      const peer = await client.getEntity(BigInt(groupId));
+      // محاولات متعددة لجلب الكيان
+      let peer;
+      try {
+        peer = await client.getEntity(BigInt(groupId));
+      } catch {
+        try {
+          peer = await client.getEntity(new Api.PeerChannel({ channelId: BigInt(groupId) }));
+        } catch {
+          try {
+            peer = await client.getEntity(new Api.PeerChat({ chatId: BigInt(groupId) }));
+          } catch {
+            // تحديث الكاش ثم المحاولة الأخيرة
+            await client.getDialogs({ limit: 100 });
+            peer = await client.getEntity(BigInt(groupId));
+          }
+        }
+      }
       if (mediaBuffer) {
         const isSticker = mediaSendType === 'sticker';
         const forceDoc = mediaSendType === 'file';
