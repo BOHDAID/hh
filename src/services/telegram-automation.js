@@ -791,13 +791,24 @@ async function notifyForcedJoin(client, channelEntity, groupTitle, joinedChannel
 async function startAutoPublish({ sessionString, groupIds, message, intervalMinutes, taskId, mentionsChannelId, mediaBase64, mediaFileName, mediaMimeType, mediaSendType }) {
   // إيقاف أي نشر سابق لنفس المهمة
   if (activeAutoPublish.has(taskId)) {
-    clearInterval(activeAutoPublish.get(taskId).interval);
+    const oldTask = activeAutoPublish.get(taskId);
+    clearInterval(oldTask.interval);
+    // إزالة event handlers القديمة
+    if (oldTask.eventHandlers && oldTask.client) {
+      for (const h of oldTask.eventHandlers) {
+        try { oldTask.client.removeEventHandler(h); } catch {}
+      }
+    }
     activeAutoPublish.delete(taskId);
   }
 
   const client = await getOrCreateClient(sessionString);
   markClientAsUsed(client);
   
+  // جلب معلوماتي
+  const me = await client.getMe();
+  const myId = me.id?.toString();
+
   // تجهيز الملف المرفق
   let mediaBuffer = null;
   if (mediaBase64) {
@@ -818,6 +829,58 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
   let sentCount = 0;
   let currentIndex = 0;
 
+  // ============================================================
+  // نظام تجميد المجموعات عند رد المشرف (Admin Freeze)
+  // ============================================================
+  const pausedGroups = new Map(); // groupId → { adminId, adminName, frozenAt }
+  
+  // كلمات الاشتراك الإجباري (للكشف عبر Event)
+  const FORCED_KEYWORDS = [
+    'لايمكنك', 'عليك الاشتراك', 'must join', 'غير مشترك',
+    'join channel', 'القناة', 'not subscribed', 'يجب الاشتراك',
+    'اشترك', 'subscribe first', 'الانضمام', 'you must join',
+    'عليك الانضمام', 'لم تشترك', 'اشتراك إجباري',
+  ];
+
+  // ============================================================
+  // المساعد: إرسال لمجموعة (مع دعم الوسائط)
+  // ============================================================
+  async function sendToGroup(peer) {
+    if (mediaBuffer) {
+      const isSticker = mediaSendType === 'sticker';
+      const forceDoc = mediaSendType === 'file';
+      const finalFileName = isSticker ? 'sticker.webp' : (mediaFileName || 'file');
+      await client.sendFile(peer, {
+        file: mediaBuffer,
+        caption: isSticker ? '' : (message || ''),
+        fileName: finalFileName,
+        forceDocument: forceDoc,
+      });
+    } else {
+      await client.sendMessage(peer, { message });
+    }
+  }
+
+  // ============================================================
+  // المساعد: جلب كيان المجموعة (مع fallback)
+  // ============================================================
+  async function resolveGroupEntity(groupId) {
+    try {
+      return await client.getEntity(BigInt(groupId));
+    } catch {
+      try {
+        return await client.getEntity(new Api.PeerChannel({ channelId: BigInt(groupId) }));
+      } catch {
+        try {
+          return await client.getEntity(new Api.PeerChat({ chatId: BigInt(groupId) }));
+        } catch {
+          await client.getDialogs({ limit: 100 });
+          return await client.getEntity(BigInt(groupId));
+        }
+      }
+    }
+  }
+
   // إرسال لمجموعة واحدة كل فترة
   async function sendNext() {
     markClientAsUsed(client);
@@ -827,37 +890,17 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
     }
 
     const groupId = groupIds[currentIndex];
+    
+    // تخطي المجموعات المجمدة
+    if (pausedGroups.has(groupId)) {
+      console.log(`⛔ Auto-publish [${taskId}]: Skipping frozen group ${groupId}`);
+      currentIndex++;
+      return;
+    }
+
     try {
-      // محاولات متعددة لجلب الكيان
-      let peer;
-      try {
-        peer = await client.getEntity(BigInt(groupId));
-      } catch {
-        try {
-          peer = await client.getEntity(new Api.PeerChannel({ channelId: BigInt(groupId) }));
-        } catch {
-          try {
-            peer = await client.getEntity(new Api.PeerChat({ chatId: BigInt(groupId) }));
-          } catch {
-            // تحديث الكاش ثم المحاولة الأخيرة
-            await client.getDialogs({ limit: 100 });
-            peer = await client.getEntity(BigInt(groupId));
-          }
-        }
-      }
-      if (mediaBuffer) {
-        const isSticker = mediaSendType === 'sticker';
-        const forceDoc = mediaSendType === 'file';
-        const finalFileName = isSticker ? 'sticker.webp' : (mediaFileName || 'file');
-        await client.sendFile(peer, {
-          file: mediaBuffer,
-          caption: isSticker ? '' : (message || ''),
-          fileName: finalFileName,
-          forceDocument: forceDoc,
-        });
-      } else {
-        await client.sendMessage(peer, { message });
-      }
+      const peer = await resolveGroupEntity(groupId);
+      await sendToGroup(peer);
       sentCount++;
       currentIndex++;
       stats.autoPublish.totalSent++;
@@ -868,51 +911,352 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
       console.error(`❌ Auto-publish [${taskId}]: Failed for group ${groupId}:`, errMsg);
       stats.autoPublish.totalFailed++;
       recordStat('autoPublish', { groupId, status: 'failed', error: errMsg.substring(0, 100) });
-      // التعامل مع الاشتراك الإجباري
+      
+      // التعامل مع الاشتراك الإجباري عند خطأ الإرسال
       if (errMsg.includes('CHAT_WRITE_FORBIDDEN') || errMsg.includes('CHANNEL_PRIVATE') || 
           errMsg.includes('cannot write') || errMsg.includes('not subscribed') ||
           errMsg.includes('غير مشترك') || errMsg.includes('CHAT_RESTRICTED') ||
           errMsg.includes('USER_BANNED_IN_CHANNEL') || errMsg.includes('FORBIDDEN')) {
-        console.log(`🔐 Detected forced subscription for group ${groupId}, attempting auto-join...`);
-        
-        try {
-          const groupPeer = await client.getEntity(BigInt(groupId));
-          const result = await handleForcedSubscription({ client, peer: groupPeer, groupId });
-          
-          if (result.joined && result.channels.length > 0) {
-            const groupTitle = groupPeer.title || groupId;
-            await notifyForcedJoin(client, notifChannelEntity, groupTitle, result.channels);
-            
-            // انتظار 5 ثوان بعد الانضمام وضغط التحقق
-            await new Promise(r => setTimeout(r, 5000));
-            try {
-              if (mediaBuffer) {
-                const isSticker = mediaSendType === 'sticker';
-                const forceDoc = mediaSendType === 'document';
-                const finalFileName = isSticker ? 'sticker.webp' : (mediaFileName || 'file');
-                await client.sendFile(groupPeer, {
-                  file: mediaBuffer,
-                  caption: isSticker ? '' : (message || ''),
-                  fileName: finalFileName,
-                  forceDocument: forceDoc,
-                });
-              } else {
-                await client.sendMessage(groupPeer, { message });
-              }
-              sentCount++;
-              console.log(`✅ Auto-publish [${taskId}]: Retry succeeded for group ${groupId} after forced join`);
-            } catch (retryErr) {
-              console.error(`❌ Auto-publish [${taskId}]: Retry failed for group ${groupId}:`, retryErr.message);
-            }
-          }
-        } catch (forceErr) {
-          console.error(`❌ Forced subscription handling failed:`, forceErr.message);
-        }
+        await attemptForcedJoinAndRetry(groupId);
       }
       
       currentIndex++;
     }
   }
+
+  // ============================================================
+  // محاولة الاشتراك الإجباري + إعادة الإرسال
+  // ============================================================
+  async function attemptForcedJoinAndRetry(groupId) {
+    console.log(`🔐 Detected forced subscription for group ${groupId}, attempting auto-join...`);
+    try {
+      const groupPeer = await resolveGroupEntity(groupId);
+      const result = await handleForcedSubscription({ client, peer: groupPeer, groupId });
+      
+      if (result.joined && result.channels.length > 0) {
+        const groupTitle = groupPeer.title || groupId;
+        await notifyForcedJoin(client, notifChannelEntity, groupTitle, result.channels);
+        
+        await new Promise(r => setTimeout(r, 5000));
+        try {
+          await sendToGroup(groupPeer);
+          sentCount++;
+          console.log(`✅ Auto-publish [${taskId}]: Retry succeeded for group ${groupId} after forced join`);
+        } catch (retryErr) {
+          console.error(`❌ Auto-publish [${taskId}]: Retry failed for group ${groupId}:`, retryErr.message);
+        }
+      }
+    } catch (forceErr) {
+      console.error(`❌ Forced subscription handling failed:`, forceErr.message);
+    }
+  }
+
+  // ============================================================
+  // Event Handler 1: كشف الاشتراك الإجباري عبر رسائل البوت
+  // عندما بوت يرد على رسالتي برسالة فيها كلمات اشتراك إجباري
+  // ============================================================
+  const { NewMessage } = await import('telegram/events/index.js');
+
+  const forcedSubHandler = async (event) => {
+    try {
+      markClientAsUsed(client);
+      const msg = event.message;
+      if (!msg || !msg.peerId) return;
+      
+      // فقط المجموعات
+      const isGroup = msg.peerId.className === 'PeerChannel' || msg.peerId.className === 'PeerChat';
+      if (!isGroup) return;
+
+      // تحقق: هل الرسالة رد على رسالتي؟
+      let isReplyToMe = false;
+      if (msg.replyTo && msg.replyTo.replyToMsgId) {
+        try {
+          const chat = await msg.getChat();
+          if (!chat) return;
+          const repliedMsgs = await client.getMessages(chat, { ids: [msg.replyTo.replyToMsgId] });
+          if (repliedMsgs?.[0]?.senderId?.toString() === myId) {
+            isReplyToMe = true;
+          }
+        } catch {}
+      }
+
+      // تحقق: هل أنا مذكور (mentioned)
+      const isMentioned = msg.mentioned === true;
+
+      if (!isReplyToMe && !isMentioned) return;
+
+      // تحقق: هل النص يحتوي كلمات اشتراك إجباري
+      const textLower = (msg.message || '').toLowerCase();
+      const hasForcedKeyword = FORCED_KEYWORDS.some(kw => textLower.includes(kw));
+      if (!hasForcedKeyword) return;
+
+      // === وجدنا رسالة اشتراك إجباري من بوت ===
+      const chat = await msg.getChat();
+      const chatId = (chat?.id || msg.peerId.channelId || msg.peerId.chatId)?.toString();
+      if (!chatId) return;
+
+      console.log(`🔐 Event-driven forced subscription detected in ${chat?.title || chatId}`);
+
+      // استخراج الروابط من الرسالة والأزرار
+      const { links: joinLinks, callbackButtons } = collectJoinLinksFromMessage(msg);
+      
+      // أيضاً البحث عن أزرار التحقق
+      const verifyButtons = [];
+      if (msg.replyMarkup?.rows) {
+        for (const row of msg.replyMarkup.rows) {
+          for (const btn of (row.buttons || [])) {
+            if (btn.url) {
+              const btnLinks = extractJoinLinksFromText(btn.url);
+              for (const l of btnLinks) joinLinks.add(l);
+            }
+            const btnText = (btn.text || '').toLowerCase();
+            const isVerifyBtn = btnText.includes('تحقق') || btnText.includes('verify') ||
+              btnText.includes('check') || btnText.includes('اشتركت') ||
+              btnText.includes('done') || btnText.includes('تم') ||
+              btnText.includes('انضممت') || btnText.includes('فتح') ||
+              btnText.includes('unmute') || btnText.includes('✅');
+            if (isVerifyBtn && btn.data && msg.id) {
+              verifyButtons.push({ msgId: msg.id, button: btn, text: btn.text });
+            }
+          }
+        }
+      }
+
+      // اكتشاف روابط من callback
+      if (joinLinks.size === 0 && callbackButtons.length > 0) {
+        const chatEntity = await msg.getChat();
+        const discovered = await pressCallbackButtonsForJoinLinks({ client, peer: chatEntity, callbackButtons });
+        for (const l of discovered) joinLinks.add(l);
+      }
+
+      const normalizedLinks = Array.from(new Set(
+        Array.from(joinLinks).map(normalizeJoinLink).filter(Boolean)
+      ));
+
+      const joinedChannels = [];
+
+      for (const link of normalizedLinks) {
+        try {
+          const path = link.replace(/^https?:\/\/(www\.)?/i, '').replace(/^t\.me\//i, '');
+          if (!path) continue;
+
+          const isInvite = path.startsWith('+') || path.startsWith('joinchat/') || link.includes('joinchat/');
+          if (!isInvite && path.includes('/')) continue;
+
+          const token = path.replace(/^\+/, '').replace(/^joinchat\//, '').replace(/\?.*$/, '').trim();
+          if (!token) continue;
+
+          if (isInvite) {
+            try {
+              let alreadyIn = false;
+              try {
+                const checkInvite = await client.invoke(new Api.messages.CheckChatInvite({ hash: token }));
+                if (checkInvite.className === 'ChatInviteAlready') {
+                  alreadyIn = true;
+                  const joinedChat = checkInvite.chat;
+                  const joinedId = joinedChat.id.toString();
+                  if (!forcedJoins.has(joinedId)) {
+                    scheduleForcedLeave(client, joinedChat, joinedId, joinedChat.title || token);
+                  }
+                  joinedChannels.push({ id: joinedId, title: joinedChat.title || token, method: 'already_member' });
+                }
+              } catch {}
+
+              if (!alreadyIn) {
+                const inviteResult = await client.invoke(new Api.messages.ImportChatInvite({ hash: token }));
+                const joinedChat = inviteResult?.chats?.[0];
+                if (joinedChat?.id) {
+                  const joinedId = joinedChat.id.toString();
+                  if (!forcedJoins.has(joinedId)) {
+                    scheduleForcedLeave(client, joinedChat, joinedId, joinedChat.title || token);
+                  }
+                  joinedChannels.push({ id: joinedId, title: joinedChat.title || token, method: 'invite' });
+                }
+              }
+            } catch (e) {
+              console.log(`⚠️ Event forced join invite failed: ${e.message}`);
+            }
+          } else {
+            try {
+              const targetEntity = await client.getEntity(token);
+              if (targetEntity) {
+                const targetId = targetEntity.id?.toString();
+                if (targetId && !forcedJoins.has(targetId)) {
+                  let alreadySub = false;
+                  try {
+                    await client.invoke(new Api.channels.GetParticipant({
+                      channel: targetEntity,
+                      participant: new Api.InputPeerSelf(),
+                    }));
+                    alreadySub = true;
+                  } catch {}
+
+                  if (!alreadySub) {
+                    await client.invoke(new Api.channels.JoinChannel({ channel: targetEntity }));
+                    console.log(`✅ Event force-joined: ${targetEntity.title || token}`);
+                  }
+                  scheduleForcedLeave(client, targetEntity, targetId, targetEntity.title || token);
+                  joinedChannels.push({ id: targetId, title: targetEntity.title || token, method: alreadySub ? 'already_member' : 'join' });
+                }
+              }
+            } catch {}
+          }
+        } catch {}
+      }
+
+      // ضغط أزرار التحقق بعد الانضمام
+      if (verifyButtons.length > 0) {
+        await new Promise(r => setTimeout(r, 3000));
+        const chatEntity = await msg.getChat();
+        await clickVerifyButtons(client, chatEntity, verifyButtons);
+      }
+
+      if (joinedChannels.length > 0) {
+        stats.autoPublish.forcedJoins += joinedChannels.length;
+        if (notifChannelEntity) {
+          await notifyForcedJoin(client, notifChannelEntity, chat?.title || chatId, joinedChannels);
+        }
+        console.log(`✅ Event-driven forced join: joined ${joinedChannels.length} channels for ${chat?.title || chatId}`);
+      }
+    } catch (err) {
+      console.error(`❌ Forced sub event handler error [${taskId}]:`, err.message);
+    }
+  };
+
+  // ============================================================
+  // Event Handler 2: تجميد المجموعة عند رد المشرف (Admin Freeze)
+  // إذا مشرف رد على رسالتي في المجموعة → نوقف النشر فيها
+  // ============================================================
+  const adminFreezeHandler = async (event) => {
+    try {
+      markClientAsUsed(client);
+      const msg = event.message;
+      if (!msg || !msg.peerId) return;
+
+      // فقط المجموعات
+      const isGroup = msg.peerId.className === 'PeerChannel' || msg.peerId.className === 'PeerChat';
+      if (!isGroup) return;
+
+      // هل هو رد على رسالة؟
+      if (!msg.replyTo || !msg.replyTo.replyToMsgId) return;
+
+      const chat = await msg.getChat();
+      if (!chat) return;
+      const chatId = chat.id?.toString();
+      if (!chatId || !groupIds.includes(chatId)) return; // فقط المجموعات المستهدفة
+
+      // هل الرد على رسالتي أنا؟
+      try {
+        const repliedMsgs = await client.getMessages(chat, { ids: [msg.replyTo.replyToMsgId] });
+        if (!repliedMsgs?.[0] || repliedMsgs[0].senderId?.toString() !== myId) return;
+      } catch { return; }
+
+      // هل المرسل مشرف؟
+      const sender = await msg.getSender();
+      if (!sender) return;
+      const senderId = sender.id?.toString();
+      if (senderId === myId) return; // تجاهل ردي أنا
+
+      try {
+        const participant = await client.invoke(new Api.channels.GetParticipant({
+          channel: chat,
+          participant: sender,
+        }));
+        const pType = participant?.participant?.className || '';
+        const isAdmin = pType.includes('Admin') || pType.includes('Creator');
+        if (!isAdmin) return;
+      } catch { return; }
+
+      // === المشرف رد على رسالتي → تجميد المجموعة ===
+      const senderName = [sender.firstName, sender.lastName].filter(Boolean).join(' ') || 'مشرف';
+      pausedGroups.set(chatId, {
+        adminId: senderId,
+        adminName: senderName,
+        frozenAt: Date.now(),
+      });
+
+      console.log(`⛔ Admin freeze [${taskId}]: Group ${chat.title} frozen by ${senderName}`);
+
+      // إرسال إشعار للمحفوظات
+      try {
+        await client.sendMessage('me', {
+          message: `⛔ **توقف النشر**\n━━━━━━━━━━━━━━━\n💬 **المجموعة:** ${chat.title}\n👮 **المشرف:** ${senderName}\n📝 **رسالته:** ${(msg.message || '').substring(0, 200)}\n\n💡 للاستئناف: رد على رسالة المشرف في المجموعة`,
+          parseMode: 'md',
+        });
+      } catch {}
+
+      // إشعار قناة الإشعارات
+      if (notifChannelEntity) {
+        try {
+          await client.sendMessage(notifChannelEntity, {
+            message: `⛔ **تجميد مجموعة**\n━━━━━━━━━━━━━━━\n💬 **المجموعة:** ${chat.title}\n👮 **المشرف:** ${senderName}\n📝 **رسالته:** ${(msg.message || '').substring(0, 200)}\n🕐 ${new Date().toLocaleString('ar-u-nu-latn')}`,
+            parseMode: 'md',
+          });
+        } catch {}
+      }
+    } catch (err) {
+      console.error(`❌ Admin freeze handler error [${taskId}]:`, err.message);
+    }
+  };
+
+  // ============================================================
+  // Event Handler 3: استئناف النشر (Owner Resume)
+  // إذا أنا رديت على رسالة المشرف الذي جمّد المجموعة → نرجع النشر
+  // ============================================================
+  const ownerResumeHandler = async (event) => {
+    try {
+      markClientAsUsed(client);
+      const msg = event.message;
+      if (!msg || !msg.peerId || !msg.out) return; // فقط رسائلي الصادرة
+
+      const isGroup = msg.peerId.className === 'PeerChannel' || msg.peerId.className === 'PeerChat';
+      if (!isGroup) return;
+
+      if (!msg.replyTo || !msg.replyTo.replyToMsgId) return;
+
+      const chat = await msg.getChat();
+      if (!chat) return;
+      const chatId = chat.id?.toString();
+      if (!chatId || !pausedGroups.has(chatId)) return;
+
+      const pauseData = pausedGroups.get(chatId);
+
+      // هل أنا أرد على رسالة المشرف الذي جمّد؟
+      try {
+        const repliedMsgs = await client.getMessages(chat, { ids: [msg.replyTo.replyToMsgId] });
+        if (!repliedMsgs?.[0] || repliedMsgs[0].senderId?.toString() !== pauseData.adminId) return;
+      } catch { return; }
+
+      // === استئناف النشر ===
+      pausedGroups.delete(chatId);
+      console.log(`✅ Owner resume [${taskId}]: Group ${chat.title} unfrozen`);
+
+      try {
+        await client.sendMessage('me', {
+          message: `✅ **عاد النشر**\n━━━━━━━━━━━━━━━\n💬 **المجموعة:** ${chat.title}\n🕐 ${new Date().toLocaleString('ar-u-nu-latn')}`,
+          parseMode: 'md',
+        });
+      } catch {}
+
+      if (notifChannelEntity) {
+        try {
+          await client.sendMessage(notifChannelEntity, {
+            message: `✅ **استئناف النشر**\n━━━━━━━━━━━━━━━\n💬 **المجموعة:** ${chat.title}\n🕐 ${new Date().toLocaleString('ar-u-nu-latn')}`,
+            parseMode: 'md',
+          });
+        } catch {}
+      }
+    } catch (err) {
+      console.error(`❌ Owner resume handler error [${taskId}]:`, err.message);
+    }
+  };
+
+  // تسجيل Event Handlers
+  client.addEventHandler(forcedSubHandler, new NewMessage({}));
+  client.addEventHandler(adminFreezeHandler, new NewMessage({ incoming: true }));
+  client.addEventHandler(ownerResumeHandler, new NewMessage({ outgoing: true }));
+
+  const eventHandlers = [forcedSubHandler, adminFreezeHandler, ownerResumeHandler];
 
   // إرسال أول رسالة فوراً
   await sendNext();
@@ -928,6 +1272,8 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
     intervalMinutes,
     startedAt: Date.now(),
     sentCount: () => sentCount,
+    eventHandlers,
+    pausedGroups,
   });
 
   console.log(`✅ Auto-publish started [${taskId}]: ${groupIds.length} groups, every ${intervalMinutes} min`);
