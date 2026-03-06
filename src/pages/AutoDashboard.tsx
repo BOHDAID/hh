@@ -167,19 +167,30 @@ const AutoDashboard = () => {
     return { groups: [], automation: {} };
   };
 
-  const saveSessionToAccount = async (sessionStr: string, user: TelegramUser | null, groups?: TelegramGroup[]) => {
+  const saveSessionToAccount = async (
+    sessionStr: string,
+    user: TelegramUser | null,
+    groups?: TelegramGroup[],
+  ) => {
     if (!sessionStr) return;
-    await callAccountAction("tg-save-account-session", {
+
+    const payload: Record<string, unknown> = {
       sessionString: sessionStr,
       telegramUser: user,
-      selectedGroups: groups ?? selectedGroups,
-      automationState,
-    });
+    };
+
+    if (groups !== undefined) {
+      payload.selectedGroups = groups;
+    }
+
+    await callAccountAction("tg-save-account-session", payload);
   };
 
   const saveAutomationSection = async <K extends keyof AutomationState>(key: K, value: AutomationState[K]) => {
     setAutomationState((prev) => ({ ...prev, [key]: value }));
+    if (!activeSession) return;
     await callAccountAction("tg-save-automation-state", {
+      sessionString: activeSession,
       automationState: { [key]: value },
     });
   };
@@ -207,7 +218,7 @@ const AutoDashboard = () => {
           setAutomationState(storedPayload.automation);
           setSavedMentionsChannelId(restoredMentionsChannel);
         } catch {
-          await callAccountAction("tg-delete-account-session");
+          await callAccountAction("tg-delete-account-session", { sessionString: saved.session_string });
         }
       } catch {
         // not logged in or no saved session
@@ -321,14 +332,15 @@ const AutoDashboard = () => {
   };
 
   const handleLogout = async () => {
-    try { await callAccountAction("tg-delete-account-session"); } catch {}
     setLoggedIn(false);
     setTelegramUser(null);
     setActiveSession("");
     setSessionInput("");
-    setSelectedGroups([]);
     setSavedMentionsChannelId(null);
+    setSelectedGroups([]);
     setAutomationState({});
+    setShowLoginMode("login");
+    resumeKeyRef.current = null;
   };
 
   // Wizard state
@@ -422,22 +434,23 @@ const AutoDashboard = () => {
           <SessionsPanel
             activeSessionString={activeSession}
             maxSessions={maxSessions}
-            hasSubscription={!!subscriptionEndsAt}
+            hasSubscription={maxSessions > 0}
             subscriptionEndsAt={subscriptionEndsAt}
             onSwitchSession={async (sessionStr, user) => {
               try {
                 await callAction("tg-connect-session", { sessionString: sessionStr });
                 setActiveSession(sessionStr);
                 setTelegramUser(user || null);
-                // Reload stored data for this session
-                const data = await callAccountAction("tg-get-account-session");
+                const data = await callAccountAction("tg-get-account-session", { sessionString: sessionStr });
                 const saved = data?.session;
-                if (saved) {
-                  const storedPayload = normalizeStoredSessionPayload(saved.selected_groups);
-                  setSelectedGroups(storedPayload.groups);
-                  setAutomationState(storedPayload.automation);
-                  setSavedMentionsChannelId(saved.mentions_channel_id || null);
-                }
+                const storedPayload = normalizeStoredSessionPayload(saved?.selected_groups);
+                const restoredMentionsChannel = saved?.mentions_channel_id || storedPayload.automation.mentions?.channelId || null;
+                setSelectedGroups(storedPayload.groups);
+                setAutomationState(storedPayload.automation);
+                setSavedMentionsChannelId(restoredMentionsChannel);
+                setActiveFeature(null);
+                setShowStats(false);
+                resumeKeyRef.current = null;
                 toast.success("تم التبديل للجلسة بنجاح!");
               } catch (err: any) {
                 toast.error(err.message || "فشل التبديل");
@@ -445,7 +458,8 @@ const AutoDashboard = () => {
             }}
             onLogout={handleLogout}
             onAddNewSession={() => {
-              // Logout current and show login form
+              setActiveFeature(null);
+              setShowStats(false);
               handleLogout();
             }}
           />
