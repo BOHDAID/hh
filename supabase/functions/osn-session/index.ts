@@ -406,20 +406,26 @@ serve(async (req) => {
         break;
       }
 
-      case "tg-verify-code":
+      case "tg-verify-code": {
         endpoint = "/api/telegram-session/verify-code";
         body.apiId = reqBody.apiId;
-        body.phone = reqBody.phone;
+        let phoneNum = String(reqBody.phone || "").replace(/[\s\-\(\)]/g, "");
+        if (!phoneNum.startsWith("+")) phoneNum = `+${phoneNum}`;
+        body.phone = phoneNum;
         body.code = reqBody.code;
         body.phoneCodeHash = reqBody.phoneCodeHash;
         break;
+      }
 
-      case "tg-verify-2fa":
+      case "tg-verify-2fa": {
         endpoint = "/api/telegram-session/verify-2fa";
         body.apiId = reqBody.apiId;
-        body.phone = reqBody.phone;
+        let phoneNum = String(reqBody.phone || "").replace(/[\s\-\(\)]/g, "");
+        if (!phoneNum.startsWith("+")) phoneNum = `+${phoneNum}`;
+        body.phone = phoneNum;
         body.password = reqBody.password;
         break;
+      }
 
       case "tg-connect-session":
         endpoint = "/api/telegram-session/connect-session";
