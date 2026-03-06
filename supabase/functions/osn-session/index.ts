@@ -638,22 +638,18 @@ serve(async (req) => {
       }
 
       case "tg-get-account-session": {
-        const { data, error } = await sessionClient!
-          .from("telegram_sessions")
-          .select("session_string, telegram_user, selected_groups, mentions_channel_id, updated_at")
-          .eq("user_id", accountUserId)
-          .maybeSingle();
+        const loaded = await loadAccountSession(sessionClient!, accountUserId!);
 
-        if (error) {
-          console.error("❌ Get account session failed:", error);
+        if (loaded.error) {
+          console.error("❌ Get account session failed:", loaded.error);
           return new Response(
-            JSON.stringify({ success: false, error: error.message }),
+            JSON.stringify({ success: false, error: loaded.error.message }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
         return new Response(
-          JSON.stringify({ success: true, session: data || null }),
+          JSON.stringify({ success: true, session: loaded.session || null, storage_source: loaded.source }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
