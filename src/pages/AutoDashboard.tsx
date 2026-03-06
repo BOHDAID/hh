@@ -445,7 +445,6 @@ const AutoDashboard = () => {
             activeSessionString={activeSession}
             maxSessions={maxSessions}
             hasSubscription={maxSessions > 0}
-            subscriptionEndsAt={subscriptionEndsAt}
             onSwitchSession={async (sessionStr, user) => {
               try {
                 await callAction("tg-connect-session", { sessionString: sessionStr });
