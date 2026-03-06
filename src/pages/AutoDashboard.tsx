@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { invokeCloudFunction, invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
 import { getAuthClient } from "@/lib/supabaseClient";
 import TelegramProfileCard from "@/components/auto/TelegramProfileCard";
+import SessionsPanel from "@/components/auto/SessionsPanel";
 import GroupsSelector from "@/components/auto/GroupsSelector";
 import AutoPublishPanel from "@/components/auto/AutoPublishPanel";
 import BroadcastPanel from "@/components/auto/BroadcastPanel";
@@ -419,7 +420,36 @@ const AutoDashboard = () => {
           </div>
         </header>
         <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-          <TelegramProfileCard sessionString={activeSession} initialUser={telegramUser} onLogout={handleLogout} subscriptionEndsAt={subscriptionEndsAt} subscriptionIsTrial={subscriptionIsTrial} />
+          <SessionsPanel
+            activeSessionString={activeSession}
+            maxSessions={maxSessions}
+            hasSubscription={!!subscriptionEndsAt}
+            subscriptionEndsAt={subscriptionEndsAt}
+            onSwitchSession={async (sessionStr, user) => {
+              try {
+                await callAction("tg-connect-session", { sessionString: sessionStr });
+                setActiveSession(sessionStr);
+                setTelegramUser(user || null);
+                // Reload stored data for this session
+                const data = await callAccountAction("tg-get-account-session");
+                const saved = data?.session;
+                if (saved) {
+                  const storedPayload = normalizeStoredSessionPayload(saved.selected_groups);
+                  setSelectedGroups(storedPayload.groups);
+                  setAutomationState(storedPayload.automation);
+                  setSavedMentionsChannelId(saved.mentions_channel_id || null);
+                }
+                toast.success("تم التبديل للجلسة بنجاح!");
+              } catch (err: any) {
+                toast.error(err.message || "فشل التبديل");
+              }
+            }}
+            onLogout={handleLogout}
+            onAddNewSession={() => {
+              // Logout current and show login form
+              handleLogout();
+            }}
+          />
 
           {/* Feature cards grid */}
           {!activeFeature && !showStats && (
