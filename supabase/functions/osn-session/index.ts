@@ -739,28 +739,24 @@ serve(async (req) => {
           );
         }
 
-        const { data: existingSession, error: existingSessionError } = await sessionClient!
-          .from("telegram_sessions")
-          .select("id, selected_groups")
-          .eq("user_id", accountUserId)
-          .maybeSingle();
+        const loaded = await loadAccountSession(sessionClient!, accountUserId!);
 
-        if (existingSessionError) {
-          console.error("❌ Load session for automation state failed:", existingSessionError);
+        if (loaded.error) {
+          console.error("❌ Load session for automation state failed:", loaded.error);
           return new Response(
-            JSON.stringify({ success: false, error: existingSessionError.message }),
+            JSON.stringify({ success: false, error: loaded.error.message }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
-        if (!existingSession?.id) {
+        if (!loaded.session?.session_string) {
           return new Response(
             JSON.stringify({ success: false, error: "يجب حفظ الجلسة أولاً قبل حفظ حالة الأتمتة" }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
-        const existingPayload = parseStoredSessionPayload(existingSession.selected_groups);
+        const existingPayload = parseStoredSessionPayload(loaded.session.selected_groups);
         const mergedPayload = {
           groups: existingPayload.groups,
           automation: {
@@ -769,24 +765,22 @@ serve(async (req) => {
           },
         };
 
-        const { error } = await sessionClient!
-          .from("telegram_sessions")
-          .update({
-            selected_groups: serializeMaybeJson(mergedPayload),
-            updated_at: new Date().toISOString(),
-          })
-          .eq("user_id", accountUserId);
+        const saveResult = await upsertAccountSession(sessionClient!, accountUserId!, {
+          ...loaded.session,
+          selected_groups: mergedPayload,
+          updated_at: new Date().toISOString(),
+        });
 
-        if (error) {
-          console.error("❌ Save automation state failed:", error);
+        if (saveResult.error) {
+          console.error("❌ Save automation state failed:", saveResult.error);
           return new Response(
-            JSON.stringify({ success: false, error: error.message }),
+            JSON.stringify({ success: false, error: saveResult.error.message }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
         return new Response(
-          JSON.stringify({ success: true }),
+          JSON.stringify({ success: true, storage_source: saveResult.source }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
