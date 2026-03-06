@@ -1642,6 +1642,19 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
   const client = await getOrCreateClient(sessionString);
   markClientAsUsed(client);
 
+  // منع تكرار المراقب على نفس الجلسة (سبب شائع لإرسال التنبيه مرتين)
+  const duplicateTasks = Array.from(activeAntiDelete.entries()).filter(([, task]) => task.client === client);
+  for (const [existingTaskId, existingTask] of duplicateTasks) {
+    try { if (existingTask.reconnectInterval) clearInterval(existingTask.reconnectInterval); } catch {}
+    for (const handler of existingTask.handlers || []) {
+      try { client.removeEventHandler(handler); } catch {}
+    }
+    try { existingTask.messageCache?.clear?.(); } catch {}
+    try { existingTask.processedDeletes?.clear?.(); } catch {}
+    activeAntiDelete.delete(existingTaskId);
+    console.warn(`♻️ Anti-delete: cleaned duplicate task [${existingTaskId}] before starting [${taskId}]`);
+  }
+
   // ★ مهم جداً: تحميل المحادثات لتفعيل استقبال التحديثات في GramJS
   try {
     console.log(`📥 Anti-delete [${taskId}]: Loading dialogs to initialize update loop...`);
