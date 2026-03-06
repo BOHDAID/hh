@@ -229,6 +229,16 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
   } catch (error) {
     console.error('❌ Telegram Bot failed to start:', error.message);
   }
+
+  // 🔄 استئناف مهام الأتمتة المحفوظة تلقائياً
+  console.log('🔄 Starting auto-resume of saved tasks...');
+  setTimeout(async () => {
+    try {
+      await autoResumeAllTasks();
+    } catch (error) {
+      console.error('❌ Auto-resume failed:', error.message);
+    }
+  }, 5000); // انتظار 5 ثوانٍ لضمان جاهزية السيرفر
 });
 
 // Keep-alive heartbeat (lightweight - no browser)
