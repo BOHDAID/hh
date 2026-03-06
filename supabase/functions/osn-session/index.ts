@@ -188,25 +188,63 @@ const deleteFallbackAccountSession = async (
   return { error };
 };
 
-const loadAccountSession = async (
+const listAccountSessions = async (
   sessionClient: ReturnType<typeof createClient>,
   userId: string,
-): Promise<{ session: AccountSessionRecord | null; error: any; source: "telegram_sessions" | "site_settings" }> => {
+): Promise<{ sessions: AccountSessionRecord[]; error: any; source: "telegram_sessions" | "site_settings" }> => {
   const { data, error } = await sessionClient
     .from("telegram_sessions")
     .select("session_string, telegram_user, selected_groups, mentions_channel_id, updated_at")
     .eq("user_id", userId)
-    .maybeSingle();
+    .order("updated_at", { ascending: false });
 
   if (error) {
     if (isTableMissingError(error, "telegram_sessions")) {
       const fallback = await loadFallbackAccountSession(sessionClient, userId);
+      return {
+        sessions: fallback.session ? [fallback.session] : [],
+        error: fallback.error,
+        source: "site_settings",
+      };
+    }
+    return { sessions: [], error, source: "telegram_sessions" };
+  }
+
+  return { sessions: (data as AccountSessionRecord[]) || [], error: null, source: "telegram_sessions" };
+};
+
+const loadAccountSession = async (
+  sessionClient: ReturnType<typeof createClient>,
+  userId: string,
+  sessionString?: string,
+): Promise<{ session: AccountSessionRecord | null; error: any; source: "telegram_sessions" | "site_settings" }> => {
+  let query = sessionClient
+    .from("telegram_sessions")
+    .select("session_string, telegram_user, selected_groups, mentions_channel_id, updated_at")
+    .eq("user_id", userId);
+
+  if (sessionString) {
+    query = query.eq("session_string", sessionString);
+  }
+
+  const { data, error } = await query
+    .order("updated_at", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    if (isTableMissingError(error, "telegram_sessions")) {
+      const fallback = await loadFallbackAccountSession(sessionClient, userId);
+      if (!fallback.session) return { session: null, error: fallback.error, source: "site_settings" };
+      if (sessionString && fallback.session.session_string !== sessionString) {
+        return { session: null, error: null, source: "site_settings" };
+      }
       return { session: fallback.session, error: fallback.error, source: "site_settings" };
     }
     return { session: null, error, source: "telegram_sessions" };
   }
 
-  return { session: data as AccountSessionRecord | null, error: null, source: "telegram_sessions" };
+  const session = Array.isArray(data) ? (data[0] as AccountSessionRecord | undefined) : null;
+  return { session: session || null, error: null, source: "telegram_sessions" };
 };
 
 const upsertAccountSession = async (
@@ -225,7 +263,7 @@ const upsertAccountSession = async (
         mentions_channel_id: session.mentions_channel_id,
         updated_at: session.updated_at ?? new Date().toISOString(),
       },
-      { onConflict: "user_id" },
+      { onConflict: "user_id,session_string" },
     );
 
   if (error) {
@@ -245,16 +283,34 @@ const upsertAccountSession = async (
 const deleteAccountSession = async (
   sessionClient: ReturnType<typeof createClient>,
   userId: string,
+  sessionString?: string,
 ): Promise<{ error: any; source: "telegram_sessions" | "site_settings" }> => {
-  const { error } = await sessionClient
+  let query = sessionClient
     .from("telegram_sessions")
     .delete()
     .eq("user_id", userId);
 
+  if (sessionString) {
+    query = query.eq("session_string", sessionString);
+  }
+
+  const { error } = await query;
+
   if (error) {
     if (isTableMissingError(error, "telegram_sessions")) {
-      const fallback = await deleteFallbackAccountSession(sessionClient, userId);
-      return { error: fallback.error, source: "site_settings" };
+      if (!sessionString) {
+        const fallback = await deleteFallbackAccountSession(sessionClient, userId);
+        return { error: fallback.error, source: "site_settings" };
+      }
+
+      const fallbackLoad = await loadFallbackAccountSession(sessionClient, userId);
+      if (fallbackLoad.error) return { error: fallbackLoad.error, source: "site_settings" };
+      if (fallbackLoad.session?.session_string !== sessionString) {
+        return { error: null, source: "site_settings" };
+      }
+
+      const fallbackDelete = await deleteFallbackAccountSession(sessionClient, userId);
+      return { error: fallbackDelete.error, source: "site_settings" };
     }
     return { error, source: "telegram_sessions" };
   }
