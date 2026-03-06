@@ -4,7 +4,7 @@ import { db, getAuthClient } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { 
   Loader2, Smartphone, Crown, Plus, Trash2, 
-  ChevronDown, ChevronUp, LogOut, Check, WifiOff,
+  ChevronDown, ChevronUp, LogOut, Check,
   User as UserIcon, ShoppingCart
 } from "lucide-react";
 import { toast } from "sonner";
@@ -27,8 +27,7 @@ interface SessionsPanelProps {
   activeSessionString: string;
   maxSessions: number;
   hasSubscription: boolean;
-  subscriptionEndsAt?: string | null;
-  onSwitchSession: (sessionString: string, user: any) => void;
+  onSwitchSession: (sessionString: string, user: any) => Promise<void> | void;
   onLogout: () => void;
   onAddNewSession: () => void;
 }
@@ -37,7 +36,6 @@ const SessionsPanel = ({
   activeSessionString,
   maxSessions,
   hasSubscription,
-  subscriptionEndsAt,
   onSwitchSession,
   onLogout,
   onAddNewSession,
@@ -50,7 +48,7 @@ const SessionsPanel = ({
 
   useEffect(() => {
     fetchSessions();
-  }, []);
+  }, [activeSessionString]);
 
   const fetchSessions = async () => {
     try {
@@ -62,7 +60,7 @@ const SessionsPanel = ({
         .from("telegram_sessions")
         .select("id, session_string, telegram_user, created_at")
         .eq("user_id", session.user.id)
-        .order("created_at", { ascending: true });
+        .order("updated_at", { ascending: false });
 
       setSessions((data as SavedSession[]) || []);
     } catch (err) {
@@ -76,7 +74,7 @@ const SessionsPanel = ({
     if (s.session_string === activeSessionString) return;
     setSwitching(s.id);
     try {
-      onSwitchSession(s.session_string, s.telegram_user);
+      await onSwitchSession(s.session_string, s.telegram_user);
     } finally {
       setSwitching(null);
     }
@@ -130,7 +128,7 @@ const SessionsPanel = ({
             <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
               <Smartphone className="h-5 w-5 text-primary" />
             </div>
-            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-green-500 border-2 border-card" />
+            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-primary border-2 border-card" />
           </div>
           <div className="text-right">
             <p className="text-sm font-semibold text-foreground">{activeName}</p>
@@ -141,7 +139,7 @@ const SessionsPanel = ({
         </div>
         <div className="flex items-center gap-2">
           {hasSubscription && (
-            <span className="text-xs px-2 py-1 rounded-full bg-green-500/10 text-green-600 dark:text-green-400 font-medium flex items-center gap-1">
+            <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary font-medium flex items-center gap-1">
               <Crown className="h-3 w-3" /> مشترك
             </span>
           )}
