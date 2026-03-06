@@ -855,22 +855,34 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
       // التعامل مع الاشتراك الإجباري
       if (errMsg.includes('CHAT_WRITE_FORBIDDEN') || errMsg.includes('CHANNEL_PRIVATE') || 
           errMsg.includes('cannot write') || errMsg.includes('not subscribed') ||
-          errMsg.includes('غير مشترك')) {
+          errMsg.includes('غير مشترك') || errMsg.includes('CHAT_RESTRICTED') ||
+          errMsg.includes('USER_BANNED_IN_CHANNEL') || errMsg.includes('FORBIDDEN')) {
         console.log(`🔐 Detected forced subscription for group ${groupId}, attempting auto-join...`);
         
         try {
-          const peer = await client.getEntity(BigInt(groupId));
-          const result = await handleForcedSubscription({ client, peer, groupId });
+          const groupPeer = await client.getEntity(BigInt(groupId));
+          const result = await handleForcedSubscription({ client, peer: groupPeer, groupId });
           
           if (result.joined && result.channels.length > 0) {
-            // إرسال إشعار
-            const groupTitle = peer.title || groupId;
+            const groupTitle = groupPeer.title || groupId;
             await notifyForcedJoin(client, notifChannelEntity, groupTitle, result.channels);
             
-            // انتظار ثانيتين ثم إعادة المحاولة
-            await new Promise(r => setTimeout(r, 2000));
+            // انتظار 5 ثوان بعد الانضمام وضغط التحقق
+            await new Promise(r => setTimeout(r, 5000));
             try {
-              await client.sendMessage(peer, { message });
+              if (mediaBuffer) {
+                const isSticker = mediaSendType === 'sticker';
+                const forceDoc = mediaSendType === 'document';
+                const finalFileName = isSticker ? 'sticker.webp' : (mediaFileName || 'file');
+                await client.sendFile(groupPeer, {
+                  file: mediaBuffer,
+                  caption: isSticker ? '' : (message || ''),
+                  fileName: finalFileName,
+                  forceDocument: forceDoc,
+                });
+              } else {
+                await client.sendMessage(groupPeer, { message });
+              }
               sentCount++;
               console.log(`✅ Auto-publish [${taskId}]: Retry succeeded for group ${groupId} after forced join`);
             } catch (retryErr) {
