@@ -585,21 +585,16 @@ serve(async (req) => {
           );
         }
 
-        const { data: existingSession, error: existingSessionError } = await sessionClient!
-          .from("telegram_sessions")
-          .select("selected_groups, telegram_user")
-          .eq("user_id", accountUserId)
-          .maybeSingle();
-
-        if (existingSessionError) {
-          console.error("❌ Load existing account session failed:", existingSessionError);
+        const loaded = await loadAccountSession(sessionClient!, accountUserId!);
+        if (loaded.error) {
+          console.error("❌ Load existing account session failed:", loaded.error);
           return new Response(
-            JSON.stringify({ success: false, error: existingSessionError.message }),
+            JSON.stringify({ success: false, error: loaded.error.message }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
-        const existingPayload = parseStoredSessionPayload(existingSession?.selected_groups);
+        const existingPayload = parseStoredSessionPayload(loaded.session?.selected_groups);
         const incomingGroups = Array.isArray(reqBody.selectedGroups)
           ? reqBody.selectedGroups
           : existingPayload.groups;
@@ -613,30 +608,25 @@ serve(async (req) => {
 
         const mergedTelegramUser = reqBody.telegramUser !== undefined
           ? reqBody.telegramUser
-          : parseMaybeJson(existingSession?.telegram_user, null);
+          : parseMaybeJson(loaded.session?.telegram_user, null);
 
         const selectedGroupsPayload = {
           groups: incomingGroups,
           automation: mergedAutomation,
         };
 
-        const { error } = await sessionClient!
-          .from("telegram_sessions")
-          .upsert(
-            {
-              user_id: accountUserId,
-              session_string: sessionString,
-              telegram_user: serializeMaybeJson(mergedTelegramUser),
-              selected_groups: serializeMaybeJson(selectedGroupsPayload),
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "user_id" }
-          );
+        const saveResult = await upsertAccountSession(sessionClient!, accountUserId!, {
+          session_string: sessionString,
+          telegram_user: mergedTelegramUser,
+          selected_groups: selectedGroupsPayload,
+          mentions_channel_id: loaded.session?.mentions_channel_id ?? null,
+          updated_at: new Date().toISOString(),
+        });
 
-        if (error) {
-          console.error("❌ Save account session failed:", error);
+        if (saveResult.error) {
+          console.error("❌ Save account session failed:", saveResult.error);
           return new Response(
-            JSON.stringify({ success: false, error: error.message }),
+            JSON.stringify({ success: false, error: saveResult.error.message }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
