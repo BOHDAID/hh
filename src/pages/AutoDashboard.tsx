@@ -349,9 +349,15 @@ const AutoDashboard = () => {
 
   const handleSendCode = async () => {
     if (!apiId || !apiHash || !phone) { toast.error("يرجى ملء جميع الحقول"); return; }
+    // تنظيف رقم الهاتف - إزالة المسافات والشرطات وإضافة + إذا لم تكن موجودة
+    let cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
+    if (!cleanPhone.startsWith('+')) {
+      cleanPhone = '+' + cleanPhone;
+    }
+    if (cleanPhone.length < 8) { toast.error("رقم الهاتف قصير جداً. تأكد من إدخال رمز الدولة (مثل: +966...)"); return; }
     setLoading(true); setErrorMsg("");
     try {
-      const result = await callAction("tg-send-code", { apiId, apiHash, phone });
+      const result = await callAction("tg-send-code", { apiId, apiHash, phone: cleanPhone });
       setPhoneCodeHash(result.phoneCodeHash || "");
       setCurrentStep("otp");
       toast.success("تم إرسال الرمز إلى حسابك على Telegram");
