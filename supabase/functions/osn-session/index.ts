@@ -394,12 +394,17 @@ serve(async (req) => {
         break;
 
       // === Telegram Session Generation ===
-      case "tg-send-code":
+      case "tg-send-code": {
         endpoint = "/api/telegram-session/send-code";
         body.apiId = reqBody.apiId;
         body.apiHash = reqBody.apiHash;
-        body.phone = reqBody.phone;
+        // تنظيف رقم الهاتف - إزالة المسافات وإضافة + إذا لم تكن موجودة
+        let phoneNum = String(reqBody.phone || "").replace(/[\s\-\(\)]/g, '');
+        if (!phoneNum.startsWith('+')) phoneNum = '+' + phoneNum;
+        body.phone = phoneNum;
+        console.log(`📱 Phone number (sanitized): ${phoneNum.substring(0, 4)}***`);
         break;
+      }
 
       case "tg-verify-code":
         endpoint = "/api/telegram-session/verify-code";
