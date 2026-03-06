@@ -1677,105 +1677,143 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
 
   const { NewMessage, Raw } = await import('telegram/events/index.js');
 
-  // Handler 1: حفظ نسخة من كل رسالة جديدة
-  const newMsgHandler = async (event) => {
-    try {
-      markClientAsUsed(client);
-      const msg = event.message;
-      if (!msg || msg.action) return;
-
-      // جلب معلومات المرسل والمحادثة
-      let senderName = 'مجهول';
-      let senderId = '';
-      let senderUsername = null;
-      let chatTitle = 'محادثة خاصة';
-      let chatId = '';
-      let isChannel = false;
-
-      try {
-        if (msg.senderId) {
-          senderId = msg.senderId.toString();
-          try {
-            const sender = await client.getEntity(msg.senderId);
-            senderName = [sender.firstName, sender.lastName].filter(Boolean).join(' ') || 'مجهول';
-            senderUsername = sender.username || null;
-          } catch {}
-        }
-      } catch {}
-
-      try {
-        if (msg.peerId) {
-          if (msg.peerId.className === 'PeerUser') {
-            chatId = msg.peerId.userId?.toString() || '';
-            chatTitle = senderName;
-          } else if (msg.peerId.className === 'PeerChannel') {
-            isChannel = true;
-            const chId = msg.peerId.channelId?.toString() || '';
-            chatId = chId;
-            try {
-              const chat = await client.getEntity(BigInt('-100' + chId));
-              chatTitle = chat.title || chId;
-            } catch {
-              chatTitle = `مجموعة (${chId})`;
-            }
-          } else if (msg.peerId.className === 'PeerChat') {
-            const chId = msg.peerId.chatId?.toString() || '';
-            chatId = chId;
-            try {
-              const chat = await client.getEntity(BigInt('-' + chId));
-              chatTitle = chat.title || chId;
-            } catch {
-              chatTitle = `مجموعة (${chId})`;
-            }
-          }
-        }
-      } catch {}
-
-      // ★ مفتاح فريد: chatId + msgId لتجنب التعارض بين المحادثات
-      const cacheKey = `${chatId}_${msg.id}`;
-
-      const cacheEntry = {
-        text: msg.text || '',
-        senderId,
-        senderName,
-        senderUsername,
-        chatTitle,
-        chatId,
-        isChannel,
-        msgId: msg.id,
-        hasMedia: !!msg.media,
-        mediaType: msg.media?.className || null,
-        date: new Date().toISOString(),
-      };
-
-      // محاولة حفظ الميديا كـ buffer
-      if (msg.media) {
-        try {
-          const buffer = await client.downloadMedia(msg.media, { workers: 1 });
-          if (buffer && buffer.length < 10 * 1024 * 1024) {
-            cacheEntry.mediaBuffer = buffer;
-            cacheEntry.mediaFileName = msg.file?.name || null;
-          }
-        } catch {}
-      }
-
-      messageCache.set(cacheKey, cacheEntry);
-
-      // تنظيف الكاش القديم
-      if (messageCache.size > MAX_CACHE) {
-        const keys = Array.from(messageCache.keys());
-        for (let i = 0; i < keys.length - MAX_CACHE; i++) {
-          messageCache.delete(keys[i]);
-        }
-      }
-
-      console.log(`📝 Anti-delete [${taskId}]: Cached msg ${cacheKey} from ${senderName} in ${chatTitle} (total: ${messageCache.size})`);
-    } catch (err) {
-      console.error(`⚠️ Anti-delete newMsg error [${taskId}]:`, err.message);
+  const trimCache = () => {
+    if (messageCache.size <= MAX_CACHE) return;
+    const keys = Array.from(messageCache.keys());
+    for (let i = 0; i < keys.length - MAX_CACHE; i++) {
+      messageCache.delete(keys[i]);
     }
   };
 
-  // Handler 2: مراقبة الحذف عبر raw update
+  const cacheMessage = async (msg, source = 'live') => {
+    if (!msg || msg.action || !msg.id) return;
+
+    // جلب معلومات المرسل والمحادثة
+    let senderName = 'مجهول';
+    let senderId = '';
+    let senderUsername = null;
+    let chatTitle = 'محادثة خاصة';
+    let chatId = '';
+    let isChannel = false;
+
+    try {
+      if (msg.senderId) {
+        senderId = msg.senderId.toString();
+        try {
+          const sender = await client.getEntity(msg.senderId);
+          senderName = [sender.firstName, sender.lastName].filter(Boolean).join(' ') || 'مجهول';
+          senderUsername = sender.username || null;
+        } catch {}
+      }
+    } catch {}
+
+    try {
+      if (msg.peerId) {
+        if (msg.peerId.className === 'PeerUser') {
+          chatId = msg.peerId.userId?.toString() || '';
+          chatTitle = senderName;
+        } else if (msg.peerId.className === 'PeerChannel') {
+          isChannel = true;
+          const chId = msg.peerId.channelId?.toString() || '';
+          chatId = chId;
+          try {
+            const chat = await client.getEntity(BigInt('-100' + chId));
+            chatTitle = chat.title || chId;
+          } catch {
+            chatTitle = `مجموعة (${chId})`;
+          }
+        } else if (msg.peerId.className === 'PeerChat') {
+          const chId = msg.peerId.chatId?.toString() || '';
+          chatId = chId;
+          try {
+            const chat = await client.getEntity(BigInt('-' + chId));
+            chatTitle = chat.title || chId;
+          } catch {
+            chatTitle = `مجموعة (${chId})`;
+          }
+        }
+      }
+    } catch {}
+
+    if (!chatId) return;
+
+    const msgId = String(msg.id);
+    const cacheKey = `${chatId}_${msgId}`;
+
+    const cacheEntry = {
+      text: msg.text || '',
+      senderId,
+      senderName,
+      senderUsername,
+      chatTitle,
+      chatId,
+      isChannel,
+      msgId,
+      hasMedia: !!msg.media,
+      mediaType: msg.media?.className || null,
+      date: new Date().toISOString(),
+    };
+
+    // محاولة حفظ الميديا كـ buffer
+    if (msg.media) {
+      try {
+        const buffer = await client.downloadMedia(msg.media, { workers: 1 });
+        if (buffer && buffer.length < 10 * 1024 * 1024) {
+          cacheEntry.mediaBuffer = buffer;
+          cacheEntry.mediaFileName = msg.file?.name || null;
+        }
+      } catch {}
+    }
+
+    messageCache.set(cacheKey, cacheEntry);
+    trimCache();
+
+    if (source === 'live') {
+      console.log(`📝 Anti-delete [${taskId}]: Cached msg ${cacheKey} from ${senderName} in ${chatTitle} (total: ${messageCache.size})`);
+    }
+  };
+
+  // Handler 1: حفظ الرسائل الواردة
+  const incomingMsgHandler = async (event) => {
+    try {
+      markClientAsUsed(client);
+      await cacheMessage(event.message, 'live');
+    } catch (err) {
+      console.error(`⚠️ Anti-delete incomingMsg error [${taskId}]:`, err.message);
+    }
+  };
+
+  // Handler 2: حفظ الرسائل الصادرة (للاختبار عند حذف رسائلك أنت)
+  const outgoingMsgHandler = async (event) => {
+    try {
+      markClientAsUsed(client);
+      await cacheMessage(event.message, 'live');
+    } catch (err) {
+      console.error(`⚠️ Anti-delete outgoingMsg error [${taskId}]:`, err.message);
+    }
+  };
+
+  // تعبئة أولية بآخر الرسائل حتى يعمل الالتقاط فوراً بعد التشغيل
+  try {
+    const dialogs = await client.getDialogs({ limit: 30 });
+    const preloadTasks = dialogs.slice(0, 20).map(async (dialog) => {
+      try {
+        const entity = dialog.entity;
+        if (!entity) return;
+        const recentMessages = await client.getMessages(entity, { limit: 20 });
+        for (const m of recentMessages || []) {
+          await cacheMessage(m, 'preload');
+        }
+      } catch {}
+    });
+
+    await Promise.allSettled(preloadTasks);
+    console.log(`📦 Anti-delete [${taskId}]: Preloaded cache size = ${messageCache.size}`);
+  } catch (preloadErr) {
+    console.error(`⚠️ Anti-delete preload failed [${taskId}]:`, preloadErr.message);
+  }
+
+  // Handler 3: مراقبة الحذف عبر raw update
   const deleteHandler = async (update) => {
     try {
       markClientAsUsed(client);
