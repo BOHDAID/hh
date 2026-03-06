@@ -1825,7 +1825,8 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
         updateChatId = update.channelId.toString();
       }
 
-      for (const msgId of deletedIds) {
+      for (const msgIdRaw of deletedIds) {
+        const msgId = String(msgIdRaw);
         // البحث في الكاش بعدة احتمالات
         let cached = null;
         let foundKey = null;
