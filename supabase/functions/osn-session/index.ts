@@ -655,21 +655,18 @@ serve(async (req) => {
       }
 
       case "tg-delete-account-session": {
-        const { error } = await sessionClient!
-          .from("telegram_sessions")
-          .delete()
-          .eq("user_id", accountUserId);
+        const deleted = await deleteAccountSession(sessionClient!, accountUserId!);
 
-        if (error) {
-          console.error("❌ Delete account session failed:", error);
+        if (deleted.error) {
+          console.error("❌ Delete account session failed:", deleted.error);
           return new Response(
-            JSON.stringify({ success: false, error: error.message }),
+            JSON.stringify({ success: false, error: deleted.error.message }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
         return new Response(
-          JSON.stringify({ success: true }),
+          JSON.stringify({ success: true, storage_source: deleted.source }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
