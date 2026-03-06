@@ -729,17 +729,15 @@ function scheduleForcedLeave(client, entity, channelId, channelTitle) {
       if (notificationClient && notificationChannelEntity) {
         try {
           const notif = [
-            `📤 **خروج تلقائي**`,
-            `━━━━━━━━━━━━━━━`,
+            `📤 <b>خروج تلقائي</b>`,
             ``,
-            `🚪 **القناة:** ${channelTitle}`,
-            `📌 **السبب:** انتهاء مدة 24 ساعة`,
-            `⏱ **النوع:** اشتراك إجباري`,
+            `🚪 القناة: <b>${channelTitle}</b>`,
+            `📌 السبب: انتهاء مدة 24 ساعة`,
+            `⏱ النوع: اشتراك إجباري`,
             ``,
-            `━━━━━━━━━━━━━━━`,
-            `🕐 ${new Date().toLocaleString('ar-u-nu-latn')}`,
+            `🕐 <i>${new Date().toLocaleString('ar-u-nu-latn')}</i>`,
           ].join('\n');
-          await notificationClient.sendMessage(notificationChannelEntity, { message: notif, parseMode: 'md' });
+          await notificationClient.sendMessage(notificationChannelEntity, { message: notif, parseMode: 'html' });
         } catch {}
       }
     } catch (err) {
@@ -766,20 +764,18 @@ async function notifyForcedJoin(client, channelEntity, groupTitle, joinedChannel
   try {
     const channelsList = joinedChannels.map((c, i) => `  ${i + 1}. ${c.title}`).join('\n');
     const notif = [
-      `🔐 **اشتراك إجباري تلقائي**`,
-      `━━━━━━━━━━━━━━━`,
+      `🔐 <b>اشتراك إجباري تلقائي</b>`,
       ``,
-      `💬 **المجموعة:** ${groupTitle}`,
+      `💬 المجموعة: <b>${groupTitle}</b>`,
       ``,
-      `📋 **القنوات المنضمة:**`,
+      `📋 القنوات المنضمة:`,
       channelsList,
       ``,
-      `⏳ **الخروج التلقائي:** بعد 24 ساعة`,
+      `⏳ الخروج التلقائي: بعد 24 ساعة`,
       ``,
-      `━━━━━━━━━━━━━━━`,
-      `🕐 ${new Date().toLocaleString('ar-u-nu-latn')}`,
+      `🕐 <i>${new Date().toLocaleString('ar-u-nu-latn')}</i>`,
     ].join('\n');
-    await client.sendMessage(channelEntity, { message: notif, parseMode: 'md' });
+    await client.sendMessage(channelEntity, { message: notif, parseMode: 'html' });
   } catch (err) {
     console.error(`❌ Notify forced join error:`, err.message);
   }
@@ -1180,8 +1176,8 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
       // إرسال إشعار للمحفوظات
       try {
         await client.sendMessage('me', {
-          message: `⛔ **توقف النشر**\n━━━━━━━━━━━━━━━\n💬 **المجموعة:** ${chat.title}\n👮 **المشرف:** ${senderName}\n📝 **رسالته:** ${(msg.message || '').substring(0, 200)}\n\n💡 للاستئناف: رد على رسالة المشرف في المجموعة`,
-          parseMode: 'md',
+          message: `⛔ <b>توقف النشر</b>\n\n💬 المجموعة: <b>${chat.title}</b>\n👮 المشرف: <b>${senderName}</b>\n📝 رسالته: <i>${(msg.message || '').substring(0, 200)}</i>\n\n💡 للاستئناف: رد على رسالة المشرف في المجموعة`,
+          parseMode: 'html',
         });
       } catch {}
 
@@ -1189,8 +1185,8 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
       if (notifChannelEntity) {
         try {
           await client.sendMessage(notifChannelEntity, {
-            message: `⛔ **تجميد مجموعة**\n━━━━━━━━━━━━━━━\n💬 **المجموعة:** ${chat.title}\n👮 **المشرف:** ${senderName}\n📝 **رسالته:** ${(msg.message || '').substring(0, 200)}\n🕐 ${new Date().toLocaleString('ar-u-nu-latn')}`,
-            parseMode: 'md',
+            message: `⛔ <b>تجميد مجموعة</b>\n\n💬 المجموعة: <b>${chat.title}</b>\n👮 المشرف: <b>${senderName}</b>\n📝 رسالته: <i>${(msg.message || '').substring(0, 200)}</i>\n\n🕐 <i>${new Date().toLocaleString('ar-u-nu-latn')}</i>`,
+            parseMode: 'html',
           });
         } catch {}
       }
@@ -1233,16 +1229,16 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
 
       try {
         await client.sendMessage('me', {
-          message: `✅ **عاد النشر**\n━━━━━━━━━━━━━━━\n💬 **المجموعة:** ${chat.title}\n🕐 ${new Date().toLocaleString('ar-u-nu-latn')}`,
-          parseMode: 'md',
+          message: `✅ <b>عاد النشر</b>\n\n💬 المجموعة: <b>${chat.title}</b>\n\n🕐 <i>${new Date().toLocaleString('ar-u-nu-latn')}</i>`,
+          parseMode: 'html',
         });
       } catch {}
 
       if (notifChannelEntity) {
         try {
           await client.sendMessage(notifChannelEntity, {
-            message: `✅ **استئناف النشر**\n━━━━━━━━━━━━━━━\n💬 **المجموعة:** ${chat.title}\n🕐 ${new Date().toLocaleString('ar-u-nu-latn')}`,
-            parseMode: 'md',
+            message: `✅ <b>استئناف النشر</b>\n\n💬 المجموعة: <b>${chat.title}</b>\n\n🕐 <i>${new Date().toLocaleString('ar-u-nu-latn')}</i>`,
+            parseMode: 'html',
           });
         } catch {}
       }
@@ -1742,17 +1738,21 @@ async function startMentionsMonitor({ sessionString, channelId, taskId }) {
       // إرسال إشعار للقناة
       const senderName = [sender.firstName, sender.lastName].filter(Boolean).join(' ') || 'مجهول';
       const senderTag = sender.username ? ` (@${sender.username})` : '';
+      const msgText = text ? text.substring(0, 300) : '(بدون نص)';
       const notifText = [
-        `🔔 منشن / رد جديد`,
-        `━━━━━━━━━━━━━━━`,
-        `👤 من: ${senderName}${senderTag}`,
-        `💬 المجموعة: ${chat.title}`,
-        text ? `📝 الرسالة: ${text.substring(0, 300)}` : `📝 الرسالة: (بدون نص)`,
-        messageLink ? `🔗 الرابط: ${messageLink}` : null,
-        `🕐 ${new Date().toLocaleString('ar-u-nu-latn')}`,
+        `🔔 <b>منشن / رد جديد</b>`,
+        ``,
+        `👤 من: <b>${senderName}</b>${senderTag}`,
+        `💬 المجموعة: <b>${chat.title}</b>`,
+        ``,
+        `📝 الرسالة:`,
+        `<blockquote>${msgText}</blockquote>`,
+        messageLink ? `\n🔗 <a href="${messageLink}">فتح الرسالة</a>` : null,
+        ``,
+        `🕐 <i>${new Date().toLocaleString('ar-u-nu-latn')}</i>`,
       ].filter(Boolean).join('\n');
 
-      await client.sendMessage(channelEntity, { message: notifText });
+      await client.sendMessage(channelEntity, { message: notifText, parseMode: 'html' });
       console.log(`📨 Mention forwarded to channel [${taskId}] from ${sender.firstName}`);
     } catch (err) {
       console.error(`❌ Mention handler error [${taskId}]:`, err.message);
@@ -2010,20 +2010,18 @@ async function startAutoReply({ sessionString, replyMessage, taskId, mentionsCha
       if (channelEntity) {
         try {
           const notif = [
-            `💬 **رد تلقائي**`,
-            `━━━━━━━━━━━━━━━`,
+            `💬 <b>رد تلقائي</b>`,
             ``,
-            `👤 **المرسل:** ${senderName}${senderTag}`,
+            `👤 المرسل: <b>${senderName}</b>${senderTag}`,
             ``,
-            `📩 **رسالته:**`,
-            `> ${(msg.text || '').substring(0, 200)}`,
+            `📩 رسالته:`,
+            `<blockquote>${(msg.text || '').substring(0, 200)}</blockquote>`,
             ``,
-            `✅ **تم الرد تلقائياً**`,
+            `✅ تم الرد تلقائياً`,
             ``,
-            `━━━━━━━━━━━━━━━`,
-            `🕐 ${new Date().toLocaleString('ar-u-nu-latn')}`,
+            `🕐 <i>${new Date().toLocaleString('ar-u-nu-latn')}</i>`,
           ].join('\n');
-          await client.sendMessage(channelEntity, { message: notif, parseMode: 'md' });
+          await client.sendMessage(channelEntity, { message: notif, parseMode: 'html' });
         } catch {}
       }
     } catch (err) {
@@ -2357,26 +2355,29 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
         const senderTag = cached.senderUsername ? ` (@${cached.senderUsername})` : '';
 
         const notifLines = [
-          `🗑️ رسالة محذوفة`,
-          `━━━━━━━━━━━━━━━`,
-          `👤 من: ${cached.senderName}${senderTag}`,
-          `💬 المحادثة: ${cached.chatTitle}`,
+          `🗑️ <b>رسالة محذوفة</b>`,
+          ``,
+          `👤 من: <b>${cached.senderName}</b>${senderTag}`,
+          `💬 المحادثة: <b>${cached.chatTitle}</b>`,
         ];
 
         if (cached.text) {
-          notifLines.push(`📝 النص: ${cached.text.substring(0, 500)}`);
+          notifLines.push(``);
+          notifLines.push(`📝 النص:`);
+          notifLines.push(`<blockquote>${cached.text.substring(0, 500)}</blockquote>`);
         }
 
         if (cached.hasMedia) {
           notifLines.push(`📎 نوع المرفق: ${cached.mediaType || 'ملف'}`);
         }
 
-        notifLines.push(`━━━━━━━━━━━━━━━`);
-        notifLines.push(`🕐 حُذفت: ${new Date().toLocaleString('ar-u-nu-latn')}`);
-        notifLines.push(`📅 أُرسلت: ${new Date(cached.date).toLocaleString('ar-u-nu-latn')}`);
+        notifLines.push(``);
+        notifLines.push(`🕐 حُذفت: <i>${new Date().toLocaleString('ar-u-nu-latn')}</i>`);
+        notifLines.push(`📅 أُرسلت: <i>${new Date(cached.date).toLocaleString('ar-u-nu-latn')}</i>`);
 
         await client.sendMessage(channelEntity, {
           message: notifLines.join('\n'),
+          parseMode: 'html',
         });
 
         // إرسال الميديا المحفوظة
