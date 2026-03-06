@@ -711,22 +711,22 @@ serve(async (req) => {
       }
 
       case "tg-get-mentions-channel": {
-        const { data, error } = await sessionClient!
-          .from("telegram_sessions")
-          .select("mentions_channel_id")
-          .eq("user_id", accountUserId)
-          .maybeSingle();
+        const loaded = await loadAccountSession(sessionClient!, accountUserId!);
 
-        if (error) {
-          console.error("❌ Get mentions channel failed:", error);
+        if (loaded.error) {
+          console.error("❌ Get mentions channel failed:", loaded.error);
           return new Response(
-            JSON.stringify({ success: false, error: error.message }),
+            JSON.stringify({ success: false, error: loaded.error.message }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
         return new Response(
-          JSON.stringify({ success: true, mentionsChannelId: data?.mentions_channel_id || null }),
+          JSON.stringify({
+            success: true,
+            mentionsChannelId: loaded.session?.mentions_channel_id || null,
+            storage_source: loaded.source,
+          }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
