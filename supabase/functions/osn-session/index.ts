@@ -10,6 +10,7 @@ const corsHeaders = {
 const ACCOUNT_SESSION_ACTIONS = new Set([
   "tg-save-account-session",
   "tg-get-account-session",
+  "tg-list-account-sessions",
   "tg-delete-account-session",
   "tg-save-mentions-channel",
   "tg-get-mentions-channel",
@@ -187,25 +188,63 @@ const deleteFallbackAccountSession = async (
   return { error };
 };
 
-const loadAccountSession = async (
+const listAccountSessions = async (
   sessionClient: ReturnType<typeof createClient>,
   userId: string,
-): Promise<{ session: AccountSessionRecord | null; error: any; source: "telegram_sessions" | "site_settings" }> => {
+): Promise<{ sessions: AccountSessionRecord[]; error: any; source: "telegram_sessions" | "site_settings" }> => {
   const { data, error } = await sessionClient
     .from("telegram_sessions")
     .select("session_string, telegram_user, selected_groups, mentions_channel_id, updated_at")
     .eq("user_id", userId)
-    .maybeSingle();
+    .order("updated_at", { ascending: false });
 
   if (error) {
     if (isTableMissingError(error, "telegram_sessions")) {
       const fallback = await loadFallbackAccountSession(sessionClient, userId);
+      return {
+        sessions: fallback.session ? [fallback.session] : [],
+        error: fallback.error,
+        source: "site_settings",
+      };
+    }
+    return { sessions: [], error, source: "telegram_sessions" };
+  }
+
+  return { sessions: (data as AccountSessionRecord[]) || [], error: null, source: "telegram_sessions" };
+};
+
+const loadAccountSession = async (
+  sessionClient: ReturnType<typeof createClient>,
+  userId: string,
+  sessionString?: string,
+): Promise<{ session: AccountSessionRecord | null; error: any; source: "telegram_sessions" | "site_settings" }> => {
+  let query = sessionClient
+    .from("telegram_sessions")
+    .select("session_string, telegram_user, selected_groups, mentions_channel_id, updated_at")
+    .eq("user_id", userId);
+
+  if (sessionString) {
+    query = query.eq("session_string", sessionString);
+  }
+
+  const { data, error } = await query
+    .order("updated_at", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    if (isTableMissingError(error, "telegram_sessions")) {
+      const fallback = await loadFallbackAccountSession(sessionClient, userId);
+      if (!fallback.session) return { session: null, error: fallback.error, source: "site_settings" };
+      if (sessionString && fallback.session.session_string !== sessionString) {
+        return { session: null, error: null, source: "site_settings" };
+      }
       return { session: fallback.session, error: fallback.error, source: "site_settings" };
     }
     return { session: null, error, source: "telegram_sessions" };
   }
 
-  return { session: data as AccountSessionRecord | null, error: null, source: "telegram_sessions" };
+  const session = Array.isArray(data) ? (data[0] as AccountSessionRecord | undefined) : null;
+  return { session: session || null, error: null, source: "telegram_sessions" };
 };
 
 const upsertAccountSession = async (
@@ -224,7 +263,7 @@ const upsertAccountSession = async (
         mentions_channel_id: session.mentions_channel_id,
         updated_at: session.updated_at ?? new Date().toISOString(),
       },
-      { onConflict: "user_id" },
+      { onConflict: "user_id,session_string" },
     );
 
   if (error) {
@@ -244,16 +283,34 @@ const upsertAccountSession = async (
 const deleteAccountSession = async (
   sessionClient: ReturnType<typeof createClient>,
   userId: string,
+  sessionString?: string,
 ): Promise<{ error: any; source: "telegram_sessions" | "site_settings" }> => {
-  const { error } = await sessionClient
+  let query = sessionClient
     .from("telegram_sessions")
     .delete()
     .eq("user_id", userId);
 
+  if (sessionString) {
+    query = query.eq("session_string", sessionString);
+  }
+
+  const { error } = await query;
+
   if (error) {
     if (isTableMissingError(error, "telegram_sessions")) {
-      const fallback = await deleteFallbackAccountSession(sessionClient, userId);
-      return { error: fallback.error, source: "site_settings" };
+      if (!sessionString) {
+        const fallback = await deleteFallbackAccountSession(sessionClient, userId);
+        return { error: fallback.error, source: "site_settings" };
+      }
+
+      const fallbackLoad = await loadFallbackAccountSession(sessionClient, userId);
+      if (fallbackLoad.error) return { error: fallbackLoad.error, source: "site_settings" };
+      if (fallbackLoad.session?.session_string !== sessionString) {
+        return { error: null, source: "site_settings" };
+      }
+
+      const fallbackDelete = await deleteFallbackAccountSession(sessionClient, userId);
+      return { error: fallbackDelete.error, source: "site_settings" };
     }
     return { error, source: "telegram_sessions" };
   }
@@ -596,7 +653,7 @@ serve(async (req) => {
           );
         }
 
-        const loaded = await loadAccountSession(sessionClient!, accountUserId!);
+        const loaded = await loadAccountSession(sessionClient!, accountUserId!, sessionString);
         if (loaded.error) {
           console.error("❌ Load existing account session failed:", loaded.error);
           return new Response(
@@ -626,11 +683,15 @@ serve(async (req) => {
           automation: mergedAutomation,
         };
 
+        const mentionsChannelId = typeof reqBody.mentionsChannelId === "string"
+          ? reqBody.mentionsChannelId
+          : loaded.session?.mentions_channel_id ?? null;
+
         const saveResult = await upsertAccountSession(sessionClient!, accountUserId!, {
           session_string: sessionString,
           telegram_user: mergedTelegramUser,
           selected_groups: selectedGroupsPayload,
-          mentions_channel_id: loaded.session?.mentions_channel_id ?? null,
+          mentions_channel_id: mentionsChannelId,
           updated_at: new Date().toISOString(),
         });
 
@@ -649,7 +710,12 @@ serve(async (req) => {
       }
 
       case "tg-get-account-session": {
-        const loaded = await loadAccountSession(sessionClient!, accountUserId!);
+        const targetSessionString = typeof reqBody.sessionString === "string" ? reqBody.sessionString.trim() : "";
+        const loaded = await loadAccountSession(
+          sessionClient!,
+          accountUserId!,
+          targetSessionString || undefined,
+        );
 
         if (loaded.error) {
           console.error("❌ Get account session failed:", loaded.error);
@@ -665,8 +731,30 @@ serve(async (req) => {
         );
       }
 
+      case "tg-list-account-sessions": {
+        const listed = await listAccountSessions(sessionClient!, accountUserId!);
+
+        if (listed.error) {
+          console.error("❌ List account sessions failed:", listed.error);
+          return new Response(
+            JSON.stringify({ success: false, error: listed.error.message }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        return new Response(
+          JSON.stringify({ success: true, sessions: listed.sessions, storage_source: listed.source }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       case "tg-delete-account-session": {
-        const deleted = await deleteAccountSession(sessionClient!, accountUserId!);
+        const targetSessionString = typeof reqBody.sessionString === "string" ? reqBody.sessionString.trim() : "";
+        const deleted = await deleteAccountSession(
+          sessionClient!,
+          accountUserId!,
+          targetSessionString || undefined,
+        );
 
         if (deleted.error) {
           console.error("❌ Delete account session failed:", deleted.error);
@@ -684,7 +772,12 @@ serve(async (req) => {
 
       case "tg-save-mentions-channel": {
         const channelId = reqBody.mentionsChannelId || null;
-        const loaded = await loadAccountSession(sessionClient!, accountUserId!);
+        const targetSessionString = typeof reqBody.sessionString === "string" ? reqBody.sessionString.trim() : "";
+        const loaded = await loadAccountSession(
+          sessionClient!,
+          accountUserId!,
+          targetSessionString || undefined,
+        );
 
         if (loaded.error) {
           console.error("❌ Load session for mentions channel failed:", loaded.error);
@@ -703,6 +796,7 @@ serve(async (req) => {
 
         const saveResult = await upsertAccountSession(sessionClient!, accountUserId!, {
           ...loaded.session,
+          session_string: loaded.session.session_string,
           mentions_channel_id: channelId,
           updated_at: new Date().toISOString(),
         });
@@ -716,13 +810,18 @@ serve(async (req) => {
         }
 
         return new Response(
-          JSON.stringify({ success: true, storage_source: saveResult.source }),
+          JSON.stringify({ success: true, sessionString: loaded.session.session_string, storage_source: saveResult.source }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
       case "tg-get-mentions-channel": {
-        const loaded = await loadAccountSession(sessionClient!, accountUserId!);
+        const targetSessionString = typeof reqBody.sessionString === "string" ? reqBody.sessionString.trim() : "";
+        const loaded = await loadAccountSession(
+          sessionClient!,
+          accountUserId!,
+          targetSessionString || undefined,
+        );
 
         if (loaded.error) {
           console.error("❌ Get mentions channel failed:", loaded.error);
@@ -736,6 +835,7 @@ serve(async (req) => {
           JSON.stringify({
             success: true,
             mentionsChannelId: loaded.session?.mentions_channel_id || null,
+            sessionString: loaded.session?.session_string || null,
             storage_source: loaded.source,
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -750,7 +850,12 @@ serve(async (req) => {
           );
         }
 
-        const loaded = await loadAccountSession(sessionClient!, accountUserId!);
+        const targetSessionString = typeof reqBody.sessionString === "string" ? reqBody.sessionString.trim() : "";
+        const loaded = await loadAccountSession(
+          sessionClient!,
+          accountUserId!,
+          targetSessionString || undefined,
+        );
 
         if (loaded.error) {
           console.error("❌ Load session for automation state failed:", loaded.error);
@@ -778,6 +883,7 @@ serve(async (req) => {
 
         const saveResult = await upsertAccountSession(sessionClient!, accountUserId!, {
           ...loaded.session,
+          session_string: loaded.session.session_string,
           selected_groups: mergedPayload,
           updated_at: new Date().toISOString(),
         });
@@ -791,7 +897,7 @@ serve(async (req) => {
         }
 
         return new Response(
-          JSON.stringify({ success: true, storage_source: saveResult.source }),
+          JSON.stringify({ success: true, sessionString: loaded.session.session_string, storage_source: saveResult.source }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
