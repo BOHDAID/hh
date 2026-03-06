@@ -17,6 +17,7 @@ import {
   AlertCircle
 } from "lucide-react";
 import SecurityLog from "@/components/SecurityLog";
+import ProfileSessions from "@/components/user/ProfileSessions";
 import { invokeCloudFunctionPublic } from "@/lib/cloudFunctions";
 import { useTranslation } from "react-i18next";
 
@@ -298,6 +299,13 @@ const Profile = () => {
             </div>
           </div>
         </div>
+
+        {/* Telegram Sessions */}
+        {user && (
+          <div className="mt-6">
+            <ProfileSessions userId={user.id} />
+          </div>
+        )}
 
         {/* Security Log */}
         {user && (
