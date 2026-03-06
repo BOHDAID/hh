@@ -7,6 +7,7 @@ import telegramSessionRoutes from './src/routes/telegram-session.js';
 import telegramAutoRoutes from './src/routes/telegram-automation.js';
 import sessionManager from './src/services/session-manager.js';
 import telegramBot from './src/services/telegram-bot.js';
+import autoResumeAllTasks from './src/services/auto-resume.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -228,6 +229,16 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
   } catch (error) {
     console.error('❌ Telegram Bot failed to start:', error.message);
   }
+
+  // 🔄 استئناف مهام الأتمتة المحفوظة تلقائياً
+  console.log('🔄 Starting auto-resume of saved tasks...');
+  setTimeout(async () => {
+    try {
+      await autoResumeAllTasks();
+    } catch (error) {
+      console.error('❌ Auto-resume failed:', error.message);
+    }
+  }, 5000); // انتظار 5 ثوانٍ لضمان جاهزية السيرفر
 });
 
 // Keep-alive heartbeat (lightweight - no browser)
