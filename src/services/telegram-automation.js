@@ -1721,6 +1721,8 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
     return false;
   };
 
+  const { NewMessage, Raw } = await import('telegram/events/index.js');
+
   const cacheMessage = async (msg, source = 'live') => {
     if (!msg || msg.action || !msg.id) return;
 
