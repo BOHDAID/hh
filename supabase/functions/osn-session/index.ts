@@ -10,6 +10,7 @@ const corsHeaders = {
 const ACCOUNT_SESSION_ACTIONS = new Set([
   "tg-save-account-session",
   "tg-get-account-session",
+  "tg-list-account-sessions",
   "tg-delete-account-session",
   "tg-save-mentions-channel",
   "tg-get-mentions-channel",
