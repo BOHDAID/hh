@@ -1865,6 +1865,13 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
 
       for (const msgIdRaw of deletedIds) {
         const msgId = String(msgIdRaw);
+        const dedupScope = updateChatId || update.className || 'unknown';
+
+        if (shouldSkipDelete(dedupScope, msgId)) {
+          console.log(`↩️ Anti-delete [${taskId}]: Duplicate delete skipped for ${dedupScope}_${msgId}`);
+          continue;
+        }
+
         // البحث في الكاش بعدة احتمالات
         let cached = null;
         let foundKey = null;
