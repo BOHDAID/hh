@@ -7,6 +7,7 @@ import telegramSessionRoutes from './src/routes/telegram-session.js';
 import telegramAutoRoutes from './src/routes/telegram-automation.js';
 import sessionManager from './src/services/session-manager.js';
 import telegramBot from './src/services/telegram-bot.js';
+import autoResumeAllTasks from './src/services/auto-resume.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
