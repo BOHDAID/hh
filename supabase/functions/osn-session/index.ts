@@ -79,6 +79,188 @@ const parseStoredSessionPayload = (rawSelectedGroups: unknown) => {
   };
 };
 
+type AccountSessionRecord = {
+  session_string: string;
+  telegram_user: unknown;
+  selected_groups: unknown;
+  mentions_channel_id: string | null;
+  updated_at?: string | null;
+};
+
+const TELEGRAM_SESSION_FALLBACK_CATEGORY = "telegram_automation";
+
+const getFallbackSessionKey = (userId: string): string => `telegram_session_${userId}`;
+
+const isTableMissingError = (error: any, tableName: string): boolean => {
+  if (!error) return false;
+  return error.code === "PGRST205"
+    && typeof error.message === "string"
+    && error.message.includes(`'public.${tableName}'`);
+};
+
+const loadFallbackAccountSession = async (
+  sessionClient: ReturnType<typeof createClient>,
+  userId: string,
+): Promise<{ session: AccountSessionRecord | null; error: any }> => {
+  const key = getFallbackSessionKey(userId);
+  const { data, error } = await sessionClient
+    .from("site_settings")
+    .select("value")
+    .eq("key", key)
+    .maybeSingle();
+
+  if (error) return { session: null, error };
+
+  const parsed = parseMaybeJson<Record<string, unknown> | null>(data?.value, null);
+  if (!parsed || typeof parsed.session_string !== "string") {
+    return { session: null, error: null };
+  }
+
+  return {
+    session: {
+      session_string: parsed.session_string,
+      telegram_user: parsed.telegram_user ?? null,
+      selected_groups: parsed.selected_groups ?? null,
+      mentions_channel_id: typeof parsed.mentions_channel_id === "string" ? parsed.mentions_channel_id : null,
+      updated_at: typeof parsed.updated_at === "string" ? parsed.updated_at : null,
+    },
+    error: null,
+  };
+};
+
+const saveFallbackAccountSession = async (
+  sessionClient: ReturnType<typeof createClient>,
+  userId: string,
+  session: AccountSessionRecord,
+): Promise<{ error: any }> => {
+  const key = getFallbackSessionKey(userId);
+  const value = JSON.stringify(session);
+  const nowIso = new Date().toISOString();
+
+  const { data: existing, error: loadError } = await sessionClient
+    .from("site_settings")
+    .select("id")
+    .eq("key", key)
+    .limit(1);
+
+  if (loadError) return { error: loadError };
+
+  const existingId = existing?.[0]?.id;
+  if (existingId) {
+    const { error } = await sessionClient
+      .from("site_settings")
+      .update({
+        value,
+        is_sensitive: true,
+        category: TELEGRAM_SESSION_FALLBACK_CATEGORY,
+        updated_at: nowIso,
+      })
+      .eq("id", existingId);
+
+    return { error };
+  }
+
+  const { error } = await sessionClient
+    .from("site_settings")
+    .insert({
+      key,
+      value,
+      is_sensitive: true,
+      category: TELEGRAM_SESSION_FALLBACK_CATEGORY,
+      description: "Fallback Telegram automation session storage",
+      updated_at: nowIso,
+    });
+
+  return { error };
+};
+
+const deleteFallbackAccountSession = async (
+  sessionClient: ReturnType<typeof createClient>,
+  userId: string,
+): Promise<{ error: any }> => {
+  const key = getFallbackSessionKey(userId);
+  const { error } = await sessionClient
+    .from("site_settings")
+    .delete()
+    .eq("key", key);
+
+  return { error };
+};
+
+const loadAccountSession = async (
+  sessionClient: ReturnType<typeof createClient>,
+  userId: string,
+): Promise<{ session: AccountSessionRecord | null; error: any; source: "telegram_sessions" | "site_settings" }> => {
+  const { data, error } = await sessionClient
+    .from("telegram_sessions")
+    .select("session_string, telegram_user, selected_groups, mentions_channel_id, updated_at")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    if (isTableMissingError(error, "telegram_sessions")) {
+      const fallback = await loadFallbackAccountSession(sessionClient, userId);
+      return { session: fallback.session, error: fallback.error, source: "site_settings" };
+    }
+    return { session: null, error, source: "telegram_sessions" };
+  }
+
+  return { session: data as AccountSessionRecord | null, error: null, source: "telegram_sessions" };
+};
+
+const upsertAccountSession = async (
+  sessionClient: ReturnType<typeof createClient>,
+  userId: string,
+  session: AccountSessionRecord,
+): Promise<{ error: any; source: "telegram_sessions" | "site_settings" }> => {
+  const { error } = await sessionClient
+    .from("telegram_sessions")
+    .upsert(
+      {
+        user_id: userId,
+        session_string: session.session_string,
+        telegram_user: serializeMaybeJson(session.telegram_user),
+        selected_groups: serializeMaybeJson(session.selected_groups),
+        mentions_channel_id: session.mentions_channel_id,
+        updated_at: session.updated_at ?? new Date().toISOString(),
+      },
+      { onConflict: "user_id" },
+    );
+
+  if (error) {
+    if (isTableMissingError(error, "telegram_sessions")) {
+      const fallback = await saveFallbackAccountSession(sessionClient, userId, {
+        ...session,
+        updated_at: session.updated_at ?? new Date().toISOString(),
+      });
+      return { error: fallback.error, source: "site_settings" };
+    }
+    return { error, source: "telegram_sessions" };
+  }
+
+  return { error: null, source: "telegram_sessions" };
+};
+
+const deleteAccountSession = async (
+  sessionClient: ReturnType<typeof createClient>,
+  userId: string,
+): Promise<{ error: any; source: "telegram_sessions" | "site_settings" }> => {
+  const { error } = await sessionClient
+    .from("telegram_sessions")
+    .delete()
+    .eq("user_id", userId);
+
+  if (error) {
+    if (isTableMissingError(error, "telegram_sessions")) {
+      const fallback = await deleteFallbackAccountSession(sessionClient, userId);
+      return { error: fallback.error, source: "site_settings" };
+    }
+    return { error, source: "telegram_sessions" };
+  }
+
+  return { error: null, source: "telegram_sessions" };
+};
+
 const getAuthenticatedUserId = async (req: Request): Promise<string | null> => {
   const token = getBearerToken(req);
   if (!token) return null;
