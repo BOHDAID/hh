@@ -653,7 +653,7 @@ serve(async (req) => {
           );
         }
 
-        const loaded = await loadAccountSession(sessionClient!, accountUserId!);
+        const loaded = await loadAccountSession(sessionClient!, accountUserId!, sessionString);
         if (loaded.error) {
           console.error("❌ Load existing account session failed:", loaded.error);
           return new Response(
@@ -683,11 +683,15 @@ serve(async (req) => {
           automation: mergedAutomation,
         };
 
+        const mentionsChannelId = typeof reqBody.mentionsChannelId === "string"
+          ? reqBody.mentionsChannelId
+          : loaded.session?.mentions_channel_id ?? null;
+
         const saveResult = await upsertAccountSession(sessionClient!, accountUserId!, {
           session_string: sessionString,
           telegram_user: mergedTelegramUser,
           selected_groups: selectedGroupsPayload,
-          mentions_channel_id: loaded.session?.mentions_channel_id ?? null,
+          mentions_channel_id: mentionsChannelId,
           updated_at: new Date().toISOString(),
         });
 
@@ -706,7 +710,12 @@ serve(async (req) => {
       }
 
       case "tg-get-account-session": {
-        const loaded = await loadAccountSession(sessionClient!, accountUserId!);
+        const targetSessionString = typeof reqBody.sessionString === "string" ? reqBody.sessionString.trim() : "";
+        const loaded = await loadAccountSession(
+          sessionClient!,
+          accountUserId!,
+          targetSessionString || undefined,
+        );
 
         if (loaded.error) {
           console.error("❌ Get account session failed:", loaded.error);
@@ -722,8 +731,30 @@ serve(async (req) => {
         );
       }
 
+      case "tg-list-account-sessions": {
+        const listed = await listAccountSessions(sessionClient!, accountUserId!);
+
+        if (listed.error) {
+          console.error("❌ List account sessions failed:", listed.error);
+          return new Response(
+            JSON.stringify({ success: false, error: listed.error.message }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        return new Response(
+          JSON.stringify({ success: true, sessions: listed.sessions, storage_source: listed.source }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       case "tg-delete-account-session": {
-        const deleted = await deleteAccountSession(sessionClient!, accountUserId!);
+        const targetSessionString = typeof reqBody.sessionString === "string" ? reqBody.sessionString.trim() : "";
+        const deleted = await deleteAccountSession(
+          sessionClient!,
+          accountUserId!,
+          targetSessionString || undefined,
+        );
 
         if (deleted.error) {
           console.error("❌ Delete account session failed:", deleted.error);
@@ -741,7 +772,12 @@ serve(async (req) => {
 
       case "tg-save-mentions-channel": {
         const channelId = reqBody.mentionsChannelId || null;
-        const loaded = await loadAccountSession(sessionClient!, accountUserId!);
+        const targetSessionString = typeof reqBody.sessionString === "string" ? reqBody.sessionString.trim() : "";
+        const loaded = await loadAccountSession(
+          sessionClient!,
+          accountUserId!,
+          targetSessionString || undefined,
+        );
 
         if (loaded.error) {
           console.error("❌ Load session for mentions channel failed:", loaded.error);
@@ -760,6 +796,7 @@ serve(async (req) => {
 
         const saveResult = await upsertAccountSession(sessionClient!, accountUserId!, {
           ...loaded.session,
+          session_string: loaded.session.session_string,
           mentions_channel_id: channelId,
           updated_at: new Date().toISOString(),
         });
@@ -773,13 +810,18 @@ serve(async (req) => {
         }
 
         return new Response(
-          JSON.stringify({ success: true, storage_source: saveResult.source }),
+          JSON.stringify({ success: true, sessionString: loaded.session.session_string, storage_source: saveResult.source }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
       case "tg-get-mentions-channel": {
-        const loaded = await loadAccountSession(sessionClient!, accountUserId!);
+        const targetSessionString = typeof reqBody.sessionString === "string" ? reqBody.sessionString.trim() : "";
+        const loaded = await loadAccountSession(
+          sessionClient!,
+          accountUserId!,
+          targetSessionString || undefined,
+        );
 
         if (loaded.error) {
           console.error("❌ Get mentions channel failed:", loaded.error);
@@ -793,6 +835,7 @@ serve(async (req) => {
           JSON.stringify({
             success: true,
             mentionsChannelId: loaded.session?.mentions_channel_id || null,
+            sessionString: loaded.session?.session_string || null,
             storage_source: loaded.source,
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -807,7 +850,12 @@ serve(async (req) => {
           );
         }
 
-        const loaded = await loadAccountSession(sessionClient!, accountUserId!);
+        const targetSessionString = typeof reqBody.sessionString === "string" ? reqBody.sessionString.trim() : "";
+        const loaded = await loadAccountSession(
+          sessionClient!,
+          accountUserId!,
+          targetSessionString || undefined,
+        );
 
         if (loaded.error) {
           console.error("❌ Load session for automation state failed:", loaded.error);
@@ -835,6 +883,7 @@ serve(async (req) => {
 
         const saveResult = await upsertAccountSession(sessionClient!, accountUserId!, {
           ...loaded.session,
+          session_string: loaded.session.session_string,
           selected_groups: mergedPayload,
           updated_at: new Date().toISOString(),
         });
@@ -848,7 +897,7 @@ serve(async (req) => {
         }
 
         return new Response(
-          JSON.stringify({ success: true, storage_source: saveResult.source }),
+          JSON.stringify({ success: true, sessionString: loaded.session.session_string, storage_source: saveResult.source }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
