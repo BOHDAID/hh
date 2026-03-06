@@ -1290,8 +1290,14 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
  */
 async function stopAutoPublish({ taskId }) {
   if (activeAutoPublish.has(taskId)) {
-    clearInterval(activeAutoPublish.get(taskId).interval);
     const task = activeAutoPublish.get(taskId);
+    clearInterval(task.interval);
+    // إزالة event handlers
+    if (task.eventHandlers && task.client) {
+      for (const h of task.eventHandlers) {
+        try { task.client.removeEventHandler(h); } catch {}
+      }
+    }
     activeAutoPublish.delete(taskId);
     await releaseClientIfUnused(task.client, `stop auto-publish ${taskId}`);
     console.log(`🛑 Auto-publish stopped [${taskId}]`);
