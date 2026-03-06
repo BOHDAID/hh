@@ -1977,7 +1977,8 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
   activeAntiDelete.set(taskId, { 
     handlers: [incomingMsgHandler, outgoingMsgHandler, rawDeleteUpdateHandler], 
     client, 
-    messageCache, 
+    messageCache,
+    processedDeletes,
     reconnectInterval 
   });
 
@@ -1990,13 +1991,14 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
  */
 async function stopAntiDelete({ taskId }) {
   if (activeAntiDelete.has(taskId)) {
-    const { handlers, client, messageCache, reconnectInterval } = activeAntiDelete.get(taskId);
+    const { handlers, client, messageCache, processedDeletes, reconnectInterval } = activeAntiDelete.get(taskId);
     try { if (reconnectInterval) clearInterval(reconnectInterval); } catch {}
     for (const handler of handlers) {
       try { client.removeEventHandler(handler); } catch {}
     }
     const cachedCount = messageCache.size;
     messageCache.clear();
+    processedDeletes?.clear?.();
     activeAntiDelete.delete(taskId);
     await releaseClientIfUnused(client, `stop anti-delete ${taskId}`);
     console.log(`🛑 Anti-delete stopped [${taskId}], had ${cachedCount} cached msgs`);
