@@ -504,18 +504,40 @@ async function pressCallbackButtonsForJoinLinks({ client, peer, callbackButtons 
 async function handleForcedSubscription({ client, peer, groupId, channelId }) {
   try {
     // جلب معلومات المجموعة الكاملة للبحث عن القنوات المرتبطة
-    const fullChat = await client.invoke(new Api.channels.GetFullChannel({ channel: peer }));
+    let fullChat;
+    try {
+      fullChat = await client.invoke(new Api.channels.GetFullChannel({ channel: peer }));
+    } catch { /* not a channel/supergroup */ }
     const linkedChatId = fullChat?.fullChat?.linkedChatId;
 
     // جلب رسائل أكثر لرفع دقة اكتشاف الاشتراك الإجباري
     const messages = await client.getMessages(peer, { limit: 50 });
     const joinLinks = new Set();
     const callbackButtons = [];
+    // حفظ أزرار التحقق المحتملة (تحقق / verify / check)
+    const verifyButtons = [];
 
     for (const msg of messages) {
       const { links, callbackButtons: msgButtons } = collectJoinLinksFromMessage(msg);
       for (const link of links) joinLinks.add(link);
       callbackButtons.push(...msgButtons);
+
+      // البحث عن أزرار التحقق في رسائل البوت
+      if (msg.replyMarkup?.rows) {
+        for (const row of msg.replyMarkup.rows) {
+          for (const btn of (row.buttons || [])) {
+            const btnText = (btn.text || '').toLowerCase();
+            const isVerifyBtn = btnText.includes('تحقق') || btnText.includes('verify') ||
+              btnText.includes('check') || btnText.includes('اشتركت') ||
+              btnText.includes('done') || btnText.includes('تم') ||
+              btnText.includes('انضممت') || btnText.includes('فتح') ||
+              btnText.includes('unmute') || btnText.includes('✅');
+            if (isVerifyBtn && btn.data && msg.id) {
+              verifyButtons.push({ msgId: msg.id, button: btn, text: btn.text });
+            }
+          }
+        }
+      }
     }
 
     if (linkedChatId) {
@@ -530,6 +552,10 @@ async function handleForcedSubscription({ client, peer, groupId, channelId }) {
 
     if (joinLinks.size === 0) {
       console.log(`⚠️ No forced subscription channels found for group ${groupId}`);
+      // حتى لو ما لقينا روابط، نجرب نضغط أزرار التحقق
+      if (verifyButtons.length > 0) {
+        await clickVerifyButtons(client, peer, verifyButtons);
+      }
       return { joined: false, channels: [] };
     }
 
@@ -562,18 +588,36 @@ async function handleForcedSubscription({ client, peer, groupId, channelId }) {
 
           if (isInvite) {
             try {
-              const inviteResult = await client.invoke(new Api.messages.ImportChatInvite({ hash: token }));
-              const joinedChat = inviteResult?.chats?.[0];
-              if (!joinedChat?.id) continue;
+              // أولاً نتحقق إذا الدعوة صالحة
+              let alreadyIn = false;
+              try {
+                const checkInvite = await client.invoke(new Api.messages.CheckChatInvite({ hash: token }));
+                if (checkInvite.className === 'ChatInviteAlready') {
+                  alreadyIn = true;
+                  const chat = checkInvite.chat;
+                  const joinedId = chat.id.toString();
+                  channelTitle = chat.title || token;
+                  if (!forcedJoins.has(joinedId)) {
+                    scheduleForcedLeave(client, chat, joinedId, channelTitle);
+                  }
+                  joinedChannels.push({ id: joinedId, title: channelTitle, link, method: 'already_member' });
+                }
+              } catch {}
 
-              const joinedId = joinedChat.id.toString();
-              channelTitle = joinedChat.title || token;
+              if (!alreadyIn) {
+                const inviteResult = await client.invoke(new Api.messages.ImportChatInvite({ hash: token }));
+                const joinedChat = inviteResult?.chats?.[0];
+                if (!joinedChat?.id) continue;
 
-              if (!forcedJoins.has(joinedId)) {
-                scheduleForcedLeave(client, joinedChat, joinedId, channelTitle);
+                const joinedId = joinedChat.id.toString();
+                channelTitle = joinedChat.title || token;
+
+                if (!forcedJoins.has(joinedId)) {
+                  scheduleForcedLeave(client, joinedChat, joinedId, channelTitle);
+                }
+
+                joinedChannels.push({ id: joinedId, title: channelTitle, link, method: 'invite' });
               }
-
-              joinedChannels.push({ id: joinedId, title: channelTitle, link, method: 'invite' });
               continue;
             } catch (invErr) {
               console.log(`⚠️ Can't join via invite ${link}: ${invErr.message}`);
@@ -623,10 +667,40 @@ async function handleForcedSubscription({ client, peer, groupId, channelId }) {
       }
     }
 
+    // === الخطوة الحاسمة: ضغط زر "تحقق" بعد الانضمام ===
+    if (joinedChannels.length > 0 && verifyButtons.length > 0) {
+      // انتظر 3 ثوان ليتأكد البوت من الاشتراك
+      await new Promise(r => setTimeout(r, 3000));
+      await clickVerifyButtons(client, peer, verifyButtons);
+    }
+
     return { joined: joinedChannels.length > 0, channels: joinedChannels };
   } catch (err) {
     console.error(`❌ handleForcedSubscription error:`, err.message);
     return { joined: false, channels: [] };
+  }
+}
+
+/**
+ * ضغط أزرار التحقق ("تحقق" / "verify" / "✅") في رسائل البوت
+ */
+async function clickVerifyButtons(client, peer, verifyButtons) {
+  for (const vb of verifyButtons) {
+    try {
+      console.log(`🔘 Clicking verify button: "${vb.text}" (msgId: ${vb.msgId})`);
+      const answer = await client.invoke(new Api.messages.GetBotCallbackAnswer({
+        peer,
+        msgId: vb.msgId,
+        data: vb.button.data,
+      }));
+      if (answer?.message) {
+        console.log(`✅ Verify button response: ${answer.message}`);
+      }
+      // ننتظر قليلاً بين كل ضغطة
+      await new Promise(r => setTimeout(r, 1000));
+    } catch (err) {
+      console.log(`⚠️ Verify button click failed: ${err.message}`);
+    }
   }
 }
 
@@ -781,22 +855,34 @@ async function startAutoPublish({ sessionString, groupIds, message, intervalMinu
       // التعامل مع الاشتراك الإجباري
       if (errMsg.includes('CHAT_WRITE_FORBIDDEN') || errMsg.includes('CHANNEL_PRIVATE') || 
           errMsg.includes('cannot write') || errMsg.includes('not subscribed') ||
-          errMsg.includes('غير مشترك')) {
+          errMsg.includes('غير مشترك') || errMsg.includes('CHAT_RESTRICTED') ||
+          errMsg.includes('USER_BANNED_IN_CHANNEL') || errMsg.includes('FORBIDDEN')) {
         console.log(`🔐 Detected forced subscription for group ${groupId}, attempting auto-join...`);
         
         try {
-          const peer = await client.getEntity(BigInt(groupId));
-          const result = await handleForcedSubscription({ client, peer, groupId });
+          const groupPeer = await client.getEntity(BigInt(groupId));
+          const result = await handleForcedSubscription({ client, peer: groupPeer, groupId });
           
           if (result.joined && result.channels.length > 0) {
-            // إرسال إشعار
-            const groupTitle = peer.title || groupId;
+            const groupTitle = groupPeer.title || groupId;
             await notifyForcedJoin(client, notifChannelEntity, groupTitle, result.channels);
             
-            // انتظار ثانيتين ثم إعادة المحاولة
-            await new Promise(r => setTimeout(r, 2000));
+            // انتظار 5 ثوان بعد الانضمام وضغط التحقق
+            await new Promise(r => setTimeout(r, 5000));
             try {
-              await client.sendMessage(peer, { message });
+              if (mediaBuffer) {
+                const isSticker = mediaSendType === 'sticker';
+                const forceDoc = mediaSendType === 'document';
+                const finalFileName = isSticker ? 'sticker.webp' : (mediaFileName || 'file');
+                await client.sendFile(groupPeer, {
+                  file: mediaBuffer,
+                  caption: isSticker ? '' : (message || ''),
+                  fileName: finalFileName,
+                  forceDocument: forceDoc,
+                });
+              } else {
+                await client.sendMessage(groupPeer, { message });
+              }
               sentCount++;
               console.log(`✅ Auto-publish [${taskId}]: Retry succeeded for group ${groupId} after forced join`);
             } catch (retryErr) {
