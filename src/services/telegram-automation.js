@@ -1688,7 +1688,9 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
   const messageCache = new Map();
   const MAX_CACHE = 5000;
 
-  const { NewMessage, Raw } = await import('telegram/events/index.js');
+  // منع تكرار إشعار نفس الرسالة المحذوفة خلال نافذة قصيرة
+  const processedDeletes = new Map();
+  const DELETE_DEDUP_MS = 15000;
 
   const trimCache = () => {
     if (messageCache.size <= MAX_CACHE) return;
@@ -1696,6 +1698,27 @@ async function startAntiDelete({ sessionString, taskId, mentionsChannelId }) {
     for (let i = 0; i < keys.length - MAX_CACHE; i++) {
       messageCache.delete(keys[i]);
     }
+  };
+
+  const shouldSkipDelete = (scope, msgId) => {
+    const now = Date.now();
+    const key = `${scope || 'global'}_${msgId}`;
+    const seenAt = processedDeletes.get(key);
+
+    if (seenAt && now - seenAt < DELETE_DEDUP_MS) {
+      return true;
+    }
+
+    processedDeletes.set(key, now);
+
+    // تنظيف entries القديمة لتقليل الذاكرة
+    if (processedDeletes.size > 3000) {
+      for (const [k, ts] of processedDeletes.entries()) {
+        if (now - ts > DELETE_DEDUP_MS * 3) processedDeletes.delete(k);
+      }
+    }
+
+    return false;
   };
 
   const cacheMessage = async (msg, source = 'live') => {
