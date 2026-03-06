@@ -79,6 +79,188 @@ const parseStoredSessionPayload = (rawSelectedGroups: unknown) => {
   };
 };
 
+type AccountSessionRecord = {
+  session_string: string;
+  telegram_user: unknown;
+  selected_groups: unknown;
+  mentions_channel_id: string | null;
+  updated_at?: string | null;
+};
+
+const TELEGRAM_SESSION_FALLBACK_CATEGORY = "telegram_automation";
+
+const getFallbackSessionKey = (userId: string): string => `telegram_session_${userId}`;
+
+const isTableMissingError = (error: any, tableName: string): boolean => {
+  if (!error) return false;
+  return error.code === "PGRST205"
+    && typeof error.message === "string"
+    && error.message.includes(`'public.${tableName}'`);
+};
+
+const loadFallbackAccountSession = async (
+  sessionClient: ReturnType<typeof createClient>,
+  userId: string,
+): Promise<{ session: AccountSessionRecord | null; error: any }> => {
+  const key = getFallbackSessionKey(userId);
+  const { data, error } = await sessionClient
+    .from("site_settings")
+    .select("value")
+    .eq("key", key)
+    .maybeSingle();
+
+  if (error) return { session: null, error };
+
+  const parsed = parseMaybeJson<Record<string, unknown> | null>(data?.value, null);
+  if (!parsed || typeof parsed.session_string !== "string") {
+    return { session: null, error: null };
+  }
+
+  return {
+    session: {
+      session_string: parsed.session_string,
+      telegram_user: parsed.telegram_user ?? null,
+      selected_groups: parsed.selected_groups ?? null,
+      mentions_channel_id: typeof parsed.mentions_channel_id === "string" ? parsed.mentions_channel_id : null,
+      updated_at: typeof parsed.updated_at === "string" ? parsed.updated_at : null,
+    },
+    error: null,
+  };
+};
+
+const saveFallbackAccountSession = async (
+  sessionClient: ReturnType<typeof createClient>,
+  userId: string,
+  session: AccountSessionRecord,
+): Promise<{ error: any }> => {
+  const key = getFallbackSessionKey(userId);
+  const value = JSON.stringify(session);
+  const nowIso = new Date().toISOString();
+
+  const { data: existing, error: loadError } = await sessionClient
+    .from("site_settings")
+    .select("id")
+    .eq("key", key)
+    .limit(1);
+
+  if (loadError) return { error: loadError };
+
+  const existingId = existing?.[0]?.id;
+  if (existingId) {
+    const { error } = await sessionClient
+      .from("site_settings")
+      .update({
+        value,
+        is_sensitive: true,
+        category: TELEGRAM_SESSION_FALLBACK_CATEGORY,
+        updated_at: nowIso,
+      })
+      .eq("id", existingId);
+
+    return { error };
+  }
+
+  const { error } = await sessionClient
+    .from("site_settings")
+    .insert({
+      key,
+      value,
+      is_sensitive: true,
+      category: TELEGRAM_SESSION_FALLBACK_CATEGORY,
+      description: "Fallback Telegram automation session storage",
+      updated_at: nowIso,
+    });
+
+  return { error };
+};
+
+const deleteFallbackAccountSession = async (
+  sessionClient: ReturnType<typeof createClient>,
+  userId: string,
+): Promise<{ error: any }> => {
+  const key = getFallbackSessionKey(userId);
+  const { error } = await sessionClient
+    .from("site_settings")
+    .delete()
+    .eq("key", key);
+
+  return { error };
+};
+
+const loadAccountSession = async (
+  sessionClient: ReturnType<typeof createClient>,
+  userId: string,
+): Promise<{ session: AccountSessionRecord | null; error: any; source: "telegram_sessions" | "site_settings" }> => {
+  const { data, error } = await sessionClient
+    .from("telegram_sessions")
+    .select("session_string, telegram_user, selected_groups, mentions_channel_id, updated_at")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    if (isTableMissingError(error, "telegram_sessions")) {
+      const fallback = await loadFallbackAccountSession(sessionClient, userId);
+      return { session: fallback.session, error: fallback.error, source: "site_settings" };
+    }
+    return { session: null, error, source: "telegram_sessions" };
+  }
+
+  return { session: data as AccountSessionRecord | null, error: null, source: "telegram_sessions" };
+};
+
+const upsertAccountSession = async (
+  sessionClient: ReturnType<typeof createClient>,
+  userId: string,
+  session: AccountSessionRecord,
+): Promise<{ error: any; source: "telegram_sessions" | "site_settings" }> => {
+  const { error } = await sessionClient
+    .from("telegram_sessions")
+    .upsert(
+      {
+        user_id: userId,
+        session_string: session.session_string,
+        telegram_user: serializeMaybeJson(session.telegram_user),
+        selected_groups: serializeMaybeJson(session.selected_groups),
+        mentions_channel_id: session.mentions_channel_id,
+        updated_at: session.updated_at ?? new Date().toISOString(),
+      },
+      { onConflict: "user_id" },
+    );
+
+  if (error) {
+    if (isTableMissingError(error, "telegram_sessions")) {
+      const fallback = await saveFallbackAccountSession(sessionClient, userId, {
+        ...session,
+        updated_at: session.updated_at ?? new Date().toISOString(),
+      });
+      return { error: fallback.error, source: "site_settings" };
+    }
+    return { error, source: "telegram_sessions" };
+  }
+
+  return { error: null, source: "telegram_sessions" };
+};
+
+const deleteAccountSession = async (
+  sessionClient: ReturnType<typeof createClient>,
+  userId: string,
+): Promise<{ error: any; source: "telegram_sessions" | "site_settings" }> => {
+  const { error } = await sessionClient
+    .from("telegram_sessions")
+    .delete()
+    .eq("user_id", userId);
+
+  if (error) {
+    if (isTableMissingError(error, "telegram_sessions")) {
+      const fallback = await deleteFallbackAccountSession(sessionClient, userId);
+      return { error: fallback.error, source: "site_settings" };
+    }
+    return { error, source: "telegram_sessions" };
+  }
+
+  return { error: null, source: "telegram_sessions" };
+};
+
 const getAuthenticatedUserId = async (req: Request): Promise<string | null> => {
   const token = getBearerToken(req);
   if (!token) return null;
@@ -403,21 +585,16 @@ serve(async (req) => {
           );
         }
 
-        const { data: existingSession, error: existingSessionError } = await sessionClient!
-          .from("telegram_sessions")
-          .select("selected_groups, telegram_user")
-          .eq("user_id", accountUserId)
-          .maybeSingle();
-
-        if (existingSessionError) {
-          console.error("❌ Load existing account session failed:", existingSessionError);
+        const loaded = await loadAccountSession(sessionClient!, accountUserId!);
+        if (loaded.error) {
+          console.error("❌ Load existing account session failed:", loaded.error);
           return new Response(
-            JSON.stringify({ success: false, error: existingSessionError.message }),
+            JSON.stringify({ success: false, error: loaded.error.message }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
-        const existingPayload = parseStoredSessionPayload(existingSession?.selected_groups);
+        const existingPayload = parseStoredSessionPayload(loaded.session?.selected_groups);
         const incomingGroups = Array.isArray(reqBody.selectedGroups)
           ? reqBody.selectedGroups
           : existingPayload.groups;
@@ -431,30 +608,25 @@ serve(async (req) => {
 
         const mergedTelegramUser = reqBody.telegramUser !== undefined
           ? reqBody.telegramUser
-          : parseMaybeJson(existingSession?.telegram_user, null);
+          : parseMaybeJson(loaded.session?.telegram_user, null);
 
         const selectedGroupsPayload = {
           groups: incomingGroups,
           automation: mergedAutomation,
         };
 
-        const { error } = await sessionClient!
-          .from("telegram_sessions")
-          .upsert(
-            {
-              user_id: accountUserId,
-              session_string: sessionString,
-              telegram_user: serializeMaybeJson(mergedTelegramUser),
-              selected_groups: serializeMaybeJson(selectedGroupsPayload),
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "user_id" }
-          );
+        const saveResult = await upsertAccountSession(sessionClient!, accountUserId!, {
+          session_string: sessionString,
+          telegram_user: mergedTelegramUser,
+          selected_groups: selectedGroupsPayload,
+          mentions_channel_id: loaded.session?.mentions_channel_id ?? null,
+          updated_at: new Date().toISOString(),
+        });
 
-        if (error) {
-          console.error("❌ Save account session failed:", error);
+        if (saveResult.error) {
+          console.error("❌ Save account session failed:", saveResult.error);
           return new Response(
-            JSON.stringify({ success: false, error: error.message }),
+            JSON.stringify({ success: false, error: saveResult.error.message }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
@@ -466,105 +638,95 @@ serve(async (req) => {
       }
 
       case "tg-get-account-session": {
-        const { data, error } = await sessionClient!
-          .from("telegram_sessions")
-          .select("session_string, telegram_user, selected_groups, mentions_channel_id, updated_at")
-          .eq("user_id", accountUserId)
-          .maybeSingle();
+        const loaded = await loadAccountSession(sessionClient!, accountUserId!);
 
-        if (error) {
-          console.error("❌ Get account session failed:", error);
+        if (loaded.error) {
+          console.error("❌ Get account session failed:", loaded.error);
           return new Response(
-            JSON.stringify({ success: false, error: error.message }),
+            JSON.stringify({ success: false, error: loaded.error.message }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
         return new Response(
-          JSON.stringify({ success: true, session: data || null }),
+          JSON.stringify({ success: true, session: loaded.session || null, storage_source: loaded.source }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
       case "tg-delete-account-session": {
-        const { error } = await sessionClient!
-          .from("telegram_sessions")
-          .delete()
-          .eq("user_id", accountUserId);
+        const deleted = await deleteAccountSession(sessionClient!, accountUserId!);
 
-        if (error) {
-          console.error("❌ Delete account session failed:", error);
+        if (deleted.error) {
+          console.error("❌ Delete account session failed:", deleted.error);
           return new Response(
-            JSON.stringify({ success: false, error: error.message }),
+            JSON.stringify({ success: false, error: deleted.error.message }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
         return new Response(
-          JSON.stringify({ success: true }),
+          JSON.stringify({ success: true, storage_source: deleted.source }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
       case "tg-save-mentions-channel": {
         const channelId = reqBody.mentionsChannelId || null;
-        const { data: existingSession, error: existingSessionError } = await sessionClient!
-          .from("telegram_sessions")
-          .select("id")
-          .eq("user_id", accountUserId)
-          .maybeSingle();
+        const loaded = await loadAccountSession(sessionClient!, accountUserId!);
 
-        if (existingSessionError) {
-          console.error("❌ Load session for mentions channel failed:", existingSessionError);
+        if (loaded.error) {
+          console.error("❌ Load session for mentions channel failed:", loaded.error);
           return new Response(
-            JSON.stringify({ success: false, error: existingSessionError.message }),
+            JSON.stringify({ success: false, error: loaded.error.message }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
-        if (!existingSession?.id) {
+        if (!loaded.session?.session_string) {
           return new Response(
             JSON.stringify({ success: false, error: "يجب حفظ الجلسة أولاً قبل تحديد قناة الإشعارات" }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
-        const { error } = await sessionClient!
-          .from("telegram_sessions")
-          .update({ mentions_channel_id: channelId, updated_at: new Date().toISOString() })
-          .eq("user_id", accountUserId);
+        const saveResult = await upsertAccountSession(sessionClient!, accountUserId!, {
+          ...loaded.session,
+          mentions_channel_id: channelId,
+          updated_at: new Date().toISOString(),
+        });
 
-        if (error) {
-          console.error("❌ Save mentions channel failed:", error);
+        if (saveResult.error) {
+          console.error("❌ Save mentions channel failed:", saveResult.error);
           return new Response(
-            JSON.stringify({ success: false, error: error.message }),
+            JSON.stringify({ success: false, error: saveResult.error.message }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
         return new Response(
-          JSON.stringify({ success: true }),
+          JSON.stringify({ success: true, storage_source: saveResult.source }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
       case "tg-get-mentions-channel": {
-        const { data, error } = await sessionClient!
-          .from("telegram_sessions")
-          .select("mentions_channel_id")
-          .eq("user_id", accountUserId)
-          .maybeSingle();
+        const loaded = await loadAccountSession(sessionClient!, accountUserId!);
 
-        if (error) {
-          console.error("❌ Get mentions channel failed:", error);
+        if (loaded.error) {
+          console.error("❌ Get mentions channel failed:", loaded.error);
           return new Response(
-            JSON.stringify({ success: false, error: error.message }),
+            JSON.stringify({ success: false, error: loaded.error.message }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
         return new Response(
-          JSON.stringify({ success: true, mentionsChannelId: data?.mentions_channel_id || null }),
+          JSON.stringify({
+            success: true,
+            mentionsChannelId: loaded.session?.mentions_channel_id || null,
+            storage_source: loaded.source,
+          }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -577,28 +739,24 @@ serve(async (req) => {
           );
         }
 
-        const { data: existingSession, error: existingSessionError } = await sessionClient!
-          .from("telegram_sessions")
-          .select("id, selected_groups")
-          .eq("user_id", accountUserId)
-          .maybeSingle();
+        const loaded = await loadAccountSession(sessionClient!, accountUserId!);
 
-        if (existingSessionError) {
-          console.error("❌ Load session for automation state failed:", existingSessionError);
+        if (loaded.error) {
+          console.error("❌ Load session for automation state failed:", loaded.error);
           return new Response(
-            JSON.stringify({ success: false, error: existingSessionError.message }),
+            JSON.stringify({ success: false, error: loaded.error.message }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
-        if (!existingSession?.id) {
+        if (!loaded.session?.session_string) {
           return new Response(
             JSON.stringify({ success: false, error: "يجب حفظ الجلسة أولاً قبل حفظ حالة الأتمتة" }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
-        const existingPayload = parseStoredSessionPayload(existingSession.selected_groups);
+        const existingPayload = parseStoredSessionPayload(loaded.session.selected_groups);
         const mergedPayload = {
           groups: existingPayload.groups,
           automation: {
@@ -607,24 +765,22 @@ serve(async (req) => {
           },
         };
 
-        const { error } = await sessionClient!
-          .from("telegram_sessions")
-          .update({
-            selected_groups: serializeMaybeJson(mergedPayload),
-            updated_at: new Date().toISOString(),
-          })
-          .eq("user_id", accountUserId);
+        const saveResult = await upsertAccountSession(sessionClient!, accountUserId!, {
+          ...loaded.session,
+          selected_groups: mergedPayload,
+          updated_at: new Date().toISOString(),
+        });
 
-        if (error) {
-          console.error("❌ Save automation state failed:", error);
+        if (saveResult.error) {
+          console.error("❌ Save automation state failed:", saveResult.error);
           return new Response(
-            JSON.stringify({ success: false, error: error.message }),
+            JSON.stringify({ success: false, error: saveResult.error.message }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
         return new Response(
-          JSON.stringify({ success: true }),
+          JSON.stringify({ success: true, storage_source: saveResult.source }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
