@@ -103,6 +103,7 @@ const SessionsPanel = ({
   const [expanded, setExpanded] = useState(false);
   const [sessions, setSessions] = useState<SavedSession[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoadedFromServer, setHasLoadedFromServer] = useState(false);
   const [switching, setSwitching] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
@@ -137,9 +138,9 @@ const SessionsPanel = ({
         } as SavedSession));
 
       setSessions(normalized);
+      setHasLoadedFromServer(true);
     } catch (err) {
       console.error("Failed to fetch sessions:", err);
-      setSessions([]);
     } finally {
       setLoading(false);
     }
@@ -174,7 +175,7 @@ const SessionsPanel = ({
 
   const effectiveSessions = sessions.length
     ? sessions
-    : (activeSessionString
+    : (!hasLoadedFromServer && activeSessionString
       ? [{ id: activeSessionString, session_string: activeSessionString, telegram_user: null, selected_groups: null, created_at: "" }]
       : []);
 

@@ -85,6 +85,8 @@ interface StoredSessionPayload {
   automation: AutomationState;
 }
 
+const LAST_ACTIVE_SESSION_KEY = "tg-last-active-session";
+
 const AutoDashboard = () => {
   // Auth state
   const [loggedIn, setLoggedIn] = useState(false);
@@ -117,6 +119,25 @@ const AutoDashboard = () => {
   const [showStats, setShowStats] = useState(false);
   const resumeKeyRef = useRef<string | null>(null);
 
+  const getLastActiveSession = () => {
+    try {
+      return (localStorage.getItem(LAST_ACTIVE_SESSION_KEY) || "").trim();
+    } catch {
+      return "";
+    }
+  };
+
+  const setLastActiveSession = (sessionString: string) => {
+    try {
+      if (sessionString?.trim()) {
+        localStorage.setItem(LAST_ACTIVE_SESSION_KEY, sessionString.trim());
+      } else {
+        localStorage.removeItem(LAST_ACTIVE_SESSION_KEY);
+      }
+    } catch {
+      // ignore storage errors
+    }
+  };
   const callAction = async (action: string, extra: Record<string, unknown> = {}) => {
     const { data, error } = await invokeCloudFunctionPublic<any>("osn-session", { action, ...extra });
     if (error) throw new Error(error.message);
@@ -210,27 +231,49 @@ const AutoDashboard = () => {
   // Auto-reconnect
   useEffect(() => {
     let mounted = true;
+
+    const hydrateFromSavedSession = (saved: any, connectedUser: TelegramUser | null) => {
+      const savedUser = parseStoredJson<TelegramUser | null>(saved?.telegram_user, null);
+      const storedPayload = normalizeStoredSessionPayload(saved?.selected_groups);
+      const restoredMentionsChannel = saved?.mentions_channel_id || storedPayload.automation.mentions?.channelId || null;
+
+      setLoggedIn(true);
+      setTelegramUser(connectedUser || savedUser);
+      setActiveSession(saved.session_string);
+      setLastActiveSession(saved.session_string);
+      setSelectedGroups(storedPayload.groups);
+      setAutomationState(storedPayload.automation);
+      setSavedMentionsChannelId(restoredMentionsChannel);
+    };
+
     const loadSession = async () => {
       setAutoConnecting(true);
       try {
-        const data = await callAccountAction("tg-get-account-session");
-        const saved = data?.session;
-        if (!saved?.session_string || !mounted) return;
-        try {
-          const result = await callAction("tg-connect-session", { sessionString: saved.session_string });
-          if (!mounted) return;
-          const savedUser = parseStoredJson<TelegramUser | null>(saved.telegram_user, null);
-          const storedPayload = normalizeStoredSessionPayload(saved.selected_groups);
-          const restoredMentionsChannel = saved.mentions_channel_id || storedPayload.automation.mentions?.channelId || null;
+        const listed = await callAccountAction("tg-list-account-sessions");
+        const sessions = ((listed?.sessions || []) as any[])
+          .filter((item) => typeof item?.session_string === "string" && item.session_string.trim().length > 0)
+          .map((item) => ({ ...item, session_string: item.session_string.trim() }));
 
-          setLoggedIn(true);
-          setTelegramUser(result.user || savedUser);
-          setActiveSession(saved.session_string);
-          setSelectedGroups(storedPayload.groups);
-          setAutomationState(storedPayload.automation);
-          setSavedMentionsChannelId(restoredMentionsChannel);
-        } catch {
-          await callAccountAction("tg-delete-account-session", { sessionString: saved.session_string });
+        if (!sessions.length || !mounted) return;
+
+        const lastActive = getLastActiveSession();
+        const preferred = lastActive
+          ? sessions.find((item) => item.session_string === lastActive)
+          : null;
+
+        const orderedSessions = preferred
+          ? [preferred, ...sessions.filter((item) => item.session_string !== preferred.session_string)]
+          : sessions;
+
+        for (const saved of orderedSessions) {
+          try {
+            const result = await callAction("tg-connect-session", { sessionString: saved.session_string });
+            if (!mounted) return;
+            hydrateFromSavedSession(saved, result.user || null);
+            return;
+          } catch (err: any) {
+            console.warn("Auto-connect skipped session:", saved.session_string, err?.message || err);
+          }
         }
       } catch {
         // not logged in or no saved session
@@ -238,6 +281,7 @@ const AutoDashboard = () => {
         if (mounted) setAutoConnecting(false);
       }
     };
+
     loadSession();
     return () => { mounted = false; };
   }, []);
@@ -330,6 +374,7 @@ const AutoDashboard = () => {
       setLoggedIn(true);
       setTelegramUser(result.user || null);
       setActiveSession(nextSession);
+      setLastActiveSession(nextSession);
 
       try {
         await saveSessionToAccount(nextSession, result.user || null);
@@ -357,6 +402,7 @@ const AutoDashboard = () => {
     setLoggedIn(false);
     setTelegramUser(null);
     setActiveSession("");
+    setLastActiveSession("");
     setSessionInput("");
     setSavedMentionsChannelId(null);
     setSelectedGroups([]);
@@ -461,6 +507,7 @@ const AutoDashboard = () => {
               try {
                 await callAction("tg-connect-session", { sessionString: sessionStr });
                 setActiveSession(sessionStr);
+                setLastActiveSession(sessionStr);
                 setTelegramUser(user || null);
                 const data = await callAccountAction("tg-get-account-session", { sessionString: sessionStr });
                 const saved = data?.session;
