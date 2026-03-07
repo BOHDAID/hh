@@ -136,10 +136,22 @@ const AutoDashboard = () => {
 
   const parseStoredJson = <T,>(value: unknown, fallback: T): T => {
     if (value === null || value === undefined) return fallback;
-    if (typeof value === "string") {
-      try { return JSON.parse(value) as T; } catch { return fallback; }
+
+    let current: unknown = value;
+    for (let i = 0; i < 3; i += 1) {
+      if (typeof current !== "string") break;
+      const trimmed = current.trim();
+      if (!trimmed) break;
+
+      try {
+        current = JSON.parse(trimmed);
+      } catch {
+        break;
+      }
     }
-    return value as T;
+
+    if (current === null || current === undefined) return fallback;
+    return current as T;
   };
 
   const normalizeStoredSessionPayload = (rawValue: unknown): StoredSessionPayload => {
@@ -560,7 +572,21 @@ const AutoDashboard = () => {
               <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
                 <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
               </Button>
-              <GroupsSelector sessionString={activeSession} selectedGroups={selectedGroups} onSave={async (groups) => { setSelectedGroups(groups); try { await saveSessionToAccount(activeSession, telegramUser, groups); toast.success("تم حفظ المجموعات في الحساب"); } catch (err: any) { toast.error(err.message || "تعذر حفظ المجموعات"); } }} />
+              <GroupsSelector
+                sessionString={activeSession}
+                selectedGroups={selectedGroups}
+                onSave={async (groups) => {
+                  const previousGroups = selectedGroups;
+                  setSelectedGroups(groups);
+                  try {
+                    await saveSessionToAccount(activeSession, telegramUser, groups);
+                    toast.success("تم حفظ المجموعات في الحساب");
+                  } catch (err: any) {
+                    setSelectedGroups(previousGroups);
+                    toast.error(err.message || "تعذر حفظ المجموعات");
+                  }
+                }}
+              />
             </div>
           )}
 

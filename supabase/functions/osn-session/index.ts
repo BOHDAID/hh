@@ -23,26 +23,31 @@ const getBearerToken = (req: Request): string | null => {
   return authHeader.replace("Bearer ", "").trim();
 };
 
-const serializeMaybeJson = (value: unknown): string | null => {
-  if (value === null || value === undefined) return null;
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return null;
-  }
-};
-
 const parseMaybeJson = <T>(value: unknown, fallback: T): T => {
   if (value === null || value === undefined) return fallback;
-  if (typeof value === "string") {
+
+  let current: unknown = value;
+
+  // Handle legacy double-serialized JSON payloads
+  for (let i = 0; i < 3; i += 1) {
+    if (typeof current !== "string") break;
+    const trimmed = current.trim();
+    if (!trimmed) break;
+
     try {
-      return JSON.parse(value) as T;
+      current = JSON.parse(trimmed);
     } catch {
-      return fallback;
+      break;
     }
   }
-  return value as T;
+
+  if (current === null || current === undefined) return fallback;
+  return current as T;
+};
+
+const normalizeJsonForStorage = (value: unknown): unknown => {
+  if (value === undefined || value === null) return null;
+  return parseMaybeJson<unknown>(value, value);
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
@@ -353,8 +358,8 @@ const upsertAccountSession = async (
       {
         user_id: userId,
         session_string: session.session_string,
-        telegram_user: serializeMaybeJson(session.telegram_user),
-        selected_groups: serializeMaybeJson(session.selected_groups),
+        telegram_user: normalizeJsonForStorage(session.telegram_user),
+        selected_groups: normalizeJsonForStorage(session.selected_groups),
         mentions_channel_id: session.mentions_channel_id,
         updated_at: session.updated_at ?? new Date().toISOString(),
       },
