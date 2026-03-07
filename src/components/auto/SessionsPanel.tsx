@@ -138,9 +138,9 @@ const SessionsPanel = ({
         } as SavedSession));
 
       setSessions(normalized);
+      setHasLoadedFromServer(true);
     } catch (err) {
       console.error("Failed to fetch sessions:", err);
-      setSessions([]);
     } finally {
       setLoading(false);
     }
