@@ -229,7 +229,7 @@ const SessionsPanel = ({
           ) : (
             <div className="p-3 space-y-2">
               {/* Sessions */}
-              {sessions.map((s) => {
+              {effectiveSessions.map((s) => {
                 const user = s.telegram_user;
                 const name = user
                   ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username || user.phone || 'جلسة'
