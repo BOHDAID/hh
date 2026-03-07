@@ -507,6 +507,7 @@ const AutoDashboard = () => {
               try {
                 await callAction("tg-connect-session", { sessionString: sessionStr });
                 setActiveSession(sessionStr);
+                setLastActiveSession(sessionStr);
                 setTelegramUser(user || null);
                 const data = await callAccountAction("tg-get-account-session", { sessionString: sessionStr });
                 const saved = data?.session;
