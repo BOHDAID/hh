@@ -165,6 +165,7 @@ const SessionsPanel = ({
       : []);
 
   const usedSlots = effectiveSessions.length;
+  const displayMaxSessions = Math.max(maxSessions, usedSlots > 0 ? 1 : 0);
   const canAddMore = hasSubscription && usedSlots < maxSessions;
 
   // Find active session info
