@@ -51,7 +51,9 @@ const SubscriptionGate = ({ children, onSubscriptionLoaded }: Props) => {
         const active = end > now;
         setIsActive(active);
         setIsExpired(!active);
-        onSubscriptionLoaded?.(sub, active ? sub.max_sessions : 0);
+        // Ensure max_sessions is at least 1 for active subscriptions
+        const effectiveMax = active ? Math.max(sub.max_sessions || 1, 1) : 0;
+        onSubscriptionLoaded?.(sub, effectiveMax);
       } else {
         onSubscriptionLoaded?.(null, 0);
       }

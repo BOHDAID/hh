@@ -4,7 +4,7 @@ import { db, getAuthClient } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { 
   Loader2, Smartphone, Crown, Plus, Trash2, 
-  ChevronDown, ChevronUp, LogOut, Check,
+  ChevronDown, ChevronUp, LogOut, Check, Wifi, WifiOff,
   User as UserIcon, ShoppingCart
 } from "lucide-react";
 import { toast } from "sonner";
@@ -20,7 +20,15 @@ interface SavedSession {
     username?: string;
     phone?: string;
   } | null;
+  selected_groups: unknown;
   created_at: string;
+}
+
+interface AutomationState {
+  mentions?: { running?: boolean };
+  antiDelete?: { running?: boolean };
+  autoReply?: { running?: boolean };
+  autoPublish?: { running?: boolean };
 }
 
 interface SessionsPanelProps {
@@ -30,6 +38,39 @@ interface SessionsPanelProps {
   onSwitchSession: (sessionString: string, user: any) => Promise<void> | void;
   onLogout: () => void;
   onAddNewSession: () => void;
+}
+
+function getAutomationFromPayload(raw: unknown): AutomationState {
+  if (!raw) return {};
+  let parsed = raw;
+  if (typeof parsed === "string") {
+    try { parsed = JSON.parse(parsed); } catch { return {}; }
+  }
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    const obj = parsed as Record<string, unknown>;
+    if (obj.automation && typeof obj.automation === "object") {
+      return obj.automation as AutomationState;
+    }
+  }
+  return {};
+}
+
+function isSessionConnected(automation: AutomationState): boolean {
+  return !!(
+    automation.mentions?.running ||
+    automation.antiDelete?.running ||
+    automation.autoReply?.running ||
+    automation.autoPublish?.running
+  );
+}
+
+function getRunningTasksCount(automation: AutomationState): number {
+  let count = 0;
+  if (automation.mentions?.running) count++;
+  if (automation.antiDelete?.running) count++;
+  if (automation.autoReply?.running) count++;
+  if (automation.autoPublish?.running) count++;
+  return count;
 }
 
 const SessionsPanel = ({
@@ -58,7 +99,7 @@ const SessionsPanel = ({
 
       const { data } = await db
         .from("telegram_sessions")
-        .select("id, session_string, telegram_user, created_at")
+        .select("id, session_string, telegram_user, selected_groups, created_at")
         .eq("user_id", session.user.id)
         .order("updated_at", { ascending: false });
 
@@ -110,11 +151,16 @@ const SessionsPanel = ({
   const canAddMore = hasSubscription && usedSlots < maxSessions;
 
   // Find active session info
-  const activeSession = sessions.find(s => s.session_string === activeSessionString);
-  const activeUser = activeSession?.telegram_user;
+  const activeSessionData = sessions.find(s => s.session_string === activeSessionString);
+  const activeUser = activeSessionData?.telegram_user;
   const activeName = activeUser
     ? `${activeUser.firstName || ''} ${activeUser.lastName || ''}`.trim() || activeUser.username || activeUser.phone || 'جلسة'
     : 'جلسة متصلة';
+
+  // Check if active session has running automation
+  const activeAutomation = activeSessionData ? getAutomationFromPayload(activeSessionData.selected_groups) : {};
+  const activeConnected = isSessionConnected(activeAutomation);
+  const activeTasksCount = getRunningTasksCount(activeAutomation);
 
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">
@@ -128,13 +174,22 @@ const SessionsPanel = ({
             <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
               <Smartphone className="h-5 w-5 text-primary" />
             </div>
-            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-primary border-2 border-card" />
+            {/* Connection status dot */}
+            <div className={cn(
+              "absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-card",
+              activeConnected ? "bg-green-500" : "bg-muted-foreground/40"
+            )} />
           </div>
           <div className="text-right">
             <p className="text-sm font-semibold text-foreground">{activeName}</p>
-            <p className="text-xs text-muted-foreground">
-              {usedSlots} / {maxSessions} جلسة
-            </p>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>{usedSlots} / {maxSessions} جلسة</span>
+              {activeConnected && (
+                <span className="flex items-center gap-1 text-green-600 dark:text-green-400 font-medium">
+                  <Wifi className="h-3 w-3" /> متصل ({activeTasksCount})
+                </span>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -164,6 +219,9 @@ const SessionsPanel = ({
                   : 'جلسة غير معروفة';
                 const username = user?.username ? `@${user.username}` : null;
                 const isActive = s.session_string === activeSessionString;
+                const sessionAutomation = getAutomationFromPayload(s.selected_groups);
+                const connected = isSessionConnected(sessionAutomation);
+                const tasksCount = getRunningTasksCount(sessionAutomation);
 
                 return (
                   <div
@@ -177,15 +235,23 @@ const SessionsPanel = ({
                     onClick={() => !isActive && handleSwitch(s)}
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className={cn(
-                        "w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0",
-                        isActive ? "bg-primary/20" : "bg-muted"
-                      )}>
-                        {isActive ? (
-                          <Check className="h-4 w-4 text-primary" />
-                        ) : (
-                          <UserIcon className="h-4 w-4 text-muted-foreground" />
-                        )}
+                      <div className="relative">
+                        <div className={cn(
+                          "w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0",
+                          isActive ? "bg-primary/20" : "bg-muted"
+                        )}>
+                          {isActive ? (
+                            <Check className="h-4 w-4 text-primary" />
+                          ) : (
+                            <UserIcon className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </div>
+                        {/* Per-session connection dot */}
+                        <div className={cn(
+                          "absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2",
+                          isActive ? "border-primary/10" : "border-muted/40",
+                          connected ? "bg-green-500" : "bg-muted-foreground/30"
+                        )} />
                       </div>
                       <div className="min-w-0">
                         <p className={cn(
@@ -194,11 +260,18 @@ const SessionsPanel = ({
                         )}>
                           {name}
                         </p>
-                        {username && (
-                          <p className="text-xs text-muted-foreground truncate" dir="ltr">
-                            {username}
-                          </p>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {username && (
+                            <p className="text-xs text-muted-foreground truncate" dir="ltr">
+                              {username}
+                            </p>
+                          )}
+                          {connected && (
+                            <span className="text-[10px] flex items-center gap-0.5 text-green-600 dark:text-green-400 font-medium">
+                              <Wifi className="h-2.5 w-2.5" /> {tasksCount} مهام
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -245,7 +318,7 @@ const SessionsPanel = ({
                   <span className="text-sm font-medium">إضافة جلسة جديدة</span>
                 </button>
               ) : !hasSubscription ? (
-                <Link to="/auto-dashboard" className="block">
+                <Link to="/#telegram-plans" className="block">
                   <div className="w-full flex items-center justify-center gap-2 p-3 rounded-xl bg-primary/10 text-primary text-sm font-medium">
                     <ShoppingCart className="h-4 w-4" />
                     اشترك للحصول على جلسات
@@ -253,7 +326,7 @@ const SessionsPanel = ({
                 </Link>
               ) : usedSlots >= maxSessions ? (
                 <div className="text-center p-2 text-xs text-muted-foreground">
-                  وصلت للحد الأقصى ({maxSessions} جلسة) — <Link to="/auto-dashboard" className="text-primary underline">ترقية الباقة</Link>
+                  وصلت للحد الأقصى ({maxSessions} جلسة) — <Link to="/#telegram-plans" className="text-primary underline">ترقية الباقة</Link>
                 </div>
               ) : null}
             </div>
