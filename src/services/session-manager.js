@@ -100,20 +100,11 @@ class OSNSessionManager {
       console.log(`🌐 [_withBrowser] Memory: ${(process.memoryUsage().rss / 1024 / 1024).toFixed(1)} MB`);
       if (proxyUrl) console.log(`🌐 [_withBrowser] Using proxy: ${proxyUrl.substring(0, 30)}...`);
       
-      const launchArgs = [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-blink-features=AutomationControlled',
+      const launchArgs = this._getChromeArgs().concat([
+        '--window-size=800,600',
         '--disable-infobars',
-        '--window-size=1920,1080',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--disable-gpu',
         '--lang=en-US,en',
-        '--disable-features=IsolateOrigins,site-per-process,TranslateUI',
-      ];
+      ]);
       
       // Parse proxy URL - supports multiple formats:
       // socks5://user:pass@host:port
