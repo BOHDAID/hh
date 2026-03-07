@@ -175,7 +175,7 @@ const SessionsPanel = ({
 
   const effectiveSessions = sessions.length
     ? sessions
-    : (activeSessionString
+    : (!hasLoadedFromServer && activeSessionString
       ? [{ id: activeSessionString, session_string: activeSessionString, telegram_user: null, selected_groups: null, created_at: "" }]
       : []);
 
