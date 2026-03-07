@@ -85,6 +85,8 @@ interface StoredSessionPayload {
   automation: AutomationState;
 }
 
+const LAST_ACTIVE_SESSION_KEY = "tg-last-active-session";
+
 const AutoDashboard = () => {
   // Auth state
   const [loggedIn, setLoggedIn] = useState(false);
