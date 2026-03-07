@@ -605,6 +605,26 @@ const Checkout = () => {
           return;
         }
 
+        // Extra sessions via wallet
+        if (isExtraSessionsCheckout && planData) {
+          const response = await invokeCloudFunction<{ success: boolean; error?: string }>(
+            "process-plan-subscription",
+            { plan_id: planData.id, payment_method: "wallet", sessions: planData.max_sessions, type: "add_sessions" },
+            session.access_token
+          );
+
+          if (response.error) throw new Error(response.error.message || "Failed to add sessions");
+          const result = response.data;
+          if (!result || !result.success) throw new Error(result?.error || "Unknown error");
+
+          toast({
+            title: "تمت الإضافة بنجاح! 🎉",
+            description: `تم إضافة ${planData.max_sessions} جلسة`,
+          });
+          navigate("/auto-dashboard");
+          return;
+        }
+
         // Create order with wallet payment via Cloud function
         const orderItems = isCartCheckout
           ? cartItems.map(ci => ({ product_id: ci.product.id, quantity: ci.quantity, variant_id: ci.variant_id }))
