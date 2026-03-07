@@ -177,9 +177,9 @@ const SessionsPanel = ({
     ? `${activeUser.firstName || ''} ${activeUser.lastName || ''}`.trim() || activeUser.username || activeUser.phone || 'جلسة'
     : 'جلسة متصلة';
 
-  // Check if active session has running automation
+  // Active session is always "connected" if it has a session string
+  const activeIsConnected = !!activeSessionString;
   const activeAutomation = activeSessionData ? getAutomationFromPayload(activeSessionData.selected_groups) : {};
-  const activeConnected = isSessionConnected(activeAutomation);
   const activeTasksCount = getRunningTasksCount(activeAutomation);
 
   return (
