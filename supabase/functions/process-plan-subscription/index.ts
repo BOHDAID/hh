@@ -30,7 +30,8 @@ Deno.serve(async (req) => {
     const extDb = createClient(extUrl, extServiceKey);
 
     const body = await req.json();
-    const { plan_id, payment_method, sessions } = body;
+    const { plan_id, payment_method, sessions, type } = body;
+    const isAddSessions = type === "add_sessions";
 
     if (!plan_id || !isValidUUID(plan_id)) return errorResponse("Invalid plan_id");
     if (!payment_method) return errorResponse("Missing payment_method");
@@ -47,13 +48,20 @@ Deno.serve(async (req) => {
 
     if (planError || !plan) return errorResponse("Plan not found");
 
-    // Calculate price: base + 35% for each extra session
-    const basePrice = Number(plan.price);
-    let amount = basePrice;
-    for (let i = 2; i <= sessionsCount; i++) {
-      amount += basePrice * 0.35;
+    let amount: number;
+    if (isAddSessions) {
+      // For adding sessions: use price_per_extra_session from plan
+      const pricePerSession = Number(plan.price_per_extra_session) || 5;
+      amount = Math.round(sessionsCount * pricePerSession * 100) / 100;
+    } else {
+      // For new subscription: base + 35% for each extra session
+      const basePrice = Number(plan.price);
+      amount = basePrice;
+      for (let i = 2; i <= sessionsCount; i++) {
+        amount += basePrice * 0.35;
+      }
+      amount = Math.round(amount * 100) / 100;
     }
-    amount = Math.round(amount * 100) / 100;
 
     if (payment_method === "wallet") {
       // Check wallet balance from EXTERNAL DB
