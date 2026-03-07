@@ -138,6 +138,7 @@ const AutoDashboard = () => {
       // ignore storage errors
     }
   };
+  const callAction = async (action: string, extra: Record<string, unknown> = {}) => {
     const { data, error } = await invokeCloudFunctionPublic<any>("osn-session", { action, ...extra });
     if (error) throw new Error(error.message);
     if (data && !data.success) throw new Error(data.error || "فشل غير متوقع");
