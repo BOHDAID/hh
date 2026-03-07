@@ -62,7 +62,7 @@ function getAutomationFromPayload(raw: unknown): AutomationState {
   return {};
 }
 
-function isSessionConnected(automation: AutomationState): boolean {
+function hasRunningTasks(automation: AutomationState): boolean {
   return !!(
     automation.mentions?.running ||
     automation.antiDelete?.running ||
