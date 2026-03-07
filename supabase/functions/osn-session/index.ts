@@ -295,9 +295,9 @@ const listAccountSessions = async (
 
   if (error) {
     if (isTableMissingError(error, "telegram_sessions")) {
-      const fallback = await loadFallbackAccountSession(sessionClient, userId);
+      const fallback = await loadFallbackAccountSessions(sessionClient, userId);
       return {
-        sessions: fallback.session ? [fallback.session] : [],
+        sessions: fallback.sessions,
         error: fallback.error,
         source: "site_settings",
       };
@@ -393,19 +393,8 @@ const deleteAccountSession = async (
 
   if (error) {
     if (isTableMissingError(error, "telegram_sessions")) {
-      if (!sessionString) {
-        const fallback = await deleteFallbackAccountSession(sessionClient, userId);
-        return { error: fallback.error, source: "site_settings" };
-      }
-
-      const fallbackLoad = await loadFallbackAccountSession(sessionClient, userId);
-      if (fallbackLoad.error) return { error: fallbackLoad.error, source: "site_settings" };
-      if (fallbackLoad.session?.session_string !== sessionString) {
-        return { error: null, source: "site_settings" };
-      }
-
-      const fallbackDelete = await deleteFallbackAccountSession(sessionClient, userId);
-      return { error: fallbackDelete.error, source: "site_settings" };
+      const fallback = await deleteFallbackAccountSession(sessionClient, userId, sessionString);
+      return { error: fallback.error, source: "site_settings" };
     }
     return { error, source: "telegram_sessions" };
   }
