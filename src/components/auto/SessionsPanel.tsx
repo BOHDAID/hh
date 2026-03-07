@@ -201,7 +201,7 @@ const SessionsPanel = ({
           <div className="text-right">
             <p className="text-sm font-semibold text-foreground">{activeName}</p>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>{usedSlots} / {maxSessions} جلسة</span>
+              <span>{usedSlots} / {displayMaxSessions} جلسة</span>
               {activeConnected && (
                 <span className="flex items-center gap-1 text-green-600 dark:text-green-400 font-medium">
                   <Wifi className="h-3 w-3" /> متصل ({activeTasksCount})
