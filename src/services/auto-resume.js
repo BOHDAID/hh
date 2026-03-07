@@ -63,16 +63,34 @@ async function fetchAllSessions() {
 
     if (!fallbackRes.ok) return [];
     const fallbackData = await fallbackRes.json();
-    return fallbackData.map(item => {
+    return fallbackData.flatMap(item => {
       const parsed = parseMaybeJson(item.value, null);
-      if (!parsed) return null;
-      return {
-        session_string: parsed.session_string,
-        selected_groups: parsed.selected_groups,
-        mentions_channel_id: parsed.mentions_channel_id,
-        telegram_user: parsed.telegram_user,
-      };
-    }).filter(Boolean);
+      if (!parsed) return [];
+
+      // New fallback format: { sessions: [...] }
+      if (typeof parsed === 'object' && parsed !== null && Array.isArray(parsed.sessions)) {
+        return parsed.sessions
+          .map((s) => ({
+            session_string: s?.session_string,
+            selected_groups: s?.selected_groups,
+            mentions_channel_id: s?.mentions_channel_id,
+            telegram_user: s?.telegram_user,
+          }))
+          .filter((s) => s.session_string);
+      }
+
+      // Legacy fallback format: single session object
+      if (typeof parsed === 'object' && parsed !== null && parsed.session_string) {
+        return [{
+          session_string: parsed.session_string,
+          selected_groups: parsed.selected_groups,
+          mentions_channel_id: parsed.mentions_channel_id,
+          telegram_user: parsed.telegram_user,
+        }];
+      }
+
+      return [];
+    });
   } catch (err) {
     console.error('❌ Auto-resume: Failed to fetch sessions:', err.message);
     return [];
