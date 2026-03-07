@@ -357,7 +357,7 @@ const SessionsPanel = ({
                   <div className="text-center p-2 text-xs text-muted-foreground">
                     وصلت للحد الأقصى ({displayMaxSessions} جلسة) — <button onClick={() => setUpgradeOpen(true)} className="text-primary underline">ترقية الباقة</button>
                   </div>
-                  <UpgradeSessionsModal open={upgradeOpen} onOpenChange={setUpgradeOpen} currentSessions={usedSlots} />
+                  <UpgradeSessionsModal open={upgradeOpen} onOpenChange={setUpgradeOpen} currentSessions={usedSlots} maxSessions={maxSessions} />
                 </>
               ) : null}
             </div>
