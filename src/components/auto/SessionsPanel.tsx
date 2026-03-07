@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { db, getAuthClient } from "@/lib/supabaseClient";
+import { getAuthClient } from "@/lib/supabaseClient";
+import { invokeCloudFunction } from "@/lib/cloudFunctions";
 import { Button } from "@/components/ui/button";
-import { 
-  Loader2, Smartphone, Crown, Plus, Trash2, 
-  ChevronDown, ChevronUp, LogOut, Check, Wifi, WifiOff,
+import {
+  Loader2, Smartphone, Crown, Plus, Trash2,
+  ChevronDown, ChevronUp, LogOut, Check, Wifi,
   User as UserIcon, ShoppingCart
 } from "lucide-react";
 import { toast } from "sonner";
@@ -40,12 +41,17 @@ interface SessionsPanelProps {
   onAddNewSession: () => void;
 }
 
+const parseMaybeJson = <T,>(value: unknown, fallback: T): T => {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === "string") {
+    try { return JSON.parse(value) as T; } catch { return fallback; }
+  }
+  return value as T;
+};
+
 function getAutomationFromPayload(raw: unknown): AutomationState {
   if (!raw) return {};
-  let parsed = raw;
-  if (typeof parsed === "string") {
-    try { parsed = JSON.parse(parsed); } catch { return {}; }
-  }
+  const parsed = parseMaybeJson<unknown>(raw, raw);
   if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
     const obj = parsed as Record<string, unknown>;
     if (obj.automation && typeof obj.automation === "object") {
@@ -87,25 +93,39 @@ const SessionsPanel = ({
   const [switching, setSwitching] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
+  const callAccountAction = async (action: string, extra: Record<string, unknown> = {}) => {
+    const authClient = getAuthClient();
+    const { data: { session } } = await authClient.auth.getSession();
+    if (!session?.access_token) throw new Error("يجب تسجيل الدخول أولاً");
+
+    const { data, error } = await invokeCloudFunction<any>("osn-session", { action, ...extra }, session.access_token);
+    if (error) throw error;
+    if (data && !data.success) throw new Error(data.error || "فشل غير متوقع");
+    return data;
+  };
+
   useEffect(() => {
     fetchSessions();
   }, [activeSessionString]);
 
   const fetchSessions = async () => {
+    setLoading(true);
     try {
-      const authClient = getAuthClient();
-      const { data: { session } } = await authClient.auth.getSession();
-      if (!session) return;
+      const data = await callAccountAction("tg-list-account-sessions");
+      const normalized = ((data?.sessions || []) as any[])
+        .filter((s) => typeof s?.session_string === "string" && s.session_string.trim().length > 0)
+        .map((s) => ({
+          id: s.session_string,
+          session_string: s.session_string,
+          telegram_user: parseMaybeJson(s.telegram_user, null),
+          selected_groups: parseMaybeJson(s.selected_groups, null),
+          created_at: s.updated_at || new Date().toISOString(),
+        } as SavedSession));
 
-      const { data } = await db
-        .from("telegram_sessions")
-        .select("id, session_string, telegram_user, selected_groups, created_at")
-        .eq("user_id", session.user.id)
-        .order("updated_at", { ascending: false });
-
-      setSessions((data as SavedSession[]) || []);
+      setSessions(normalized);
     } catch (err) {
       console.error("Failed to fetch sessions:", err);
+      setSessions([]);
     } finally {
       setLoading(false);
     }
@@ -128,17 +148,8 @@ const SessionsPanel = ({
     }
     setDeleting(s.id);
     try {
-      const authClient = getAuthClient();
-      const { data: { session } } = await authClient.auth.getSession();
-      if (!session) return;
-
-      await db
-        .from("telegram_sessions")
-        .delete()
-        .eq("id", s.id)
-        .eq("user_id", session.user.id);
-
-      setSessions(prev => prev.filter(x => x.id !== s.id));
+      await callAccountAction("tg-delete-account-session", { sessionString: s.session_string });
+      setSessions((prev) => prev.filter((x) => x.session_string !== s.session_string));
       toast.success("تم حذف الجلسة");
     } catch {
       toast.error("فشل في حذف الجلسة");
@@ -147,11 +158,18 @@ const SessionsPanel = ({
     }
   };
 
-  const usedSlots = sessions.length;
+  const effectiveSessions = sessions.length
+    ? sessions
+    : (activeSessionString
+      ? [{ id: activeSessionString, session_string: activeSessionString, telegram_user: null, selected_groups: null, created_at: "" }]
+      : []);
+
+  const usedSlots = effectiveSessions.length;
+  const displayMaxSessions = Math.max(maxSessions, usedSlots > 0 ? 1 : 0);
   const canAddMore = hasSubscription && usedSlots < maxSessions;
 
   // Find active session info
-  const activeSessionData = sessions.find(s => s.session_string === activeSessionString);
+  const activeSessionData = effectiveSessions.find(s => s.session_string === activeSessionString);
   const activeUser = activeSessionData?.telegram_user;
   const activeName = activeUser
     ? `${activeUser.firstName || ''} ${activeUser.lastName || ''}`.trim() || activeUser.username || activeUser.phone || 'جلسة'
@@ -183,7 +201,7 @@ const SessionsPanel = ({
           <div className="text-right">
             <p className="text-sm font-semibold text-foreground">{activeName}</p>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>{usedSlots} / {maxSessions} جلسة</span>
+              <span>{usedSlots} / {displayMaxSessions} جلسة</span>
               {activeConnected && (
                 <span className="flex items-center gap-1 text-green-600 dark:text-green-400 font-medium">
                   <Wifi className="h-3 w-3" /> متصل ({activeTasksCount})
@@ -212,7 +230,7 @@ const SessionsPanel = ({
           ) : (
             <div className="p-3 space-y-2">
               {/* Sessions */}
-              {sessions.map((s) => {
+              {effectiveSessions.map((s) => {
                 const user = s.telegram_user;
                 const name = user
                   ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username || user.phone || 'جلسة'
@@ -326,7 +344,7 @@ const SessionsPanel = ({
                 </Link>
               ) : usedSlots >= maxSessions ? (
                 <div className="text-center p-2 text-xs text-muted-foreground">
-                  وصلت للحد الأقصى ({maxSessions} جلسة) — <Link to="/#telegram-plans" className="text-primary underline">ترقية الباقة</Link>
+                  وصلت للحد الأقصى ({displayMaxSessions} جلسة) — <Link to="/#telegram-plans" className="text-primary underline">ترقية الباقة</Link>
                 </div>
               ) : null}
             </div>
