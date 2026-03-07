@@ -10,7 +10,7 @@ COPY src ./src
 COPY public ./public
 COPY index.html vite.config.ts tsconfig.json tsconfig.app.json tsconfig.node.json tailwind.config.ts postcss.config.js components.json ./
 
-ENV NODE_OPTIONS="--max-old-space-size=450"
+ENV NODE_OPTIONS="--max-old-space-size=1024"
 RUN npm run build
 # Clean up after build
 RUN rm -rf node_modules
