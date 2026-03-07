@@ -358,8 +358,8 @@ const upsertAccountSession = async (
       {
         user_id: userId,
         session_string: session.session_string,
-        telegram_user: serializeMaybeJson(session.telegram_user),
-        selected_groups: serializeMaybeJson(session.selected_groups),
+        telegram_user: normalizeJsonForStorage(session.telegram_user),
+        selected_groups: normalizeJsonForStorage(session.selected_groups),
         mentions_channel_id: session.mentions_channel_id,
         updated_at: session.updated_at ?? new Date().toISOString(),
       },
