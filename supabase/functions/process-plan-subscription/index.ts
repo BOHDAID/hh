@@ -92,11 +92,43 @@ Deno.serve(async (req) => {
         wallet_id: wallet.id,
         type: "purchase",
         amount: -amount,
-        description: `اشتراك باقة: ${plan.name} (${sessionsCount} جلسة)`,
+        description: isAddSessions 
+          ? `إضافة ${sessionsCount} جلسة` 
+          : `اشتراك باقة: ${plan.name} (${sessionsCount} جلسة)`,
         status: "completed",
       });
 
-      // Create subscription in EXTERNAL DB
+      if (isAddSessions) {
+        // Find active subscription and increase max_sessions
+        const { data: existingSub } = await extDb
+          .from("telegram_subscriptions")
+          .select("id, max_sessions")
+          .eq("user_id", user.id)
+          .eq("status", "active")
+          .order("ends_at", { ascending: false })
+          .limit(1)
+          .single();
+
+        if (!existingSub) {
+          return errorResponse("لا يوجد اشتراك نشط لإضافة جلسات إليه");
+        }
+
+        const newMax = (existingSub.max_sessions || 1) + sessionsCount;
+        const { error: updateErr } = await extDb
+          .from("telegram_subscriptions")
+          .update({ max_sessions: newMax, updated_at: new Date().toISOString() })
+          .eq("id", existingSub.id);
+
+        if (updateErr) return errorResponse("Failed to update sessions: " + updateErr.message);
+
+        return successResponse({
+          success: true,
+          message: `تم إضافة ${sessionsCount} جلسة بنجاح!`,
+          new_max_sessions: newMax,
+        });
+      }
+
+      // Create new subscription in EXTERNAL DB
       const now = new Date();
       const endsAt = new Date(now.getTime() + plan.duration_days * 24 * 60 * 60 * 1000);
 
