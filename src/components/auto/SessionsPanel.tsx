@@ -62,7 +62,7 @@ function getAutomationFromPayload(raw: unknown): AutomationState {
   return {};
 }
 
-function isSessionConnected(automation: AutomationState): boolean {
+function hasRunningTasks(automation: AutomationState): boolean {
   return !!(
     automation.mentions?.running ||
     automation.antiDelete?.running ||
@@ -177,9 +177,9 @@ const SessionsPanel = ({
     ? `${activeUser.firstName || ''} ${activeUser.lastName || ''}`.trim() || activeUser.username || activeUser.phone || 'جلسة'
     : 'جلسة متصلة';
 
-  // Check if active session has running automation
+  // Active session is always "connected" if it has a session string
+  const activeIsConnected = !!activeSessionString;
   const activeAutomation = activeSessionData ? getAutomationFromPayload(activeSessionData.selected_groups) : {};
-  const activeConnected = isSessionConnected(activeAutomation);
   const activeTasksCount = getRunningTasksCount(activeAutomation);
 
   return (
@@ -197,16 +197,16 @@ const SessionsPanel = ({
             {/* Connection status dot */}
             <div className={cn(
               "absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-card",
-              activeConnected ? "bg-green-500" : "bg-destructive"
+              activeIsConnected ? "bg-green-500" : "bg-destructive"
             )} />
           </div>
           <div className="text-right">
             <p className="text-sm font-semibold text-foreground">{activeName}</p>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span>{usedSlots} / {displayMaxSessions} جلسة</span>
-              {activeConnected ? (
+              {activeIsConnected ? (
                 <span className="flex items-center gap-1 text-green-600 dark:text-green-400 font-medium">
-                  <Wifi className="h-3 w-3" /> متصل ({activeTasksCount})
+                  <Wifi className="h-3 w-3" /> متصل {activeTasksCount > 0 ? `(${activeTasksCount})` : ''}
                 </span>
               ) : (
                 <span className="flex items-center gap-1 text-destructive font-medium">
@@ -243,8 +243,8 @@ const SessionsPanel = ({
                   : 'جلسة غير معروفة';
                 const username = user?.username ? `@${user.username}` : null;
                 const isActive = s.session_string === activeSessionString;
+                const sessionConnected = !!s.session_string; // has session = connected
                 const sessionAutomation = getAutomationFromPayload(s.selected_groups);
-                const connected = isSessionConnected(sessionAutomation);
                 const tasksCount = getRunningTasksCount(sessionAutomation);
 
                 return (
@@ -274,7 +274,7 @@ const SessionsPanel = ({
                         <div className={cn(
                           "absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2",
                           isActive ? "border-primary/10" : "border-muted/40",
-                          connected ? "bg-green-500" : "bg-destructive"
+                          sessionConnected ? "bg-green-500" : "bg-destructive"
                         )} />
                       </div>
                       <div className="min-w-0">
@@ -290,9 +290,9 @@ const SessionsPanel = ({
                               {username}
                             </p>
                           )}
-                          {connected ? (
+                          {sessionConnected ? (
                             <span className="text-[10px] flex items-center gap-0.5 text-green-600 dark:text-green-400 font-medium">
-                              <Wifi className="h-2.5 w-2.5" /> {tasksCount} مهام
+                              <Wifi className="h-2.5 w-2.5" /> متصل {tasksCount > 0 ? `(${tasksCount} مهام)` : ''}
                             </span>
                           ) : (
                             <span className="text-[10px] text-destructive font-medium">
