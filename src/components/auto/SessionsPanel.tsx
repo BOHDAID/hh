@@ -344,7 +344,7 @@ const SessionsPanel = ({
                 </Link>
               ) : usedSlots >= maxSessions ? (
                 <div className="text-center p-2 text-xs text-muted-foreground">
-                  وصلت للحد الأقصى ({maxSessions} جلسة) — <Link to="/#telegram-plans" className="text-primary underline">ترقية الباقة</Link>
+                  وصلت للحد الأقصى ({displayMaxSessions} جلسة) — <Link to="/#telegram-plans" className="text-primary underline">ترقية الباقة</Link>
                 </div>
               ) : null}
             </div>
