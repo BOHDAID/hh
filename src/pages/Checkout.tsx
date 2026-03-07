@@ -208,6 +208,47 @@ const Checkout = () => {
         setStockCount(999999); // Always available
       }
 
+      // Extra sessions checkout mode
+      if (isExtraSessionsCheckout && planId) {
+        const urlParams = new URLSearchParams(location.search);
+        const extraCount = Math.max(1, parseInt(urlParams.get("count") || "1", 10));
+
+        const { data: planRow, error: planErr } = await db
+          .from("telegram_plans")
+          .select("id, name, price_per_extra_session")
+          .eq("id", planId)
+          .eq("is_active", true)
+          .single();
+
+        if (planErr || !planRow) {
+          toast({ title: "خطأ", description: "لم يتم العثور على الباقة", variant: "destructive" });
+          navigate("/auto-dashboard");
+          return;
+        }
+
+        const pricePerSession = Number((planRow as any).price_per_extra_session) || 5;
+        const totalExtraPrice = Math.round(extraCount * pricePerSession * 100) / 100;
+
+        setPlanData({
+          id: planRow.id,
+          name: planRow.name,
+          price: totalExtraPrice,
+          duration_days: 0,
+          max_sessions: extraCount,
+        });
+
+        setProduct({
+          id: planRow.id,
+          name: `إضافة ${extraCount} جلسة`,
+          price: totalExtraPrice,
+          image_url: null,
+          product_type: "extra_sessions",
+          warranty_days: 0,
+          description: `${extraCount} جلسة إضافية × $${pricePerSession}`,
+        });
+        setStockCount(999999);
+      }
+
       // Single product checkout
       if (productId && !isCartCheckout && !isPlanCheckout) {
         const { data: productData, error } = await db
