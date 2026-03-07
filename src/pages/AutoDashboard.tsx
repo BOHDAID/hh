@@ -374,6 +374,7 @@ const AutoDashboard = () => {
       setLoggedIn(true);
       setTelegramUser(result.user || null);
       setActiveSession(nextSession);
+      setLastActiveSession(nextSession);
 
       try {
         await saveSessionToAccount(nextSession, result.user || null);
