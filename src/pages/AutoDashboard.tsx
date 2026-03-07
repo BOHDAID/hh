@@ -402,6 +402,7 @@ const AutoDashboard = () => {
     setLoggedIn(false);
     setTelegramUser(null);
     setActiveSession("");
+    setLastActiveSession("");
     setSessionInput("");
     setSavedMentionsChannelId(null);
     setSelectedGroups([]);
