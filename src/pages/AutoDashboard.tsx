@@ -231,27 +231,49 @@ const AutoDashboard = () => {
   // Auto-reconnect
   useEffect(() => {
     let mounted = true;
+
+    const hydrateFromSavedSession = (saved: any, connectedUser: TelegramUser | null) => {
+      const savedUser = parseStoredJson<TelegramUser | null>(saved?.telegram_user, null);
+      const storedPayload = normalizeStoredSessionPayload(saved?.selected_groups);
+      const restoredMentionsChannel = saved?.mentions_channel_id || storedPayload.automation.mentions?.channelId || null;
+
+      setLoggedIn(true);
+      setTelegramUser(connectedUser || savedUser);
+      setActiveSession(saved.session_string);
+      setLastActiveSession(saved.session_string);
+      setSelectedGroups(storedPayload.groups);
+      setAutomationState(storedPayload.automation);
+      setSavedMentionsChannelId(restoredMentionsChannel);
+    };
+
     const loadSession = async () => {
       setAutoConnecting(true);
       try {
-        const data = await callAccountAction("tg-get-account-session");
-        const saved = data?.session;
-        if (!saved?.session_string || !mounted) return;
-        try {
-          const result = await callAction("tg-connect-session", { sessionString: saved.session_string });
-          if (!mounted) return;
-          const savedUser = parseStoredJson<TelegramUser | null>(saved.telegram_user, null);
-          const storedPayload = normalizeStoredSessionPayload(saved.selected_groups);
-          const restoredMentionsChannel = saved.mentions_channel_id || storedPayload.automation.mentions?.channelId || null;
+        const listed = await callAccountAction("tg-list-account-sessions");
+        const sessions = ((listed?.sessions || []) as any[])
+          .filter((item) => typeof item?.session_string === "string" && item.session_string.trim().length > 0)
+          .map((item) => ({ ...item, session_string: item.session_string.trim() }));
 
-          setLoggedIn(true);
-          setTelegramUser(result.user || savedUser);
-          setActiveSession(saved.session_string);
-          setSelectedGroups(storedPayload.groups);
-          setAutomationState(storedPayload.automation);
-          setSavedMentionsChannelId(restoredMentionsChannel);
-        } catch {
-          await callAccountAction("tg-delete-account-session", { sessionString: saved.session_string });
+        if (!sessions.length || !mounted) return;
+
+        const lastActive = getLastActiveSession();
+        const preferred = lastActive
+          ? sessions.find((item) => item.session_string === lastActive)
+          : null;
+
+        const orderedSessions = preferred
+          ? [preferred, ...sessions.filter((item) => item.session_string !== preferred.session_string)]
+          : sessions;
+
+        for (const saved of orderedSessions) {
+          try {
+            const result = await callAction("tg-connect-session", { sessionString: saved.session_string });
+            if (!mounted) return;
+            hydrateFromSavedSession(saved, result.user || null);
+            return;
+          } catch (err: any) {
+            console.warn("Auto-connect skipped session:", saved.session_string, err?.message || err);
+          }
         }
       } catch {
         // not logged in or no saved session
@@ -259,6 +281,7 @@ const AutoDashboard = () => {
         if (mounted) setAutoConnecting(false);
       }
     };
+
     loadSession();
     return () => { mounted = false; };
   }, []);
