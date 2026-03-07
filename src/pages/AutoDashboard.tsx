@@ -136,10 +136,22 @@ const AutoDashboard = () => {
 
   const parseStoredJson = <T,>(value: unknown, fallback: T): T => {
     if (value === null || value === undefined) return fallback;
-    if (typeof value === "string") {
-      try { return JSON.parse(value) as T; } catch { return fallback; }
+
+    let current: unknown = value;
+    for (let i = 0; i < 3; i += 1) {
+      if (typeof current !== "string") break;
+      const trimmed = current.trim();
+      if (!trimmed) break;
+
+      try {
+        current = JSON.parse(trimmed);
+      } catch {
+        break;
+      }
     }
-    return value as T;
+
+    if (current === null || current === undefined) return fallback;
+    return current as T;
   };
 
   const normalizeStoredSessionPayload = (rawValue: unknown): StoredSessionPayload => {
