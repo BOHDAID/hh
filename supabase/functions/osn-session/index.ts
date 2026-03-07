@@ -90,7 +90,8 @@ type AccountSessionRecord = {
 
 const TELEGRAM_SESSION_FALLBACK_CATEGORY = "telegram_automation";
 
-const getFallbackSessionKey = (userId: string): string => `telegram_session_${userId}`;
+const getFallbackSessionKey = (userId: string): string => `telegram_session_${userId}`; // legacy single-session key
+const getFallbackSessionsKey = (userId: string): string => `telegram_sessions_${userId}`; // new multi-session key
 
 const isTableMissingError = (error: any, tableName: string): boolean => {
   if (!error) return false;
@@ -99,49 +100,101 @@ const isTableMissingError = (error: any, tableName: string): boolean => {
     && error.message.includes(`'public.${tableName}'`);
 };
 
+const normalizeAccountSessionRecord = (raw: unknown): AccountSessionRecord | null => {
+  if (!isRecord(raw)) return null;
+  const sessionString = typeof raw.session_string === "string" ? raw.session_string.trim() : "";
+  if (!sessionString) return null;
+
+  return {
+    session_string: sessionString,
+    telegram_user: raw.telegram_user ?? null,
+    selected_groups: raw.selected_groups ?? null,
+    mentions_channel_id: typeof raw.mentions_channel_id === "string" ? raw.mentions_channel_id : null,
+    updated_at: typeof raw.updated_at === "string" ? raw.updated_at : null,
+  };
+};
+
+const dedupeAndSortSessions = (sessions: AccountSessionRecord[]): AccountSessionRecord[] => {
+  const bySession = new Map<string, AccountSessionRecord>();
+
+  for (const session of sessions) {
+    const existing = bySession.get(session.session_string);
+    if (!existing) {
+      bySession.set(session.session_string, session);
+      continue;
+    }
+
+    const existingTs = existing.updated_at ? Date.parse(existing.updated_at) : 0;
+    const currentTs = session.updated_at ? Date.parse(session.updated_at) : 0;
+    if (currentTs >= existingTs) {
+      bySession.set(session.session_string, session);
+    }
+  }
+
+  return Array.from(bySession.values()).sort((a, b) => {
+    const aTs = a.updated_at ? Date.parse(a.updated_at) : 0;
+    const bTs = b.updated_at ? Date.parse(b.updated_at) : 0;
+    return bTs - aTs;
+  });
+};
+
+const loadFallbackAccountSessions = async (
+  sessionClient: ReturnType<typeof createClient>,
+  userId: string,
+): Promise<{ sessions: AccountSessionRecord[]; error: any }> => {
+  const legacyKey = getFallbackSessionKey(userId);
+  const listKey = getFallbackSessionsKey(userId);
+
+  const { data, error } = await sessionClient
+    .from("site_settings")
+    .select("key,value")
+    .in("key", [legacyKey, listKey]);
+
+  if (error) return { sessions: [], error };
+
+  const collected: AccountSessionRecord[] = [];
+
+  for (const row of data || []) {
+    const parsed = parseMaybeJson<unknown>(row.value, null);
+
+    if (row.key === listKey && isRecord(parsed) && Array.isArray(parsed.sessions)) {
+      for (const item of parsed.sessions) {
+        const normalized = normalizeAccountSessionRecord(item);
+        if (normalized) collected.push(normalized);
+      }
+      continue;
+    }
+
+    const normalized = normalizeAccountSessionRecord(parsed);
+    if (normalized) collected.push(normalized);
+  }
+
+  return { sessions: dedupeAndSortSessions(collected), error: null };
+};
+
 const loadFallbackAccountSession = async (
   sessionClient: ReturnType<typeof createClient>,
   userId: string,
 ): Promise<{ session: AccountSessionRecord | null; error: any }> => {
-  const key = getFallbackSessionKey(userId);
-  const { data, error } = await sessionClient
-    .from("site_settings")
-    .select("value")
-    .eq("key", key)
-    .maybeSingle();
-
-  if (error) return { session: null, error };
-
-  const parsed = parseMaybeJson<Record<string, unknown> | null>(data?.value, null);
-  if (!parsed || typeof parsed.session_string !== "string") {
-    return { session: null, error: null };
-  }
-
-  return {
-    session: {
-      session_string: parsed.session_string,
-      telegram_user: parsed.telegram_user ?? null,
-      selected_groups: parsed.selected_groups ?? null,
-      mentions_channel_id: typeof parsed.mentions_channel_id === "string" ? parsed.mentions_channel_id : null,
-      updated_at: typeof parsed.updated_at === "string" ? parsed.updated_at : null,
-    },
-    error: null,
-  };
+  const fallback = await loadFallbackAccountSessions(sessionClient, userId);
+  if (fallback.error) return { session: null, error: fallback.error };
+  return { session: fallback.sessions[0] || null, error: null };
 };
 
-const saveFallbackAccountSession = async (
+const persistFallbackAccountSessions = async (
   sessionClient: ReturnType<typeof createClient>,
   userId: string,
-  session: AccountSessionRecord,
+  sessions: AccountSessionRecord[],
 ): Promise<{ error: any }> => {
-  const key = getFallbackSessionKey(userId);
-  const value = JSON.stringify(session);
+  const listKey = getFallbackSessionsKey(userId);
+  const legacyKey = getFallbackSessionKey(userId);
   const nowIso = new Date().toISOString();
+  const payload = JSON.stringify({ sessions: dedupeAndSortSessions(sessions), updated_at: nowIso });
 
   const { data: existing, error: loadError } = await sessionClient
     .from("site_settings")
     .select("id")
-    .eq("key", key)
+    .eq("key", listKey)
     .limit(1);
 
   if (loadError) return { error: loadError };
@@ -151,41 +204,83 @@ const saveFallbackAccountSession = async (
     const { error } = await sessionClient
       .from("site_settings")
       .update({
-        value,
+        value: payload,
         is_sensitive: true,
         category: TELEGRAM_SESSION_FALLBACK_CATEGORY,
         updated_at: nowIso,
       })
       .eq("id", existingId);
 
-    return { error };
+    if (error) return { error };
+  } else {
+    const { error } = await sessionClient
+      .from("site_settings")
+      .insert({
+        key: listKey,
+        value: payload,
+        is_sensitive: true,
+        category: TELEGRAM_SESSION_FALLBACK_CATEGORY,
+        description: "Fallback Telegram automation sessions storage",
+        updated_at: nowIso,
+      });
+
+    if (error) return { error };
   }
 
-  const { error } = await sessionClient
-    .from("site_settings")
-    .insert({
-      key,
-      value,
-      is_sensitive: true,
-      category: TELEGRAM_SESSION_FALLBACK_CATEGORY,
-      description: "Fallback Telegram automation session storage",
-      updated_at: nowIso,
-    });
+  // Clean legacy single-session key once list storage is available
+  await sessionClient.from("site_settings").delete().eq("key", legacyKey);
 
-  return { error };
+  return { error: null };
+};
+
+const saveFallbackAccountSession = async (
+  sessionClient: ReturnType<typeof createClient>,
+  userId: string,
+  session: AccountSessionRecord,
+): Promise<{ error: any }> => {
+  const loaded = await loadFallbackAccountSessions(sessionClient, userId);
+  if (loaded.error) return { error: loaded.error };
+
+  const nextSessions = loaded.sessions.filter((item) => item.session_string !== session.session_string);
+  nextSessions.unshift({
+    ...session,
+    updated_at: session.updated_at ?? new Date().toISOString(),
+  });
+
+  return await persistFallbackAccountSessions(sessionClient, userId, nextSessions);
 };
 
 const deleteFallbackAccountSession = async (
   sessionClient: ReturnType<typeof createClient>,
   userId: string,
+  sessionString?: string,
 ): Promise<{ error: any }> => {
-  const key = getFallbackSessionKey(userId);
-  const { error } = await sessionClient
-    .from("site_settings")
-    .delete()
-    .eq("key", key);
+  const legacyKey = getFallbackSessionKey(userId);
+  const listKey = getFallbackSessionsKey(userId);
 
-  return { error };
+  if (!sessionString) {
+    const { error } = await sessionClient
+      .from("site_settings")
+      .delete()
+      .in("key", [legacyKey, listKey]);
+    return { error };
+  }
+
+  const loaded = await loadFallbackAccountSessions(sessionClient, userId);
+  if (loaded.error) return { error: loaded.error };
+
+  const remaining = loaded.sessions.filter((item) => item.session_string !== sessionString);
+  if (remaining.length === loaded.sessions.length) return { error: null };
+
+  if (remaining.length === 0) {
+    const { error } = await sessionClient
+      .from("site_settings")
+      .delete()
+      .in("key", [legacyKey, listKey]);
+    return { error };
+  }
+
+  return await persistFallbackAccountSessions(sessionClient, userId, remaining);
 };
 
 const listAccountSessions = async (
