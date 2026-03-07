@@ -673,8 +673,8 @@ const Checkout = () => {
         return;
       }
 
-      // For plan subscriptions with non-wallet payment, create pending order
-      if (isPlanCheckout && planData) {
+      // For plan/extra-sessions with non-wallet payment, create pending order
+      if ((isPlanCheckout || isExtraSessionsCheckout) && planData) {
         const response = await invokeCloudFunction<{ 
           success: boolean; 
           order?: { id: string; order_number: string }; 
@@ -683,7 +683,7 @@ const Checkout = () => {
           error?: string 
         }>(
           "process-plan-subscription",
-          { plan_id: planData.id, payment_method: paymentMethod, sessions: planData.max_sessions },
+          { plan_id: planData.id, payment_method: paymentMethod, sessions: planData.max_sessions, type: isExtraSessionsCheckout ? "add_sessions" : "new_subscription" },
           session.access_token
         );
 
