@@ -158,11 +158,17 @@ const SessionsPanel = ({
     }
   };
 
-  const usedSlots = sessions.length;
+  const effectiveSessions = sessions.length
+    ? sessions
+    : (activeSessionString
+      ? [{ id: activeSessionString, session_string: activeSessionString, telegram_user: null, selected_groups: null, created_at: "" }]
+      : []);
+
+  const usedSlots = effectiveSessions.length;
   const canAddMore = hasSubscription && usedSlots < maxSessions;
 
   // Find active session info
-  const activeSessionData = sessions.find(s => s.session_string === activeSessionString);
+  const activeSessionData = effectiveSessions.find(s => s.session_string === activeSessionString);
   const activeUser = activeSessionData?.telegram_user;
   const activeName = activeUser
     ? `${activeUser.firstName || ''} ${activeUser.lastName || ''}`.trim() || activeUser.username || activeUser.phone || 'جلسة'
