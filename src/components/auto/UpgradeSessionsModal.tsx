@@ -60,23 +60,7 @@ const UpgradeSessionsModal = ({ open, onOpenChange, currentSessions }: Props) =>
     }
 
     onOpenChange(false);
-    navigate("/checkout", {
-      state: {
-        cartItems: [{
-          id: `extra-sessions-${planId}`,
-          name: `إضافة ${extraSessions} جلسة`,
-          price: totalPrice,
-          quantity: 1,
-          image_url: null,
-        }],
-        totalAmount: totalPrice,
-        planDetails: {
-          planId,
-          extraSessions,
-          type: "add_sessions",
-        },
-      },
-    });
+    navigate(`/checkout/extra-sessions-${planId}?count=${extraSessions}`);
   };
 
   return (

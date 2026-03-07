@@ -30,7 +30,8 @@ Deno.serve(async (req) => {
     const extDb = createClient(extUrl, extServiceKey);
 
     const body = await req.json();
-    const { plan_id, payment_method, sessions } = body;
+    const { plan_id, payment_method, sessions, type } = body;
+    const isAddSessions = type === "add_sessions";
 
     if (!plan_id || !isValidUUID(plan_id)) return errorResponse("Invalid plan_id");
     if (!payment_method) return errorResponse("Missing payment_method");
@@ -47,13 +48,20 @@ Deno.serve(async (req) => {
 
     if (planError || !plan) return errorResponse("Plan not found");
 
-    // Calculate price: base + 35% for each extra session
-    const basePrice = Number(plan.price);
-    let amount = basePrice;
-    for (let i = 2; i <= sessionsCount; i++) {
-      amount += basePrice * 0.35;
+    let amount: number;
+    if (isAddSessions) {
+      // For adding sessions: use price_per_extra_session from plan
+      const pricePerSession = Number(plan.price_per_extra_session) || 5;
+      amount = Math.round(sessionsCount * pricePerSession * 100) / 100;
+    } else {
+      // For new subscription: base + 35% for each extra session
+      const basePrice = Number(plan.price);
+      amount = basePrice;
+      for (let i = 2; i <= sessionsCount; i++) {
+        amount += basePrice * 0.35;
+      }
+      amount = Math.round(amount * 100) / 100;
     }
-    amount = Math.round(amount * 100) / 100;
 
     if (payment_method === "wallet") {
       // Check wallet balance from EXTERNAL DB
@@ -84,11 +92,43 @@ Deno.serve(async (req) => {
         wallet_id: wallet.id,
         type: "purchase",
         amount: -amount,
-        description: `اشتراك باقة: ${plan.name} (${sessionsCount} جلسة)`,
+        description: isAddSessions 
+          ? `إضافة ${sessionsCount} جلسة` 
+          : `اشتراك باقة: ${plan.name} (${sessionsCount} جلسة)`,
         status: "completed",
       });
 
-      // Create subscription in EXTERNAL DB
+      if (isAddSessions) {
+        // Find active subscription and increase max_sessions
+        const { data: existingSub } = await extDb
+          .from("telegram_subscriptions")
+          .select("id, max_sessions")
+          .eq("user_id", user.id)
+          .eq("status", "active")
+          .order("ends_at", { ascending: false })
+          .limit(1)
+          .single();
+
+        if (!existingSub) {
+          return errorResponse("لا يوجد اشتراك نشط لإضافة جلسات إليه");
+        }
+
+        const newMax = (existingSub.max_sessions || 1) + sessionsCount;
+        const { error: updateErr } = await extDb
+          .from("telegram_subscriptions")
+          .update({ max_sessions: newMax, updated_at: new Date().toISOString() })
+          .eq("id", existingSub.id);
+
+        if (updateErr) return errorResponse("Failed to update sessions: " + updateErr.message);
+
+        return successResponse({
+          success: true,
+          message: `تم إضافة ${sessionsCount} جلسة بنجاح!`,
+          new_max_sessions: newMax,
+        });
+      }
+
+      // Create new subscription in EXTERNAL DB
       const now = new Date();
       const endsAt = new Date(now.getTime() + plan.duration_days * 24 * 60 * 60 * 1000);
 

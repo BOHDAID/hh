@@ -46,7 +46,8 @@ const Checkout = () => {
 
   const isCartCheckout = productId === "cart";
   const isPlanCheckout = productId?.startsWith("plan-") ?? false;
-  const planId = isPlanCheckout ? productId!.replace("plan-", "") : null;
+  const isExtraSessionsCheckout = productId?.startsWith("extra-sessions-") ?? false;
+  const planId = isPlanCheckout ? productId!.replace("plan-", "") : (isExtraSessionsCheckout ? productId!.replace("extra-sessions-", "") : null);
 
   const [product, setProduct] = useState<Product | null>(null);
   const [planData, setPlanData] = useState<{ id: string; name: string; price: number; duration_days: number; max_sessions: number } | null>(null);
@@ -207,8 +208,49 @@ const Checkout = () => {
         setStockCount(999999); // Always available
       }
 
+      // Extra sessions checkout mode
+      if (isExtraSessionsCheckout && planId) {
+        const urlParams = new URLSearchParams(location.search);
+        const extraCount = Math.max(1, parseInt(urlParams.get("count") || "1", 10));
+
+        const { data: planRow, error: planErr } = await db
+          .from("telegram_plans")
+          .select("id, name, price_per_extra_session")
+          .eq("id", planId)
+          .eq("is_active", true)
+          .single();
+
+        if (planErr || !planRow) {
+          toast({ title: "خطأ", description: "لم يتم العثور على الباقة", variant: "destructive" });
+          navigate("/auto-dashboard");
+          return;
+        }
+
+        const pricePerSession = Number((planRow as any).price_per_extra_session) || 5;
+        const totalExtraPrice = Math.round(extraCount * pricePerSession * 100) / 100;
+
+        setPlanData({
+          id: planRow.id,
+          name: planRow.name,
+          price: totalExtraPrice,
+          duration_days: 0,
+          max_sessions: extraCount,
+        });
+
+        setProduct({
+          id: planRow.id,
+          name: `إضافة ${extraCount} جلسة`,
+          price: totalExtraPrice,
+          image_url: null,
+          product_type: "extra_sessions",
+          warranty_days: 0,
+          description: `${extraCount} جلسة إضافية × $${pricePerSession}`,
+        });
+        setStockCount(999999);
+      }
+
       // Single product checkout
-      if (productId && !isCartCheckout && !isPlanCheckout) {
+      if (productId && !isCartCheckout && !isPlanCheckout && !isExtraSessionsCheckout) {
         const { data: productData, error } = await db
           .from("products")
           .select("*")
@@ -563,6 +605,26 @@ const Checkout = () => {
           return;
         }
 
+        // Extra sessions via wallet
+        if (isExtraSessionsCheckout && planData) {
+          const response = await invokeCloudFunction<{ success: boolean; error?: string }>(
+            "process-plan-subscription",
+            { plan_id: planData.id, payment_method: "wallet", sessions: planData.max_sessions, type: "add_sessions" },
+            session.access_token
+          );
+
+          if (response.error) throw new Error(response.error.message || "Failed to add sessions");
+          const result = response.data;
+          if (!result || !result.success) throw new Error(result?.error || "Unknown error");
+
+          toast({
+            title: "تمت الإضافة بنجاح! 🎉",
+            description: `تم إضافة ${planData.max_sessions} جلسة`,
+          });
+          navigate("/auto-dashboard");
+          return;
+        }
+
         // Create order with wallet payment via Cloud function
         const orderItems = isCartCheckout
           ? cartItems.map(ci => ({ product_id: ci.product.id, quantity: ci.quantity, variant_id: ci.variant_id }))
@@ -611,8 +673,8 @@ const Checkout = () => {
         return;
       }
 
-      // For plan subscriptions with non-wallet payment, create pending order
-      if (isPlanCheckout && planData) {
+      // For plan/extra-sessions with non-wallet payment, create pending order
+      if ((isPlanCheckout || isExtraSessionsCheckout) && planData) {
         const response = await invokeCloudFunction<{ 
           success: boolean; 
           order?: { id: string; order_number: string }; 
@@ -621,7 +683,7 @@ const Checkout = () => {
           error?: string 
         }>(
           "process-plan-subscription",
-          { plan_id: planData.id, payment_method: paymentMethod, sessions: planData.max_sessions },
+          { plan_id: planData.id, payment_method: paymentMethod, sessions: planData.max_sessions, type: isExtraSessionsCheckout ? "add_sessions" : "new_subscription" },
           session.access_token
         );
 
