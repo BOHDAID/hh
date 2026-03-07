@@ -93,6 +93,7 @@ const SessionsPanel = ({
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   const callAccountAction = async (action: string, extra: Record<string, unknown> = {}) => {
     const authClient = getAuthClient();
@@ -196,16 +197,20 @@ const SessionsPanel = ({
             {/* Connection status dot */}
             <div className={cn(
               "absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-card",
-              activeConnected ? "bg-green-500" : "bg-muted-foreground/40"
+              activeConnected ? "bg-green-500" : "bg-destructive"
             )} />
           </div>
           <div className="text-right">
             <p className="text-sm font-semibold text-foreground">{activeName}</p>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span>{usedSlots} / {displayMaxSessions} جلسة</span>
-              {activeConnected && (
+              {activeConnected ? (
                 <span className="flex items-center gap-1 text-green-600 dark:text-green-400 font-medium">
                   <Wifi className="h-3 w-3" /> متصل ({activeTasksCount})
+                </span>
+              ) : (
+                <span className="flex items-center gap-1 text-destructive font-medium">
+                  غير متصل
                 </span>
               )}
             </div>
@@ -269,7 +274,7 @@ const SessionsPanel = ({
                         <div className={cn(
                           "absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2",
                           isActive ? "border-primary/10" : "border-muted/40",
-                          connected ? "bg-green-500" : "bg-muted-foreground/30"
+                          connected ? "bg-green-500" : "bg-destructive"
                         )} />
                       </div>
                       <div className="min-w-0">
@@ -285,9 +290,13 @@ const SessionsPanel = ({
                               {username}
                             </p>
                           )}
-                          {connected && (
+                          {connected ? (
                             <span className="text-[10px] flex items-center gap-0.5 text-green-600 dark:text-green-400 font-medium">
                               <Wifi className="h-2.5 w-2.5" /> {tasksCount} مهام
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-destructive font-medium">
+                              غير متصل
                             </span>
                           )}
                         </div>
@@ -344,9 +353,12 @@ const SessionsPanel = ({
                   </div>
                 </Link>
               ) : usedSlots >= maxSessions ? (
-                <div className="text-center p-2 text-xs text-muted-foreground">
-                  وصلت للحد الأقصى ({displayMaxSessions} جلسة) — <Link to="/#telegram-plans" className="text-primary underline">ترقية الباقة</Link>
-                </div>
+                <>
+                  <div className="text-center p-2 text-xs text-muted-foreground">
+                    وصلت للحد الأقصى ({displayMaxSessions} جلسة) — <button onClick={() => setUpgradeOpen(true)} className="text-primary underline">ترقية الباقة</button>
+                  </div>
+                  <UpgradeSessionsModal open={upgradeOpen} onOpenChange={setUpgradeOpen} currentSessions={usedSlots} />
+                </>
               ) : null}
             </div>
           )}
