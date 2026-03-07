@@ -108,6 +108,7 @@ const SessionsPanel = ({
   const [deleting, setDeleting] = useState<string | null>(null);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
 
+  const callAccountAction = async (action: string, extra: Record<string, unknown> = {}) => {
     const authClient = getAuthClient();
     const { data: { session } } = await authClient.auth.getSession();
     if (!session?.access_token) throw new Error("يجب تسجيل الدخول أولاً");
