@@ -46,7 +46,8 @@ const Checkout = () => {
 
   const isCartCheckout = productId === "cart";
   const isPlanCheckout = productId?.startsWith("plan-") ?? false;
-  const planId = isPlanCheckout ? productId!.replace("plan-", "") : null;
+  const isExtraSessionsCheckout = productId?.startsWith("extra-sessions-") ?? false;
+  const planId = isPlanCheckout ? productId!.replace("plan-", "") : (isExtraSessionsCheckout ? productId!.replace("extra-sessions-", "") : null);
 
   const [product, setProduct] = useState<Product | null>(null);
   const [planData, setPlanData] = useState<{ id: string; name: string; price: number; duration_days: number; max_sessions: number } | null>(null);
