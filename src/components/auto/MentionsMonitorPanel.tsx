@@ -73,20 +73,26 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, persistedState, o
   const callAccountAction = async (action: string, extra: Record<string, unknown> = {}) => {
     const authClient = getAuthClient();
     const { data: { session } } = await authClient.auth.getSession();
-    if (!session?.access_token) return;
-    await invokeCloudFunction<any>("osn-session", { action, ...extra }, session.access_token);
+    if (!session?.access_token) throw new Error("يجب تسجيل الدخول أولاً");
+
+    const { data, error } = await invokeCloudFunction<any>("osn-session", { action, ...extra }, session.access_token);
+    if (error) throw error;
+    if (data && !data.success) throw new Error(data.error || "فشل غير متوقع");
+    return data;
   };
 
   const saveChannelToAccount = async (channelId: string | null) => {
-    try {
-      await callAccountAction("tg-save-mentions-channel", { mentionsChannelId: channelId });
-      onChannelSave?.(channelId);
-      onStateChange?.({
-        taskId,
-        running: monitoring,
-        channelId,
-      });
-    } catch {}
+    await callAccountAction("tg-save-mentions-channel", {
+      sessionString,
+      mentionsChannelId: channelId,
+    });
+
+    onChannelSave?.(channelId);
+    onStateChange?.({
+      taskId,
+      running: monitoring,
+      channelId,
+    });
   };
 
   const fetchChannels = async () => {
@@ -107,7 +113,7 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, persistedState, o
         setSelectedChannelId(savedChannelId);
       } else if (fetchedChannels.length === 1) {
         setSelectedChannelId(fetchedChannels[0].id);
-        saveChannelToAccount(fetchedChannels[0].id);
+        await saveChannelToAccount(fetchedChannels[0].id);
       }
 
       toast.success(`تم جلب ${fetchedChannels.length} قناة`);
@@ -118,10 +124,19 @@ const MentionsMonitorPanel = ({ sessionString, savedChannelId, persistedState, o
     }
   };
 
-  const handleSelectChannel = (channelId: string) => {
+  const handleSelectChannel = async (channelId: string) => {
     if (monitoring) return;
+
+    const previousChannelId = selectedChannelId;
     setSelectedChannelId(channelId);
-    saveChannelToAccount(channelId);
+
+    try {
+      await saveChannelToAccount(channelId);
+      toast.success("تم حفظ القناة");
+    } catch (err: any) {
+      setSelectedChannelId(previousChannelId);
+      toast.error(err?.message || "تعذر حفظ القناة");
+    }
   };
 
   const startMonitoring = async () => {
