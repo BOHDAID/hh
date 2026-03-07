@@ -5,21 +5,23 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
-import { Loader2, Plus as PlusIcon, Minus, CreditCard } from "lucide-react";
+import { Loader2, Plus as PlusIcon, Minus, CreditCard, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   currentSessions: number;
+  maxSessions: number;
 }
 
-const UpgradeSessionsModal = ({ open, onOpenChange, currentSessions }: Props) => {
+const UpgradeSessionsModal = ({ open, onOpenChange, currentSessions, maxSessions }: Props) => {
   const navigate = useNavigate();
   const [pricePerSession, setPricePerSession] = useState<number>(5);
   const [loading, setLoading] = useState(true);
   const [extraSessions, setExtraSessions] = useState(1);
   const [planId, setPlanId] = useState<string | null>(null);
+  const [planName, setPlanName] = useState<string>("");
 
   useEffect(() => {
     if (open) {
@@ -31,10 +33,9 @@ const UpgradeSessionsModal = ({ open, onOpenChange, currentSessions }: Props) =>
   const loadPrice = async () => {
     setLoading(true);
     try {
-      // Get the active plan's price_per_extra_session from admin settings
       const { data } = await db
         .from("telegram_plans")
-        .select("id, price_per_extra_session")
+        .select("id, name, price_per_extra_session")
         .eq("is_active", true)
         .order("display_order")
         .limit(1);
@@ -42,6 +43,7 @@ const UpgradeSessionsModal = ({ open, onOpenChange, currentSessions }: Props) =>
       if (data && data.length > 0) {
         setPricePerSession((data[0] as any).price_per_extra_session ?? 5);
         setPlanId(data[0].id);
+        setPlanName(data[0].name);
       }
     } catch {
       toast.error("فشل تحميل السعر");
@@ -50,6 +52,7 @@ const UpgradeSessionsModal = ({ open, onOpenChange, currentSessions }: Props) =>
   };
 
   const totalPrice = Math.round(extraSessions * pricePerSession * 100) / 100;
+  const newTotal = maxSessions + extraSessions;
 
   const handlePurchase = async () => {
     const authClient = getAuthClient();
@@ -69,7 +72,7 @@ const UpgradeSessionsModal = ({ open, onOpenChange, currentSessions }: Props) =>
         <DialogHeader>
           <DialogTitle>إضافة جلسات</DialogTitle>
           <DialogDescription>
-            لديك حالياً {currentSessions} جلسة — اختر عدد الجلسات الإضافية
+            زيادة عدد الجلسات المتاحة في اشتراكك الحالي
           </DialogDescription>
         </DialogHeader>
 
@@ -78,9 +81,20 @@ const UpgradeSessionsModal = ({ open, onOpenChange, currentSessions }: Props) =>
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
         ) : (
-          <div className="space-y-5">
+          <div className="space-y-4">
+            {/* Current status */}
+            <div className="rounded-xl bg-muted/50 p-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Smartphone className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">الجلسات الحالية</span>
+              </div>
+              <span className="text-sm font-bold">
+                {currentSessions} / {maxSessions}
+              </span>
+            </div>
+
             {/* Session counter */}
-            <div className="bg-muted/50 rounded-xl p-4 flex items-center justify-between">
+            <div className="rounded-xl border border-border p-4 flex items-center justify-between">
               <span className="text-sm font-medium">عدد الجلسات الإضافية</span>
               <div className="flex items-center gap-3">
                 <Button
@@ -121,6 +135,11 @@ const UpgradeSessionsModal = ({ open, onOpenChange, currentSessions }: Props) =>
                 <span className="text-xl font-bold text-primary">${totalPrice}</span>
               </div>
             </div>
+
+            {/* After purchase info */}
+            <p className="text-xs text-center text-muted-foreground">
+              بعد الشراء: {maxSessions} → <span className="font-bold text-foreground">{newTotal} جلسة</span>
+            </p>
 
             <Button className="w-full gap-2" onClick={handlePurchase}>
               <CreditCard className="h-4 w-4" /> إضافة وادفع ${totalPrice}
