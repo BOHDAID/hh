@@ -572,7 +572,21 @@ const AutoDashboard = () => {
               <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={() => setActiveFeature("features")}>
                 <ChevronLeft className="h-4 w-4 rotate-180" /> المميزات
               </Button>
-              <GroupsSelector sessionString={activeSession} selectedGroups={selectedGroups} onSave={async (groups) => { setSelectedGroups(groups); try { await saveSessionToAccount(activeSession, telegramUser, groups); toast.success("تم حفظ المجموعات في الحساب"); } catch (err: any) { toast.error(err.message || "تعذر حفظ المجموعات"); } }} />
+              <GroupsSelector
+                sessionString={activeSession}
+                selectedGroups={selectedGroups}
+                onSave={async (groups) => {
+                  const previousGroups = selectedGroups;
+                  setSelectedGroups(groups);
+                  try {
+                    await saveSessionToAccount(activeSession, telegramUser, groups);
+                    toast.success("تم حفظ المجموعات في الحساب");
+                  } catch (err: any) {
+                    setSelectedGroups(previousGroups);
+                    toast.error(err.message || "تعذر حفظ المجموعات");
+                  }
+                }}
+              />
             </div>
           )}
 
