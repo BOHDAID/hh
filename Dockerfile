@@ -3,9 +3,14 @@ FROM node:20-slim AS builder
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm install --legacy-peer-deps
-COPY . .
-ENV NODE_OPTIONS="--max-old-space-size=384"
+RUN npm install --legacy-peer-deps --ignore-scripts
+
+# Copy only what's needed for build (skip heavy folders)
+COPY src ./src
+COPY public ./public
+COPY index.html vite.config.ts tsconfig.json tsconfig.app.json tsconfig.node.json tailwind.config.ts postcss.config.js components.json ./
+
+ENV NODE_OPTIONS="--max-old-space-size=450"
 RUN npm run build
 # Clean up after build
 RUN rm -rf node_modules
