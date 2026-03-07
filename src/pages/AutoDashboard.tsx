@@ -119,7 +119,25 @@ const AutoDashboard = () => {
   const [showStats, setShowStats] = useState(false);
   const resumeKeyRef = useRef<string | null>(null);
 
-  const callAction = async (action: string, extra: Record<string, unknown> = {}) => {
+  const getLastActiveSession = () => {
+    try {
+      return (localStorage.getItem(LAST_ACTIVE_SESSION_KEY) || "").trim();
+    } catch {
+      return "";
+    }
+  };
+
+  const setLastActiveSession = (sessionString: string) => {
+    try {
+      if (sessionString?.trim()) {
+        localStorage.setItem(LAST_ACTIVE_SESSION_KEY, sessionString.trim());
+      } else {
+        localStorage.removeItem(LAST_ACTIVE_SESSION_KEY);
+      }
+    } catch {
+      // ignore storage errors
+    }
+  };
     const { data, error } = await invokeCloudFunctionPublic<any>("osn-session", { action, ...extra });
     if (error) throw new Error(error.message);
     if (data && !data.success) throw new Error(data.error || "فشل غير متوقع");
