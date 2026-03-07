@@ -250,7 +250,7 @@ const Checkout = () => {
       }
 
       // Single product checkout
-      if (productId && !isCartCheckout && !isPlanCheckout) {
+      if (productId && !isCartCheckout && !isPlanCheckout && !isExtraSessionsCheckout) {
         const { data: productData, error } = await db
           .from("products")
           .select("*")
