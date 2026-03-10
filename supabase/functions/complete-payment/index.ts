@@ -390,13 +390,128 @@ serve(async (req: Request) => {
               { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
             );
           } else {
-            // Unlimited product that does NOT require activation - return success without codes
-            console.log("Unlimited product does not require activation, no codes generated");
+            // Unlimited product that does NOT require activation
+            // Try to deliver account data if not already delivered
+            console.log("Unlimited product does not require activation, attempting to deliver account data...");
+            
+            const deliveredProductsRetry: Array<{ name: string; account_data: string; quantity: number }> = [];
+            
+            for (const item of (existingItems || [])) {
+              // First check if delivered_data is actually there (query with join might have hidden it)
+              const { data: rawItem } = await adminClient
+                .from("order_items")
+                .select("id, delivered_data, product_account_id")
+                .eq("id", item.id)
+                .single();
+              
+              if (rawItem?.delivered_data) {
+                deliveredProductsRetry.push({
+                  name: item.products?.name || "منتج",
+                  account_data: rawItem.delivered_data,
+                  quantity: item.quantity || 1,
+                });
+                continue;
+              }
+              
+              // Try to deliver now
+              let variantId: string | null = null;
+              if (rawItem?.product_account_id) {
+                const { data: pa } = await adminClient
+                  .from("product_accounts")
+                  .select("variant_id")
+                  .eq("id", rawItem.product_account_id)
+                  .single();
+                variantId = pa?.variant_id || null;
+              }
+              if (!variantId) {
+                const { data: uv } = await adminClient
+                  .from("product_variants")
+                  .select("id")
+                  .eq("product_id", item.product_id)
+                  .eq("is_unlimited", true)
+                  .limit(1)
+                  .maybeSingle();
+                variantId = uv?.id || null;
+              }
+              
+              // Find account
+              let accountQuery = adminClient
+                .from("product_accounts")
+                .select("id, account_data")
+                .eq("product_id", item.product_id)
+                .limit(1);
+              
+              if (variantId) {
+                accountQuery = accountQuery.eq("variant_id", variantId);
+              }
+              
+              const { data: account } = await accountQuery.maybeSingle();
+              
+              if (account?.account_data) {
+                // Update order item with delivered data
+                await adminClient.from("order_items").update({
+                  product_account_id: account.id,
+                  delivered_data: account.account_data,
+                }).eq("id", item.id);
+                
+                deliveredProductsRetry.push({
+                  name: item.products?.name || "منتج",
+                  account_data: account.account_data,
+                  quantity: item.quantity || 1,
+                });
+                console.log(`✅ Delivered account to order item ${item.id} (retry for unlimited)`);
+              } else {
+                console.error(`❌ No account found for product ${item.product_id}`);
+              }
+            }
+            
+            // Send delivery email if we have data
+            if (deliveredProductsRetry.length > 0) {
+              const { data: profileRetry } = await adminClient
+                .from("profiles")
+                .select("email, full_name")
+                .eq("user_id", order.user_id)
+                .single();
+              
+              if (profileRetry?.email) {
+                try {
+                  const cloudUrlRetry = Deno.env.get("SUPABASE_URL") || "";
+                  const cloudKeyRetry = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+                  const { data: storeNameSetting } = await adminClient
+                    .from("site_settings").select("value").eq("key", "store_name").single();
+                  
+                  if (cloudUrlRetry && cloudKeyRetry) {
+                    await fetch(`${cloudUrlRetry}/functions/v1/send-delivery-email`, {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${cloudKeyRetry}`,
+                      },
+                      body: JSON.stringify({
+                        to_email: profileRetry.email,
+                        customer_name: profileRetry.full_name || "",
+                        order_number: order.order_number,
+                        order_id: order_id,
+                        user_id: order.user_id,
+                        products: deliveredProductsRetry,
+                        total_amount: order.total_amount,
+                        warranty_expires_at: order.warranty_expires_at || new Date().toISOString(),
+                      }),
+                    });
+                    console.log("✅ Delivery email sent for unlimited product");
+                  }
+                } catch (emailErr) {
+                  console.error("Email error:", emailErr);
+                }
+              }
+            }
+            
             return new Response(
               JSON.stringify({
                 success: true,
                 message: "الطلب مكتمل — منتج غير محدود",
                 activation_codes: null,
+                delivered: deliveredProductsRetry.length > 0,
               }),
               { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
             );
