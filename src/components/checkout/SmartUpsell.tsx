@@ -224,35 +224,7 @@ const SmartUpsell = ({ cartProductIds, currentCategoryId, onAddToOrder }: SmartU
         // Query failed, continue to product fallback
       }
 
-      // === Strategy 2: Fallback to products directly (no variants needed) ===
-      try {
-        const { data: productData } = await db
-          .from("products")
-          .select("id, name, name_en, price, image_url, category_id, is_active, sales_count")
-          .eq("is_active", true)
-          .gt("price", 0)
-          .order("created_at", { ascending: false })
-          .limit(50);
-
-        if (productData && productData.length > 0) {
-          const filtered = productData.filter((p: any) => !cartProductIds.includes(p.id));
-          if (filtered.length > 0) {
-            const pick = filtered[Math.floor(Math.random() * filtered.length)];
-            setVariant({
-              id: pick.id + "_product",
-              name: pick.name,
-              name_en: pick.name_en,
-              price: pick.price,
-              product_id: pick.id,
-              product_name: pick.name,
-              product_name_en: pick.name_en,
-              product_image_url: pick.image_url,
-            });
-          }
-        }
-      } catch {
-        // All strategies failed silently
-      }
+      // Strategy 2 removed: product prices are always 0, pricing is variant-only
     } catch {
       // Silently fail
     }
