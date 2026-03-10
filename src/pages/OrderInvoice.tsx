@@ -18,7 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Copy, Check, Clock, Shield, Star, ArrowRight, Loader2, RefreshCw, Printer, AlertCircle } from "lucide-react";
+import { Copy, Check, Clock, Shield, Star, ArrowRight, Loader2, RefreshCw, Printer, AlertCircle, ExternalLink } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import OrderTimeline from "@/components/OrderTimeline";
 
@@ -77,6 +77,7 @@ const OrderInvoice = () => {
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
   const [activationCodes, setActivationCodes] = useState<ActivationCode[]>([]);
   const [telegramBotUsername, setTelegramBotUsername] = useState<string | null>(null);
+  const [onDemandContact, setOnDemandContact] = useState<{ telegram?: string; whatsapp?: string; instructions?: string } | null>(null);
   const autoDeliveryAttemptedRef = useRef(false);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const pollCountRef = useRef(0);
@@ -243,19 +244,40 @@ const OrderInvoice = () => {
         console.warn("Failed to fetch activation codes:", e);
       }
 
-      // Fetch telegram bot username
+      // Fetch telegram bot username and on-demand contact info
       try {
-        const { data: botSetting } = await db
+        const { data: contactSettings } = await db
           .from("site_settings")
-          .select("value")
-          .eq("key", "telegram_bot_username")
-          .maybeSingle();
-        if (botSetting?.value) {
-          const clean = botSetting.value.replace(/^@/, '').replace(/^https?:\/\/t\.me\//i, '').trim();
+          .select("key, value")
+          .in("key", [
+            "telegram_bot_username",
+            "telegram_support_username",
+            "whatsapp_number",
+            "on_demand_instructions",
+            "store_phone",
+          ]);
+        
+        const settingsMap: Record<string, string> = {};
+        contactSettings?.forEach((s: any) => {
+          if (s.value) settingsMap[s.key] = s.value;
+        });
+
+        if (settingsMap.telegram_bot_username) {
+          const clean = settingsMap.telegram_bot_username.replace(/^@/, '').replace(/^https?:\/\/t\.me\//i, '').trim();
           setTelegramBotUsername(clean);
         }
+
+        // Check if this is an on-demand order (undelivered items, no activation codes)
+        const hasUndelivered = orderData.order_items?.some((it: any) => !it?.delivered_data);
+        if (hasUndelivered && orderData.status !== "pending") {
+          setOnDemandContact({
+            telegram: settingsMap.telegram_support_username || settingsMap.telegram_bot_username,
+            whatsapp: settingsMap.whatsapp_number || settingsMap.store_phone,
+            instructions: settingsMap.on_demand_instructions,
+          });
+        }
       } catch (e) {
-        console.warn("Failed to fetch bot username:", e);
+        console.warn("Failed to fetch settings:", e);
       }
 
       // Check if user already reviewed this product
@@ -821,6 +843,45 @@ const OrderInvoice = () => {
                                 ⏰ صلاحية الأكواد تنتهي: {formatDateTimeArabic(itemCodes[0].expires_at)}
                               </p>
                             )}
+                          </div>
+                        );
+                      }
+
+                      // On-demand order: show contact instructions
+                      if (onDemandContact && order.status !== "pending") {
+                        const cleanTg = onDemandContact.telegram?.replace(/^@/, '').replace(/^https?:\/\/t\.me\//i, '').trim();
+                        const cleanWa = onDemandContact.whatsapp?.replace(/[^0-9]/g, '');
+                        
+                        return (
+                          <div className="bg-amber-500/5 border border-amber-500/30 rounded-lg p-4 space-y-3">
+                            <div className="flex items-center justify-center gap-2 text-amber-600 dark:text-amber-400">
+                              <Clock className="h-5 w-5" />
+                              <span className="font-semibold text-sm">طلبك قيد التفعيل</span>
+                            </div>
+                            <p className="text-sm text-muted-foreground text-center">
+                              {onDemandContact.instructions || "تم استلام طلبك بنجاح! يرجى التواصل معنا وإرسال صورة الإيصال لتفعيل طلبك."}
+                            </p>
+                            <div className="flex flex-col gap-2">
+                              {cleanTg && (
+                                <a href={`https://t.me/${cleanTg}`} target="_blank" rel="noopener noreferrer">
+                                  <Button className="w-full gap-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700" size="sm" type="button">
+                                    <ExternalLink className="h-4 w-4" />
+                                    تواصل عبر تيليجرام
+                                  </Button>
+                                </a>
+                              )}
+                              {cleanWa && (
+                                <a href={`https://wa.me/${cleanWa}`} target="_blank" rel="noopener noreferrer">
+                                  <Button className="w-full gap-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700" size="sm" type="button">
+                                    <ExternalLink className="h-4 w-4" />
+                                    تواصل عبر واتساب
+                                  </Button>
+                                </a>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground text-center">
+                              📸 أرسل صورة الإيصال أو رقم الطلب <strong>{order.order_number}</strong>
+                            </p>
                           </div>
                         );
                       }
