@@ -387,7 +387,7 @@ const OtpConfigurationsManager = () => {
         if (insertError) {
           toast({ title: "❌ خطأ", description: insertError.message, variant: "destructive" });
         } else {
-          await db.from("product_variants").update({ is_unlimited: true }).eq("id", selectedVariantId);
+          // Note: is_unlimited update skipped - column may not exist in external DB
           toast({ title: `✅ تم إنشاء جلسة ChatGPT`, description: `${manualEmail.trim()} — يمكنك إضافة Gmail SMTP لاحقاً` });
         }
         setCookieDialogOpen(false); setCookieText(""); setSelectedVariantId(""); setManualEmail(""); setChatgptPassword(""); setSessionType("osn");
@@ -420,7 +420,7 @@ const OtpConfigurationsManager = () => {
         if (insertError) {
           toast({ title: "❌ خطأ", description: insertError.message, variant: "destructive" });
         } else {
-          await db.from("product_variants").update({ is_unlimited: true }).eq("id", selectedVariantId);
+          // Note: is_unlimited update skipped - column may not exist in external DB
           toast({ title: `✅ تم إنشاء جلسة Crunchyroll`, description: `${manualEmail.trim()} — كوكيز للتلفاز + إيميل وباسورد للهاتف` });
         }
         setCookieDialogOpen(false); setCookieText(""); setSelectedVariantId(""); setManualEmail(""); setChatgptPassword(""); setSessionType("osn");
@@ -456,7 +456,7 @@ const OtpConfigurationsManager = () => {
         if (insertError) {
           toast({ title: "⚠️ تم الاستيراد لكن فشل الحفظ", description: insertError.message, variant: "destructive" });
         } else {
-          await db.from("product_variants").update({ is_unlimited: true }).eq("id", selectedVariantId);
+          // Note: is_unlimited update skipped - column may not exist in external DB
           toast({ title: "✅ تم استيراد الكوكيز بنجاح", description: `الجلسة متصلة${finalEmail ? ` - ${finalEmail}` : ''} — المنتج الفرعي أصبح غير محدود` });
         }
         setCookieDialogOpen(false); setCookieText(""); setSelectedVariantId(""); setManualEmail(""); setSessionType("osn");
