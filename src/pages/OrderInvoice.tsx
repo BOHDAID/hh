@@ -77,6 +77,7 @@ const OrderInvoice = () => {
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
   const [activationCodes, setActivationCodes] = useState<ActivationCode[]>([]);
   const [telegramBotUsername, setTelegramBotUsername] = useState<string | null>(null);
+  const [onDemandContact, setOnDemandContact] = useState<{ telegram?: string; whatsapp?: string; instructions?: string } | null>(null);
   const autoDeliveryAttemptedRef = useRef(false);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const pollCountRef = useRef(0);
