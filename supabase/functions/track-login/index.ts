@@ -43,7 +43,11 @@ serve(async (req) => {
     if (!user_id) throw new Error("user_id required");
 
     const db = getExternalClient();
-    if (!db) throw new Error("DB not configured");
+    if (!db) {
+      return new Response(JSON.stringify({ success: true, skipped: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const ua = user_agent || req.headers.get("user-agent") || "";
     const { browser, os, deviceType } = parseUserAgent(ua);
