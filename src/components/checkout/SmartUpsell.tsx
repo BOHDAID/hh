@@ -188,7 +188,7 @@ const SmartUpsell = ({ cartProductIds, currentCategoryId, onAddToOrder }: SmartU
       const filtered = data.filter((v: any) => !cartProductIds.includes(v.product_id));
       if (filtered.length === 0) return;
 
-      const pick = filtered[Math.floor(Math.random() * Math.min(filtered.length, 5))];
+      const pick = filtered[Math.floor(Math.random() * filtered.length)];
       const product = (pick as any).products;
 
       setVariant({
