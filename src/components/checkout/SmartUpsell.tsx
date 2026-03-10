@@ -171,12 +171,12 @@ const SmartUpsell = ({ cartProductIds, currentCategoryId, onAddToOrder }: SmartU
     try {
       let query = db
         .from("product_variants")
-        .select("id, name, name_en, price, product_id, products!inner(id, name, name_en, image_url, category_id, is_active, sales_count)")
+        .select("id, name, name_en, price, product_id, created_at, products!inner(id, name, name_en, image_url, category_id, is_active, sales_count)")
         .eq("is_active", true)
         .eq("products.is_active", true)
         .gt("price", 0)
-        .order("price", { ascending: true })
-        .limit(15);
+        .order("created_at", { ascending: false })
+        .limit(50);
 
       if (currentCategoryId) {
         query = query.eq("products.category_id", currentCategoryId);
@@ -188,7 +188,7 @@ const SmartUpsell = ({ cartProductIds, currentCategoryId, onAddToOrder }: SmartU
       const filtered = data.filter((v: any) => !cartProductIds.includes(v.product_id));
       if (filtered.length === 0) return;
 
-      const pick = filtered[Math.floor(Math.random() * Math.min(filtered.length, 5))];
+      const pick = filtered[Math.floor(Math.random() * filtered.length)];
       const product = (pick as any).products;
 
       setVariant({
