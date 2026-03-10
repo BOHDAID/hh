@@ -523,24 +523,35 @@ const Admin = () => {
       return;
     }
     
-    console.log('Adding category:', newCategoryName);
+    const catName = newCategoryName.trim();
     toast({ title: "جاري الإضافة..." });
     
     const { data, error } = await db.from('categories').insert({ 
-      name: newCategoryName.trim(),
+      name: catName,
     }).select();
     
-    console.log('Insert result:', { data, error });
-    
     if (error) {
-      console.error('Category insert error:', error);
       toast({ title: "خطأ", description: error.message, variant: "destructive" });
       return;
     }
     
-    toast({ title: "تم الإضافة", description: "تم إضافة التصنيف بنجاح ✅" });
+    toast({ title: "تم الإضافة", description: "تم إضافة التصنيف بنجاح ✅ جاري الترجمة..." });
     setNewCategoryName("");
     fetchCategories();
+    
+    // ترجمة بعد الإضافة الناجحة (في الخلفية)
+    if (data && data[0]?.id) {
+      try {
+        const translations = await translateCategory(catName);
+        if (translations.name_en) {
+          await db.from('categories').update({ name_en: translations.name_en }).eq('id', data[0].id);
+          fetchCategories();
+          toast({ title: "تمت الترجمة", description: `${catName} → ${translations.name_en} ✨` });
+        }
+      } catch (e) {
+        console.warn('Translation failed:', e);
+      }
+    }
   };
 
   const deleteCategory = async (id: string) => {
