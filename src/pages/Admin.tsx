@@ -520,26 +520,33 @@ const Admin = () => {
   const addCategory = async () => {
     if (!newCategoryName) return;
     
-    // Try to translate, but don't block if it fails
-    let name_en: string | null = null;
-    try {
-      toast({ title: "جاري الإضافة...", description: "يتم إضافة التصنيف" });
-      const translations = await translateCategory(newCategoryName);
-      name_en = translations.name_en || null;
-    } catch (e) {
-      console.warn('Translation failed, adding category without translation:', e);
-    }
+    toast({ title: "جاري الإضافة...", description: "يتم إضافة التصنيف" });
     
+    // Insert category first, translate later
     const { error } = await db.from('categories').insert({ 
       name: newCategoryName,
-      name_en,
+      name_en: null,
     });
+    
     if (error) {
+      console.error('Category insert error:', error);
       toast({ title: "خطأ", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "تم الإضافة", description: name_en ? "تم إضافة التصنيف وترجمته بنجاح ✨" : "تم إضافة التصنيف بنجاح ✅" });
-      setNewCategoryName("");
-      fetchCategories();
+      return;
+    }
+    
+    toast({ title: "تم الإضافة", description: "تم إضافة التصنيف بنجاح ✅" });
+    setNewCategoryName("");
+    fetchCategories();
+    
+    // Try to translate in background (non-blocking)
+    try {
+      const translations = await translateCategory(newCategoryName);
+      if (translations.name_en) {
+        await db.from('categories').update({ name_en: translations.name_en }).eq('name', newCategoryName);
+        fetchCategories();
+      }
+    } catch (e) {
+      console.warn('Translation failed:', e);
     }
   };
 
