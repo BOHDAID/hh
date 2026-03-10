@@ -80,16 +80,25 @@ const ProductVariantsManager = ({ productId, productName }: ProductVariantsManag
 
   const fetchVariants = async () => {
     setLoading(true);
-    const { data, error } = await db
+    let result = await db
       .from("product_variants")
       .select("id, product_id, name, name_en, description, description_en, price, stock, image_url, is_active, is_unlimited, warranty_days, display_order, fulfillment_type, created_at, updated_at")
       .eq("product_id", productId)
       .order("display_order", { ascending: true });
 
-    if (error) {
-      console.error("Error fetching variants:", error);
+    // Fallback without fulfillment_type for external DBs
+    if (result.error) {
+      result = await db
+        .from("product_variants")
+        .select("id, product_id, name, name_en, description, description_en, price, stock, image_url, is_active, is_unlimited, warranty_days, display_order, created_at, updated_at")
+        .eq("product_id", productId)
+        .order("display_order", { ascending: true }) as any;
+    }
+
+    if (result.error) {
+      console.error("Error fetching variants:", result.error);
     } else {
-      setVariants(data || []);
+      setVariants((result.data as any[]) || []);
       // Fetch stock counts for each variant
       if (data && data.length > 0) {
         const stockCounts: Record<string, number> = {};
