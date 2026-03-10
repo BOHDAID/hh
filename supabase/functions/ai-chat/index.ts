@@ -108,7 +108,7 @@ async function fetchStoreContext(db: any): Promise<string> {
         .eq("is_active", true).gte("ends_at", new Date().toISOString()),
       db.from("coupons").select("code, discount_type, discount_value, min_order_amount, expires_at")
         .eq("is_active", true).limit(5),
-      db.from("product_variants").select("id, product_id, name, name_en, price, is_active, description, fulfillment_type, warranty_days, is_unlimited")
+      db.from("product_variants").select("id, product_id, name, name_en, price, is_active, description, warranty_days, is_unlimited")
         .eq("is_active", true),
     ]);
 
