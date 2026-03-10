@@ -98,6 +98,10 @@ const BulkAccountImport = ({ products, onImportComplete }: BulkAccountImportProp
     }
     setSavingOnDemand(true);
     try {
+      // Find the product_id for this variant
+      const variant = onDemandVariants.find(v => v.id === onDemandVariant);
+      const productId = variant?.product_id || selectedProduct;
+
       // Store on_demand flag in site_settings
       const settingKey = `on_demand_variant_${onDemandVariant}`;
       const { error: settingsError } = await db
@@ -105,12 +109,25 @@ const BulkAccountImport = ({ products, onImportComplete }: BulkAccountImportProp
         .upsert({ key: settingKey, value: "true", category: "fulfillment", is_sensitive: false }, { onConflict: "key" });
       if (settingsError) console.warn("site_settings save warning:", settingsError.message);
 
-      // Also mark variant as unlimited so it shows as available to all users
-      const { error: variantError } = await db
-        .from("product_variants")
-        .update({ is_unlimited: true })
-        .eq("id", onDemandVariant);
-      if (variantError) console.warn("variant update warning:", variantError.message);
+      // Insert a placeholder account so stock count > 0 for customers
+      // Check if placeholder already exists
+      const { data: existing } = await db
+        .from("product_accounts")
+        .select("id")
+        .eq("product_id", productId)
+        .eq("variant_id", onDemandVariant)
+        .eq("is_sold", false)
+        .eq("account_data", "[ON_DEMAND]")
+        .maybeSingle();
+
+      if (!existing) {
+        await db.from("product_accounts").insert({
+          product_id: productId,
+          variant_id: onDemandVariant,
+          account_data: "[ON_DEMAND]",
+          is_sold: false,
+        });
+      }
 
       toast({ title: "تم الحفظ", description: "تم تعيين الخيار كـ 'عند الطلب' - الطلبات ستنتظر تفعيلك اليدوي" });
       onImportComplete();
