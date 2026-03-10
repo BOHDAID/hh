@@ -124,7 +124,7 @@ serve(async (req: Request) => {
         }
       }
 
-      orderItems.push({ product_id: item.product_id, variant_id: variantId, quantity: item.quantity, price, product_type: prod.product_type, is_unlimited: isUnlimited });
+      orderItems.push({ product_id: item.product_id, variant_id: variantId, quantity: item.quantity, price, product_type: prod.product_type, is_unlimited: isUnlimited, is_on_demand: isOnDemand });
       total += price * item.quantity;
     }
 
