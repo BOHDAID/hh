@@ -109,7 +109,7 @@ const BulkAccountImport = ({ products, onImportComplete }: BulkAccountImportProp
     try {
       const { data } = await db
         .from("product_variants")
-        .select("id, product_id, name, name_en, description, description_en, price, stock, image_url, is_active, is_unlimited, warranty_days, display_order, created_at, updated_at")
+        .select("id, product_id, name, name_en, description, description_en, price, stock, image_url, is_active, is_unlimited, warranty_days, display_order, fulfillment_type, created_at, updated_at")
         .eq("product_id", productId)
         .order("display_order", { ascending: true });
       setOnDemandVariants(data || []);
