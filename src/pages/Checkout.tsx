@@ -1419,8 +1419,13 @@ const Checkout = () => {
                   description: `تم إضافة "${upsellProduct.name}" للسلة`,
                 });
                 
-                // 3) Redirect to cart checkout so both items are processed together
-                navigate("/checkout/cart");
+                // 3) Redirect to cart checkout - use replace + timestamp to force re-fetch
+                if (isCartCheckout) {
+                  // Already on cart checkout, force re-fetch by updating key
+                  navigate("/checkout/cart?t=" + Date.now(), { replace: true });
+                } else {
+                  navigate("/checkout/cart");
+                }
               }}
             />
 
