@@ -81,7 +81,7 @@ const BulkAccountImport = ({ products, onImportComplete }: BulkAccountImportProp
 
   const fetchUnlimitedVariants = async (productId: string) => {
     setUnlimitedVariant("");
-    const { data } = await fetchVariantsWithFallback(productId);
+    const { data } = await fetchVariantsForProduct(productId);
     setUnlimitedVariants(data || []);
   };
 
