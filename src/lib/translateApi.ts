@@ -26,10 +26,6 @@ export const translateText = async (text: string, targetLang: string = 'en'): Pr
 
     const data = await response.json();
 
-    if (error) {
-      console.error('Translation error:', error);
-      return '';
-    }
 
     if (data?.success && data?.translated) {
       return data.translated;
