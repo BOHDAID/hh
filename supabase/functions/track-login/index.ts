@@ -101,8 +101,9 @@ serve(async (req) => {
     });
   } catch (e) {
     console.error("track-login error:", e);
-    return new Response(JSON.stringify({ error: e.message }), {
-      status: 500,
+    // Return success anyway so login flow is not blocked
+    return new Response(JSON.stringify({ success: true, warning: "session tracking skipped" }), {
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
