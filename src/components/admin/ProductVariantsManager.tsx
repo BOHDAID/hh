@@ -199,7 +199,7 @@ const ProductVariantsManager = ({ productId, productName }: ProductVariantsManag
 
         if (error) throw error;
       } else {
-        const { data, error } = await db.from("product_variants").insert(variantData).select().single();
+        const { data, error } = await db.from("product_variants").insert(variantData).select("id").single();
         if (error) throw error;
         variantId = data.id;
       }
