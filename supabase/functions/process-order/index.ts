@@ -99,8 +99,21 @@ serve(async (req: Request) => {
         console.log("Flash sale price:", price);
       }
 
-      // Stock check - skip for unlimited variants
-      if (prod.product_type === "account" && !isUnlimited) {
+      // Check if variant is on-demand (stored in site_settings)
+      let isOnDemand = false;
+      if (variantId) {
+        const { data: onDemandSetting } = await db
+          .from("site_settings")
+          .select("value")
+          .eq("key", `on_demand_variant_${variantId}`)
+          .maybeSingle();
+        if (onDemandSetting?.value === "true") {
+          isOnDemand = true;
+        }
+      }
+
+      // Stock check - skip for unlimited variants and on-demand variants
+      if (prod.product_type === "account" && !isUnlimited && !isOnDemand) {
         let stQ = db.from("product_accounts").select("id").eq("product_id", item.product_id).eq("is_sold", false);
         stQ = variantId ? stQ.eq("variant_id", variantId) : stQ.is("variant_id", null);
         const { data: accs } = await stQ.limit(item.quantity);
