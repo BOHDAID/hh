@@ -167,7 +167,7 @@ const SmartUpsell = ({ cartProductIds, currentCategoryId, onAddToOrder }: SmartU
       const variantSelect = "id, name, name_en, price, product_id, created_at, products!inner(id, name, name_en, image_url, category_id, is_active, sales_count)";
 
       const pickFromVariants = (data: any[]): UpsellItem | null => {
-        const filtered = data.filter((v: any) => !cartProductIds.includes(v.product_id));
+        const filtered = data.filter((v: any) => !cartProductIds.includes(v.product_id) && v.price > 0);
         if (filtered.length === 0) return null;
         const pick = filtered[Math.floor(Math.random() * filtered.length)];
         const product = (pick as any).products;
