@@ -32,7 +32,6 @@ interface SelectedVariant {
   id: string;
   name: string;
   price: number;
-  is_unlimited?: boolean | null;
   warranty_days?: number | null;
 }
 
