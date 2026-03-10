@@ -81,8 +81,7 @@ export const FUNCTION_SLUGS: Record<string, string> = {
   'process-plan-subscription': 'process-plan-subscription',
 };
 
-console.log('🔗 Cloud Functions Client:', CLOUD_URL);
-console.log('📦 Available functions:', Object.keys(FUNCTION_SLUGS).length);
+// Cloud functions client initialized silently
 
 // Helper to get the actual function slug
 function getFunctionSlug(fnName: string): string {
