@@ -244,19 +244,40 @@ const OrderInvoice = () => {
         console.warn("Failed to fetch activation codes:", e);
       }
 
-      // Fetch telegram bot username
+      // Fetch telegram bot username and on-demand contact info
       try {
-        const { data: botSetting } = await db
+        const { data: contactSettings } = await db
           .from("site_settings")
-          .select("value")
-          .eq("key", "telegram_bot_username")
-          .maybeSingle();
-        if (botSetting?.value) {
-          const clean = botSetting.value.replace(/^@/, '').replace(/^https?:\/\/t\.me\//i, '').trim();
+          .select("key, value")
+          .in("key", [
+            "telegram_bot_username",
+            "telegram_support_username",
+            "whatsapp_number",
+            "on_demand_instructions",
+            "store_phone",
+          ]);
+        
+        const settingsMap: Record<string, string> = {};
+        contactSettings?.forEach((s: any) => {
+          if (s.value) settingsMap[s.key] = s.value;
+        });
+
+        if (settingsMap.telegram_bot_username) {
+          const clean = settingsMap.telegram_bot_username.replace(/^@/, '').replace(/^https?:\/\/t\.me\//i, '').trim();
           setTelegramBotUsername(clean);
         }
+
+        // Check if this is an on-demand order (undelivered items, no activation codes)
+        const hasUndelivered = orderData.order_items?.some((it: any) => !it?.delivered_data);
+        if (hasUndelivered && orderData.status !== "pending") {
+          setOnDemandContact({
+            telegram: settingsMap.telegram_support_username || settingsMap.telegram_bot_username,
+            whatsapp: settingsMap.whatsapp_number || settingsMap.store_phone,
+            instructions: settingsMap.on_demand_instructions,
+          });
+        }
       } catch (e) {
-        console.warn("Failed to fetch bot username:", e);
+        console.warn("Failed to fetch settings:", e);
       }
 
       // Check if user already reviewed this product
