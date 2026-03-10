@@ -169,38 +169,56 @@ const SmartUpsell = ({ cartProductIds, currentCategoryId, onAddToOrder }: SmartU
 
   const fetchUpsell = useCallback(async () => {
     try {
-      let query = db
+      const baseSelect = "id, name, name_en, price, product_id, created_at, products!inner(id, name, name_en, image_url, category_id, is_active, sales_count)";
+
+      const pickFromData = (data: any[]) => {
+        const filtered = data.filter((v: any) => !cartProductIds.includes(v.product_id));
+        if (filtered.length === 0) return null;
+        const pick = filtered[Math.floor(Math.random() * filtered.length)];
+        const product = (pick as any).products;
+        return {
+          id: pick.id,
+          name: pick.name,
+          name_en: pick.name_en,
+          price: pick.price,
+          product_id: pick.product_id,
+          product_name: product.name,
+          product_name_en: product.name_en,
+          product_image_url: product.image_url,
+        };
+      };
+
+      // Try same category first
+      if (currentCategoryId) {
+        const { data } = await db
+          .from("product_variants")
+          .select(baseSelect)
+          .eq("is_active", true)
+          .eq("products.is_active", true)
+          .gt("price", 0)
+          .eq("products.category_id", currentCategoryId)
+          .order("created_at", { ascending: false })
+          .limit(50);
+
+        if (data && data.length > 0) {
+          const result = pickFromData(data);
+          if (result) { setVariant(result); return; }
+        }
+      }
+
+      // Fallback: all categories
+      const { data: allData } = await db
         .from("product_variants")
-        .select("id, name, name_en, price, product_id, created_at, products!inner(id, name, name_en, image_url, category_id, is_active, sales_count)")
+        .select(baseSelect)
         .eq("is_active", true)
         .eq("products.is_active", true)
         .gt("price", 0)
         .order("created_at", { ascending: false })
         .limit(50);
 
-      if (currentCategoryId) {
-        query = query.eq("products.category_id", currentCategoryId);
-      }
-
-      const { data } = await query;
-      if (!data || data.length === 0) return;
-
-      const filtered = data.filter((v: any) => !cartProductIds.includes(v.product_id));
-      if (filtered.length === 0) return;
-
-      const pick = filtered[Math.floor(Math.random() * filtered.length)];
-      const product = (pick as any).products;
-
-      setVariant({
-        id: pick.id,
-        name: pick.name,
-        name_en: pick.name_en,
-        price: pick.price,
-        product_id: pick.product_id,
-        product_name: product.name,
-        product_name_en: product.name_en,
-        product_image_url: product.image_url,
-      });
+      if (!allData || allData.length === 0) return;
+      const result = pickFromData(allData);
+      if (result) setVariant(result);
     } catch {
       // Silently fail
     }
