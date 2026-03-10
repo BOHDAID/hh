@@ -436,7 +436,7 @@ const Admin = () => {
       name_en: translations.name_en || null,
       description: productForm.description || null,
       description_en: translations.description_en || null,
-      price: parseFloat(productForm.price),
+      price: productForm.price ? parseFloat(productForm.price) : 0,
       category_id: productForm.category_id || null,
       image_url: productForm.image_url || null,
       is_active: productForm.is_active,
