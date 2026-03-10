@@ -60,22 +60,20 @@ const BulkAccountImport = ({ products, onImportComplete }: BulkAccountImportProp
 
   const fetchVariantsWithFallback = async (productId: string) => {
     // Try with fulfillment_type first, fallback without it
-    let { data, error } = await db
+    let result = await db
       .from("product_variants")
       .select(VARIANT_COLS_WITH_FULFILLMENT)
       .eq("product_id", productId)
       .order("display_order", { ascending: true });
 
-    if (error) {
-      const res = await db
+    if (result.error) {
+      result = await db
         .from("product_variants")
         .select(VARIANT_COLS_WITHOUT_FULFILLMENT)
         .eq("product_id", productId)
-        .order("display_order", { ascending: true });
-      data = res.data;
-      error = res.error;
+        .order("display_order", { ascending: true }) as any;
     }
-    return { data, error };
+    return { data: result.data as any[], error: result.error };
   };
 
   const fetchVariants = async (productId: string) => {
