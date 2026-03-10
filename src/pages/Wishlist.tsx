@@ -73,10 +73,21 @@ import { useTranslation } from "react-i18next";
        return;
      }
  
-     const { error } = await db.from("cart_items").upsert(
-       { user_id: session.user.id, product_id: productId, quantity: 1 },
-       { onConflict: "user_id,product_id" }
-     );
+      const { data: existing } = await db.from("cart_items")
+        .select("id, quantity")
+        .eq("user_id", session.user.id)
+        .eq("product_id", productId)
+        .maybeSingle();
+      
+      let error;
+      if (existing) {
+        ({ error } = await db.from("cart_items")
+          .update({ quantity: existing.quantity + 1, updated_at: new Date().toISOString() })
+          .eq("id", existing.id));
+      } else {
+        ({ error } = await db.from("cart_items")
+          .insert({ user_id: session.user.id, product_id: productId, quantity: 1 }));
+      }
  
      if (error) {
        toast({ title: t('common.error'), description: error.message, variant: "destructive" });
