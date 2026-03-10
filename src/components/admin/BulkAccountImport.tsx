@@ -87,7 +87,7 @@ const BulkAccountImport = ({ products, onImportComplete }: BulkAccountImportProp
 
   const fetchOnDemandVariants = async (productId: string) => {
     setOnDemandVariant("");
-    const { data } = await fetchVariantsWithFallback(productId);
+    const { data } = await fetchVariantsForProduct(productId);
     setOnDemandVariants(data || []);
   };
 
