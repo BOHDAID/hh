@@ -55,31 +55,21 @@ const BulkAccountImport = ({ products, onImportComplete }: BulkAccountImportProp
   const [onDemandVariants, setOnDemandVariants] = useState<ProductVariant[]>([]);
   const [savingOnDemand, setSavingOnDemand] = useState(false);
 
-  const VARIANT_COLS_WITH_FULFILLMENT = "id, product_id, name, name_en, description, description_en, price, stock, image_url, is_active, is_unlimited, warranty_days, display_order, fulfillment_type, created_at, updated_at";
-  const VARIANT_COLS_WITHOUT_FULFILLMENT = "id, product_id, name, name_en, description, description_en, price, stock, image_url, is_active, is_unlimited, warranty_days, display_order, created_at, updated_at";
+  const VARIANT_COLS = "id, product_id, name, name_en, description, description_en, price, stock, image_url, is_active, is_unlimited, warranty_days, display_order, created_at, updated_at";
 
-  const fetchVariantsWithFallback = async (productId: string) => {
-    // Try with fulfillment_type first, fallback without it
-    let result = await db
+  const fetchVariantsForProduct = async (productId: string) => {
+    const { data, error } = await db
       .from("product_variants")
-      .select(VARIANT_COLS_WITH_FULFILLMENT)
+      .select(VARIANT_COLS)
       .eq("product_id", productId)
       .order("display_order", { ascending: true });
-
-    if (result.error) {
-      result = await db
-        .from("product_variants")
-        .select(VARIANT_COLS_WITHOUT_FULFILLMENT)
-        .eq("product_id", productId)
-        .order("display_order", { ascending: true }) as any;
-    }
-    return { data: result.data as any[], error: result.error };
+    return { data: data as any[] | null, error };
   };
 
   const fetchVariants = async (productId: string) => {
     setLoadingVariants(true);
     setSelectedVariant("");
-    const { data, error } = await fetchVariantsWithFallback(productId);
+    const { data, error } = await fetchVariantsForProduct(productId);
     if (error) {
       toast({ title: "خطأ في جلب الخيارات", description: error.message, variant: "destructive" });
       setVariants([]);
@@ -91,13 +81,13 @@ const BulkAccountImport = ({ products, onImportComplete }: BulkAccountImportProp
 
   const fetchUnlimitedVariants = async (productId: string) => {
     setUnlimitedVariant("");
-    const { data } = await fetchVariantsWithFallback(productId);
+    const { data } = await fetchVariantsForProduct(productId);
     setUnlimitedVariants(data || []);
   };
 
   const fetchOnDemandVariants = async (productId: string) => {
     setOnDemandVariant("");
-    const { data } = await fetchVariantsWithFallback(productId);
+    const { data } = await fetchVariantsForProduct(productId);
     setOnDemandVariants(data || []);
   };
 
