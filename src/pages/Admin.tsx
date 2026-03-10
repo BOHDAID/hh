@@ -520,18 +520,24 @@ const Admin = () => {
   const addCategory = async () => {
     if (!newCategoryName) return;
     
-    // Auto-translate to English
-    toast({ title: "جاري الترجمة...", description: "يتم ترجمة التصنيف للإنجليزية" });
-    const translations = await translateCategory(newCategoryName);
+    // Try to translate, but don't block if it fails
+    let name_en: string | null = null;
+    try {
+      toast({ title: "جاري الإضافة...", description: "يتم إضافة التصنيف" });
+      const translations = await translateCategory(newCategoryName);
+      name_en = translations.name_en || null;
+    } catch (e) {
+      console.warn('Translation failed, adding category without translation:', e);
+    }
     
     const { error } = await db.from('categories').insert({ 
       name: newCategoryName,
-      name_en: translations.name_en || null,
+      name_en,
     });
     if (error) {
       toast({ title: "خطأ", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: "تم الإضافة", description: "تم إضافة التصنيف وترجمته بنجاح ✨" });
+      toast({ title: "تم الإضافة", description: name_en ? "تم إضافة التصنيف وترجمته بنجاح ✨" : "تم إضافة التصنيف بنجاح ✅" });
       setNewCategoryName("");
       fetchCategories();
     }
