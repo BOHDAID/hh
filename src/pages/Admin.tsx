@@ -419,8 +419,8 @@ const Admin = () => {
   };
 
   const saveProduct = async () => {
-    if (!productForm.name || !productForm.price) {
-      toast({ title: "خطأ", description: "الاسم والسعر مطلوبان", variant: "destructive" });
+    if (!productForm.name) {
+      toast({ title: "خطأ", description: "اسم المنتج مطلوب", variant: "destructive" });
       return;
     }
 
