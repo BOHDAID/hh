@@ -334,7 +334,7 @@ const Checkout = () => {
           }
         }
 
-        console.log('📦 Product type:', productData.product_type, 'requires_activation:', productData.requires_activation, 'isOnDemand:', isOnDemand, 'variantId:', variantId);
+        
 
         // Check stock for account products
         // Products with requires_activation (OTP/QR) are ALWAYS available - no traditional stock needed
