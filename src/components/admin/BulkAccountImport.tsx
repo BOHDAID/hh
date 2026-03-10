@@ -69,7 +69,7 @@ const BulkAccountImport = ({ products, onImportComplete }: BulkAccountImportProp
   const fetchVariants = async (productId: string) => {
     setLoadingVariants(true);
     setSelectedVariant("");
-    const { data, error } = await fetchVariantsWithFallback(productId);
+    const { data, error } = await fetchVariantsForProduct(productId);
     if (error) {
       toast({ title: "خطأ في جلب الخيارات", description: error.message, variant: "destructive" });
       setVariants([]);
