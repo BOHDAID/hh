@@ -90,9 +90,9 @@ const ProductVariantsManager = ({ productId, productName }: ProductVariantsManag
       console.error("Error fetching variants:", error);
     } else {
       setVariants((data as any[]) || []);
-      if (result.data && result.data.length > 0) {
+      if (data && data.length > 0) {
         const stockCounts: Record<string, number> = {};
-        for (const variant of result.data as any[]) {
+        for (const variant of data) {
           const { count } = await db
             .from("product_accounts")
             .select("*", { count: "exact", head: true })
