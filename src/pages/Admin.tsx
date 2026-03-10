@@ -801,17 +801,14 @@ const Admin = () => {
                   <DialogTitle className="text-base">{editingProduct ? "تعديل المنتج" : "إضافة منتج جديد"}</DialogTitle>
                 </DialogHeader>
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs">اسم المنتج</Label>
-                      <Input
-                        value={productForm.name}
-                        onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
-                        placeholder="مثال: اشتراك Netflix"
-                        className="glass h-8 text-sm"
-                      />
-                    </div>
-                    </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">اسم المنتج</Label>
+                    <Input
+                      value={productForm.name}
+                      onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
+                      placeholder="مثال: اشتراك Netflix"
+                      className="glass h-8 text-sm"
+                    />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">الوصف</Label>
