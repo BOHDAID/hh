@@ -18,7 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Copy, Check, Clock, Shield, Star, ArrowRight, Loader2, RefreshCw, Printer, AlertCircle } from "lucide-react";
+import { Copy, Check, Clock, Shield, Star, ArrowRight, Loader2, RefreshCw, Printer, AlertCircle, ExternalLink } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import OrderTimeline from "@/components/OrderTimeline";
 
