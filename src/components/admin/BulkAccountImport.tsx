@@ -98,10 +98,11 @@ const BulkAccountImport = ({ products, onImportComplete }: BulkAccountImportProp
     }
     setSavingOnDemand(true);
     try {
+      // Store on_demand flag in site_settings since fulfillment_type column may not exist in external DB
+      const settingKey = `on_demand_variant_${onDemandVariant}`;
       const { error } = await db
-        .from("product_variants")
-        .update({ fulfillment_type: "on_demand" } as any)
-        .eq("id", onDemandVariant);
+        .from("site_settings")
+        .upsert({ key: settingKey, value: "true", category: "fulfillment", is_sensitive: false }, { onConflict: "key" });
       if (error) throw error;
       toast({ title: "تم الحفظ", description: "تم تعيين الخيار كـ 'عند الطلب' - الطلبات ستنتظر تفعيلك اليدوي" });
       onImportComplete();
@@ -478,7 +479,7 @@ user3@email.com:password789`}
                   {onDemandVariants.map((variant) => (
                     <SelectItem key={variant.id} value={variant.id}>
                       {variant.name} - ${variant.price}
-                      {(variant as any).fulfillment_type === "on_demand" && " 🤝"}
+                      
                     </SelectItem>
                   ))}
                 </SelectContent>
