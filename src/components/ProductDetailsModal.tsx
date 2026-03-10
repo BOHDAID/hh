@@ -83,12 +83,28 @@ const ProductDetailsModal = ({
         .order("display_order", { ascending: true });
 
       // For each variant, get actual stock using secure function
+      // Also fetch on-demand variant keys from site_settings
+      const { data: onDemandSettings } = await db
+        .from("site_settings")
+        .select("key, value")
+        .like("key", "on_demand_variant_%")
+        .eq("value", "true");
+
+      const onDemandVariantIds = new Set(
+        (onDemandSettings || []).map((s: any) => s.key.replace("on_demand_variant_", ""))
+      );
+
       if (variantsData && variantsData.length > 0) {
         const variantsWithStock = await Promise.all(
           variantsData.map(async (variant: any) => {
             // Check if variant is unlimited
             if (variant.is_unlimited) {
               return { ...variant, stock: -1 };
+            }
+
+            // Check if variant is on-demand (always available)
+            if (onDemandVariantIds.has(variant.id)) {
+              return { ...variant, stock: -1 }; // Treat as unlimited/always available
             }
 
             // Use secure database function to get stock count
