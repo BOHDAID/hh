@@ -194,6 +194,12 @@ serve(async (req: Request) => {
           continue;
         }
 
+        // On-demand variants: no auto-delivery, admin handles manually
+        if (ci.is_on_demand) {
+          console.log(`⏳ On-demand item ${ci.id} - awaiting admin activation`);
+          continue;
+        }
+
         // For unlimited variants: pick any account (even sold ones) as a template, don't mark as sold
         // For regular variants: pick unsold account and mark as sold
         let aQ;
