@@ -128,10 +128,17 @@ serve(async (req: Request) => {
     }
 
     const aiData = await aiResponse.json();
-    const generatedImageUrl = aiData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    
+    // Try multiple response formats for the generated image
+    const choice = aiData.choices?.[0]?.message;
+    const generatedImageUrl = 
+      choice?.images?.[0]?.image_url?.url ||
+      choice?.content?.find?.((c: any) => c.type === "image_url")?.image_url?.url ||
+      choice?.content?.find?.((c: any) => c.type === "image")?.image_url?.url ||
+      null;
 
     if (!generatedImageUrl) {
-      console.error("No image in AI response:", JSON.stringify(aiData).slice(0, 500));
+      console.error("No image in AI response:", JSON.stringify(aiData).slice(0, 1000));
       return new Response(JSON.stringify({ error: "AI did not generate an image" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
