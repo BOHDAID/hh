@@ -86,9 +86,6 @@ const ProductDetailsModal = ({
       if (variantsData && variantsData.length > 0) {
         const variantsWithStock = await Promise.all(
           variantsData.map(async (variant: any) => {
-            // Check stock from product_accounts
-            const { count } = await db
-
             // Use secure database function to get stock count
             const { data: stockData } = await db.rpc("get_variant_stock", {
               p_product_id: productId,
