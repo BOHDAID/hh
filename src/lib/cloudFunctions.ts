@@ -102,7 +102,7 @@ export async function invokeCloudFunction<T = unknown>(
   const slug = getFunctionSlug(fnName);
   const url = `${CLOUD_URL}/functions/v1/${slug}`;
   
-  console.log(`🚀 Invoking: ${fnName} → ${url}`);
+  // Invoking function silently
   
   try {
     const response = await fetch(url, {
