@@ -81,8 +81,7 @@ export const FUNCTION_SLUGS: Record<string, string> = {
   'process-plan-subscription': 'process-plan-subscription',
 };
 
-console.log('🔗 Cloud Functions Client:', CLOUD_URL);
-console.log('📦 Available functions:', Object.keys(FUNCTION_SLUGS).length);
+// Cloud functions client initialized silently
 
 // Helper to get the actual function slug
 function getFunctionSlug(fnName: string): string {
@@ -103,7 +102,7 @@ export async function invokeCloudFunction<T = unknown>(
   const slug = getFunctionSlug(fnName);
   const url = `${CLOUD_URL}/functions/v1/${slug}`;
   
-  console.log(`🚀 Invoking: ${fnName} → ${url}`);
+  // Invoking function silently
   
   try {
     const response = await fetch(url, {
@@ -121,7 +120,7 @@ export async function invokeCloudFunction<T = unknown>(
       console.error(`❌ Function ${slug} failed:`, data);
       return { data: null, error: new Error(data?.error || `Function ${slug} returned ${response.status}`) };
     }
-    console.log(`✅ Function ${slug} success`);
+    // Function completed successfully
     return { data: data as T, error: null };
   } catch (err) {
     console.error(`❌ Function ${slug} error:`, err);
@@ -137,7 +136,7 @@ export async function invokeCloudFunctionPublic<T = unknown>(
   const slug = getFunctionSlug(fnName);
   const url = `${CLOUD_URL}/functions/v1/${slug}`;
   
-  console.log(`🚀 Invoking (public): ${fnName} → ${url}`);
+  // Invoking public function silently
   
   try {
     const response = await fetch(url, {
@@ -154,7 +153,7 @@ export async function invokeCloudFunctionPublic<T = unknown>(
       console.error(`❌ Function ${slug} failed:`, data);
       return { data: null, error: new Error(data?.error || `Function ${slug} returned ${response.status}`) };
     }
-    console.log(`✅ Function ${slug} success`);
+    // Function completed successfully
     return { data: data as T, error: null };
   } catch (err) {
     console.error(`❌ Function ${slug} error:`, err);

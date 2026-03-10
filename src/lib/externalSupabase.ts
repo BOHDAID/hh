@@ -27,7 +27,7 @@ export const externalSupabase: SupabaseClient = createClient(
   }
 );
 
-console.log('✅ External Supabase Client connected:', EXTERNAL_SUPABASE_URL);
+// External Supabase Client initialized
 
 // دالة للتحقق من الاتصال
 export const checkExternalConnection = async (): Promise<{ connected: boolean; error?: string }> => {

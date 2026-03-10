@@ -52,7 +52,7 @@ const AppInitializer = ({ children }: { children: ReactNode }) => {
 
     const userRole = roleRes.data?.role;
     const adminCheck = userRole === "admin" || userRole === "full_access" || userRole === "support";
-    console.log("👤 User role:", userRole, "| isAdmin:", adminCheck, "| userId:", userId);
+    // Role check completed silently
     if (roleRes.error) console.error("❌ Role fetch error:", roleRes.error);
 
     setIsAdmin(adminCheck);
