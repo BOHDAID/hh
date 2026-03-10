@@ -1361,23 +1361,35 @@ const Checkout = () => {
                 : product ? [product.id] : []
               }
               currentCategoryId={product?.category_id}
-              onAddToOrder={(upsellProduct, discountedPrice) => {
-                // Add to cart for the user
-                if (user) {
-                  db.from("cart_items")
+              onAddToOrder={async (upsellProduct, discountedPrice) => {
+                if (!user) return;
+                
+                // 1) Add current product to cart (if single-product checkout)
+                if (!isCartCheckout && product) {
+                  await db.from("cart_items")
                     .upsert({
                       user_id: user.id,
-                      product_id: upsellProduct.id,
-                      quantity: 1,
-                    }, { onConflict: "user_id,product_id" })
-                    .then(() => {
-                      window.dispatchEvent(new Event("cart-updated"));
-                      toast({
-                        title: "تمت الإضافة! 🎉",
-                        description: `تم إضافة "${upsellProduct.name}" بخصم 15%`,
-                      });
-                    });
+                      product_id: product.id,
+                      quantity: quantity,
+                    }, { onConflict: "user_id,product_id" });
                 }
+                
+                // 2) Add upsell product to cart
+                await db.from("cart_items")
+                  .upsert({
+                    user_id: user.id,
+                    product_id: upsellProduct.id,
+                    quantity: 1,
+                  }, { onConflict: "user_id,product_id" });
+                
+                window.dispatchEvent(new Event("cart-updated"));
+                toast({
+                  title: "تمت الإضافة! 🎉",
+                  description: `تم إضافة "${upsellProduct.name}" للسلة`,
+                });
+                
+                // 3) Redirect to cart checkout so both items are processed together
+                navigate("/checkout/cart");
               }}
             />
 
