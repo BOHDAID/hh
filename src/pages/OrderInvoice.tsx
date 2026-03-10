@@ -847,6 +847,45 @@ const OrderInvoice = () => {
                         );
                       }
 
+                      // On-demand order: show contact instructions
+                      if (onDemandContact && order.status !== "pending") {
+                        const cleanTg = onDemandContact.telegram?.replace(/^@/, '').replace(/^https?:\/\/t\.me\//i, '').trim();
+                        const cleanWa = onDemandContact.whatsapp?.replace(/[^0-9]/g, '');
+                        
+                        return (
+                          <div className="bg-amber-500/5 border border-amber-500/30 rounded-lg p-4 space-y-3">
+                            <div className="flex items-center justify-center gap-2 text-amber-600 dark:text-amber-400">
+                              <Clock className="h-5 w-5" />
+                              <span className="font-semibold text-sm">طلبك قيد التفعيل</span>
+                            </div>
+                            <p className="text-sm text-muted-foreground text-center">
+                              {onDemandContact.instructions || "تم استلام طلبك بنجاح! يرجى التواصل معنا وإرسال صورة الإيصال لتفعيل طلبك."}
+                            </p>
+                            <div className="flex flex-col gap-2">
+                              {cleanTg && (
+                                <a href={`https://t.me/${cleanTg}`} target="_blank" rel="noopener noreferrer">
+                                  <Button className="w-full gap-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700" size="sm" type="button">
+                                    <ExternalLink className="h-4 w-4" />
+                                    تواصل عبر تيليجرام
+                                  </Button>
+                                </a>
+                              )}
+                              {cleanWa && (
+                                <a href={`https://wa.me/${cleanWa}`} target="_blank" rel="noopener noreferrer">
+                                  <Button className="w-full gap-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700" size="sm" type="button">
+                                    <ExternalLink className="h-4 w-4" />
+                                    تواصل عبر واتساب
+                                  </Button>
+                                </a>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground text-center">
+                              📸 أرسل صورة الإيصال أو رقم الطلب <strong>{order.order_number}</strong>
+                            </p>
+                          </div>
+                        );
+                      }
+
                       return (
                         <div className="bg-muted/50 rounded-lg p-4 text-center text-muted-foreground">
                           {order.status === "pending" ? "في انتظار تأكيد الدفع" : "لم يتم تسليم البيانات بعد"}
