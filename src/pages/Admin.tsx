@@ -746,7 +746,7 @@ const Admin = () => {
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-foreground truncate">{product.name}</h3>
-                    <p className="text-sm text-muted-foreground truncate">{product.description}</p>
+                    <p className="text-sm text-muted-foreground line-clamp-1">{product.description}</p>
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
                       <span className="text-primary font-bold">${product.price}</span>
                       {product.categories && (
