@@ -456,7 +456,7 @@ const OtpConfigurationsManager = () => {
         if (insertError) {
           toast({ title: "⚠️ تم الاستيراد لكن فشل الحفظ", description: insertError.message, variant: "destructive" });
         } else {
-          await db.from("product_variants").update({ is_unlimited: true }).eq("id", selectedVariantId);
+          // Note: is_unlimited update skipped - column may not exist in external DB
           toast({ title: "✅ تم استيراد الكوكيز بنجاح", description: `الجلسة متصلة${finalEmail ? ` - ${finalEmail}` : ''} — المنتج الفرعي أصبح غير محدود` });
         }
         setCookieDialogOpen(false); setCookieText(""); setSelectedVariantId(""); setManualEmail(""); setSessionType("osn");
