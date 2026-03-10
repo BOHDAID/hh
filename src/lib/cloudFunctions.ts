@@ -136,7 +136,7 @@ export async function invokeCloudFunctionPublic<T = unknown>(
   const slug = getFunctionSlug(fnName);
   const url = `${CLOUD_URL}/functions/v1/${slug}`;
   
-  console.log(`🚀 Invoking (public): ${fnName} → ${url}`);
+  // Invoking public function silently
   
   try {
     const response = await fetch(url, {
