@@ -1064,7 +1064,7 @@ const Admin = () => {
                 </div>
                 <div className="p-4 pt-2 border-t border-border shrink-0">
                   <p className="text-xs text-muted-foreground mb-2 text-center">
-                    💡 لحفظ تغييرات الاسم أو السعر أو الوصف، اضغط على "حفظ المنتج" أدناه
+                    💡 لحفظ تغييرات الاسم أو الوصف، اضغط على "حفظ المنتج" أدناه
                   </p>
                   <div className="flex justify-end gap-2">
                   <Button variant="ghost" size="sm" onClick={() => setProductDialogOpen(false)}>
