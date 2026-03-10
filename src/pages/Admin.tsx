@@ -538,7 +538,10 @@ const Admin = () => {
   };
 
   const deleteCategory = async (id: string) => {
-    if (!confirm("هل أنت متأكد من حذف هذا التصنيف؟")) return;
+    if (!confirm("هل أنت متأكد من حذف هذا التصنيف؟ سيتم إزالة التصنيف من المنتجات المرتبطة به.")) return;
+    
+    // أولاً: فصل المنتجات عن التصنيف
+    await db.from('products').update({ category_id: null }).eq('category_id', id);
     
     const { error } = await db.from('categories').delete().eq('id', id);
     if (error) {
