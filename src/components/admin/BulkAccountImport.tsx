@@ -479,7 +479,7 @@ user3@email.com:password789`}
                   {onDemandVariants.map((variant) => (
                     <SelectItem key={variant.id} value={variant.id}>
                       {variant.name} - ${variant.price}
-                      {(variant as any).fulfillment_type === "on_demand" && " 🤝"}
+                      
                     </SelectItem>
                   ))}
                 </SelectContent>
