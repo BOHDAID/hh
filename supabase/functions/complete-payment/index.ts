@@ -189,189 +189,218 @@ serve(async (req: Request) => {
         }
 
         if (allUnlimited) {
-          // Fetch activation codes for this order to return them
-          const { data: existingCodes } = await adminClient
-            .from("activation_codes")
-            .select("code, product_id")
-            .eq("order_id", order_id);
-          
-          let activationCodesForResponse = (existingCodes || []).map((c: any) => ({
-            code: c.code,
-            product_id: c.product_id,
-          }));
+          // Check if ANY of these unlimited products actually require activation
+          let anyRequiresActivation = false;
+          for (const item of (existingItems || [])) {
+            const { data: prodCheck } = await adminClient
+              .from("products")
+              .select("requires_activation")
+              .eq("id", item.product_id)
+              .single();
+            if (prodCheck?.requires_activation) {
+              anyRequiresActivation = true;
+              break;
+            }
+          }
 
-          // If no codes exist yet, generate them now (order was completed before code generation was added)
-          if (activationCodesForResponse.length === 0) {
-            console.log("No activation codes found for completed unlimited order, generating now...");
+          // Only generate activation codes if the product requires activation
+          if (anyRequiresActivation) {
+            // Fetch activation codes for this order to return them
+            const { data: existingCodes } = await adminClient
+              .from("activation_codes")
+              .select("code, product_id")
+              .eq("order_id", order_id);
             
-            const generateCode = (): string => {
-              const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-              let code = '';
-              for (let i = 0; i < 8; i++) {
-                code += chars.charAt(Math.floor(Math.random() * chars.length));
-              }
-              return code;
-            };
+            let activationCodesForResponse = (existingCodes || []).map((c: any) => ({
+              code: c.code,
+              product_id: c.product_id,
+            }));
 
-            for (const item of (existingItems || [])) {
-              // For unlimited products, always generate activation code
-              // (we already confirmed allUnlimited = true above)
-              const { data: productData } = await adminClient
-                .from("products")
-                .select("name")
-                .eq("id", item.product_id)
-                .single();
+            // If no codes exist yet, generate them now
+            if (activationCodesForResponse.length === 0) {
+              console.log("No activation codes found for completed unlimited order, generating now...");
               
-              const qty = item.quantity || 1;
-              console.log(`Generating ${qty} code(s) for product ${item.product_id} (${productData?.name || 'unknown'})`);
+              const generateCode = (): string => {
+                const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+                let code = '';
+                for (let i = 0; i < 8; i++) {
+                  code += chars.charAt(Math.floor(Math.random() * chars.length));
+                }
+                return code;
+              };
 
-              // Get account email & password from OSN session via cloud (once per item)
-              let accountEmail: string | null = null;
-              let accountPassword: string | null = null;
-              try {
-                if (cloudClient) {
-                  const { data: unlimitedVariants } = await adminClient
-                    .from("product_variants")
-                    .select("id")
-                    .eq("product_id", item.product_id)
-                    .eq("is_unlimited", true);
-                  
-                  for (const v of (unlimitedVariants || [])) {
-                    const { data: session } = await cloudClient
-                      .from("osn_sessions")
-                      .select("email, account_password")
-                      .eq("variant_id", v.id)
-                      .eq("is_active", true)
-                      .limit(1)
-                      .maybeSingle();
-                    if (session?.email) { 
-                      accountEmail = session.email;
-                      accountPassword = session.account_password || null;
-                      break; 
+              for (const item of (existingItems || [])) {
+                // Only generate for products that require activation
+                const { data: productData } = await adminClient
+                  .from("products")
+                  .select("name, requires_activation")
+                  .eq("id", item.product_id)
+                  .single();
+                
+                if (!productData?.requires_activation) {
+                  console.log(`Product ${item.product_id} does not require activation, skipping code generation`);
+                  continue;
+                }
+                
+                const qty = item.quantity || 1;
+                console.log(`Generating ${qty} code(s) for product ${item.product_id} (${productData?.name || 'unknown'})`);
+
+                let accountEmail: string | null = null;
+                let accountPassword: string | null = null;
+                try {
+                  if (cloudClient) {
+                    const { data: unlimitedVariants } = await adminClient
+                      .from("product_variants")
+                      .select("id")
+                      .eq("product_id", item.product_id)
+                      .eq("is_unlimited", true);
+                    
+                    for (const v of (unlimitedVariants || [])) {
+                      const { data: session } = await cloudClient
+                        .from("osn_sessions")
+                        .select("email, account_password")
+                        .eq("variant_id", v.id)
+                        .eq("is_active", true)
+                        .limit(1)
+                        .maybeSingle();
+                      if (session?.email) { 
+                        accountEmail = session.email;
+                        accountPassword = session.account_password || null;
+                        break; 
+                      }
                     }
                   }
-                }
-              } catch (e) { console.error("Error fetching OSN email/password:", e); }
+                } catch (e) { console.error("Error fetching OSN email/password:", e); }
 
-              // توليد كود لكل وحدة من الكمية
-              for (let q = 0; q < qty; q++) {
-                const code = generateCode();
-                const insertData: Record<string, unknown> = {
-                  code,
-                  user_id: order.user_id,
-                  product_id: item.product_id,
-                  order_id: order_id,
-                  order_item_id: item.id,
-                  status: 'pending',
-                  expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-                };
-                if (accountEmail) insertData.account_email = accountEmail;
-                if (accountPassword) insertData.account_password = accountPassword;
+                for (let q = 0; q < qty; q++) {
+                  const code = generateCode();
+                  const insertData: Record<string, unknown> = {
+                    code,
+                    user_id: order.user_id,
+                    product_id: item.product_id,
+                    order_id: order_id,
+                    order_item_id: item.id,
+                    status: 'pending',
+                    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                  };
+                  if (accountEmail) insertData.account_email = accountEmail;
+                  if (accountPassword) insertData.account_password = accountPassword;
 
-                const { error: codeErr } = await adminClient
-                  .from("activation_codes")
-                  .insert(insertData);
-                
-                if (!codeErr) {
-                  console.log(`✅ Generated activation code ${code} (${q+1}/${qty}) for completed order`);
-                  activationCodesForResponse.push({ code, product_id: item.product_id });
-                } else {
-                  console.error("Failed to insert activation code:", codeErr.message);
+                  const { error: codeErr } = await adminClient
+                    .from("activation_codes")
+                    .insert(insertData);
+                  
+                  if (!codeErr) {
+                    console.log(`✅ Generated activation code ${code} (${q+1}/${qty}) for completed order`);
+                    activationCodesForResponse.push({ code, product_id: item.product_id });
+                  } else {
+                    console.error("Failed to insert activation code:", codeErr.message);
+                  }
                 }
               }
             }
-          }
 
-          // === إرسال إيميل بكود التفعيل للمنتجات unlimited ===
-          let emailSentUnlimited = false;
-          let emailErrorUnlimited: string | null = null;
+            // === إرسال إيميل بكود التفعيل للمنتجات unlimited ===
+            let emailSentUnlimited = false;
+            let emailErrorUnlimited: string | null = null;
 
-          const { data: profileUnlimited } = await adminClient
-            .from("profiles")
-            .select("email, full_name")
-            .eq("user_id", order.user_id)
-            .single();
+            const { data: profileUnlimited } = await adminClient
+              .from("profiles")
+              .select("email, full_name")
+              .eq("user_id", order.user_id)
+              .single();
 
-          if (profileUnlimited?.email && activationCodesForResponse.length > 0) {
-            try {
-              const cloudUrlForEmail = Deno.env.get("SUPABASE_URL") || "";
-              const cloudServiceKeyForEmail = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+            if (profileUnlimited?.email && activationCodesForResponse.length > 0) {
+              try {
+                const cloudUrlForEmail = Deno.env.get("SUPABASE_URL") || "";
+                const cloudServiceKeyForEmail = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
-              const { data: storeNameSettingU } = await adminClient
-                .from("site_settings")
-                .select("value")
-                .eq("key", "store_name")
-                .single();
-              const storeNameU = storeNameSettingU?.value || "Digital Store";
+                const { data: storeNameSettingU } = await adminClient
+                  .from("site_settings")
+                  .select("value")
+                  .eq("key", "store_name")
+                  .single();
+                const storeNameU = storeNameSettingU?.value || "Digital Store";
 
-              const { data: botUsernameSettingU } = await adminClient
-                .from("site_settings")
-                .select("value")
-                .eq("key", "telegram_bot_username")
-                .maybeSingle();
-              const telegramBotU = botUsernameSettingU?.value?.replace(/^@/, '') || "";
+                const { data: botUsernameSettingU } = await adminClient
+                  .from("site_settings")
+                  .select("value")
+                  .eq("key", "telegram_bot_username")
+                  .maybeSingle();
+                const telegramBotU = botUsernameSettingU?.value?.replace(/^@/, '') || "";
 
-              if (cloudUrlForEmail && cloudServiceKeyForEmail) {
-                // Build products list for email
-                const productsForEmail = (existingItems || []).map((i: any) => ({
-                  name: i.products?.name || "منتج",
-                  account_data: i.delivered_data || "سيتم التفعيل عبر البوت",
-                  quantity: i.quantity || 1,
-                }));
+                if (cloudUrlForEmail && cloudServiceKeyForEmail) {
+                  const productsForEmail = (existingItems || []).map((i: any) => ({
+                    name: i.products?.name || "منتج",
+                    account_data: i.delivered_data || "سيتم التفعيل عبر البوت",
+                    quantity: i.quantity || 1,
+                  }));
 
-                const emailPayloadU: Record<string, unknown> = {
-                  to_email: profileUnlimited.email,
-                  customer_name: profileUnlimited.full_name || "",
-                  order_number: order.order_number,
-                  order_id: order_id,
-                  user_id: order.user_id,
-                  products: productsForEmail.length > 0 ? productsForEmail : [{ name: "اشتراك", account_data: "يتم التفعيل عبر بوت تيليجرام", quantity: 1 }],
-                  total_amount: order.total_amount,
-                  warranty_expires_at: order.warranty_expires_at || new Date().toISOString(),
-                  activation_code: activationCodesForResponse[0]?.code,
-                  activation_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-                  telegram_bot_username: telegramBotU,
-                  all_activation_codes: activationCodesForResponse.map((c: any) => ({
-                    code: c.code,
-                    product_name: c.product_name || "اشتراك",
-                  })),
-                };
+                  const emailPayloadU: Record<string, unknown> = {
+                    to_email: profileUnlimited.email,
+                    customer_name: profileUnlimited.full_name || "",
+                    order_number: order.order_number,
+                    order_id: order_id,
+                    user_id: order.user_id,
+                    products: productsForEmail.length > 0 ? productsForEmail : [{ name: "اشتراك", account_data: "يتم التفعيل عبر بوت تيليجرام", quantity: 1 }],
+                    total_amount: order.total_amount,
+                    warranty_expires_at: order.warranty_expires_at || new Date().toISOString(),
+                    activation_code: activationCodesForResponse[0]?.code,
+                    activation_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                    telegram_bot_username: telegramBotU,
+                    all_activation_codes: activationCodesForResponse.map((c: any) => ({
+                      code: c.code,
+                      product_name: c.product_name || "اشتراك",
+                    })),
+                  };
 
-                console.log("Sending activation email for unlimited product to:", profileUnlimited.email);
-                const emailResp = await fetch(`${cloudUrlForEmail}/functions/v1/send-delivery-email`, {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${cloudServiceKeyForEmail}`,
-                  },
-                  body: JSON.stringify(emailPayloadU),
-                });
+                  console.log("Sending activation email for unlimited product to:", profileUnlimited.email);
+                  const emailResp = await fetch(`${cloudUrlForEmail}/functions/v1/send-delivery-email`, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "Authorization": `Bearer ${cloudServiceKeyForEmail}`,
+                    },
+                    body: JSON.stringify(emailPayloadU),
+                  });
 
-                const emailRes = await emailResp.json();
-                if (emailResp.ok && emailRes.success) {
-                  emailSentUnlimited = true;
-                  console.log("✅ Activation email sent for unlimited product");
-                } else {
-                  emailErrorUnlimited = emailRes.error || "Unknown email error";
-                  console.error("❌ Activation email failed:", emailErrorUnlimited);
+                  const emailRes = await emailResp.json();
+                  if (emailResp.ok && emailRes.success) {
+                    emailSentUnlimited = true;
+                    console.log("✅ Activation email sent for unlimited product");
+                  } else {
+                    emailErrorUnlimited = emailRes.error || "Unknown email error";
+                    console.error("❌ Activation email failed:", emailErrorUnlimited);
+                  }
                 }
+              } catch (err) {
+                emailErrorUnlimited = err instanceof Error ? err.message : "Email error";
+                console.error("❌ Activation email exception:", err);
               }
-            } catch (err) {
-              emailErrorUnlimited = err instanceof Error ? err.message : "Email error";
-              console.error("❌ Activation email exception:", err);
             }
-          }
 
-          return new Response(
-            JSON.stringify({
-              success: true,
-              message: "الطلب مكتمل — منتج غير محدود (يتم التفعيل تلقائياً)",
-              activation_codes: activationCodesForResponse.length > 0 ? activationCodesForResponse : null,
-              email_sent: emailSentUnlimited,
-              email_error: emailErrorUnlimited,
-            }),
-            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
+            return new Response(
+              JSON.stringify({
+                success: true,
+                message: "الطلب مكتمل — منتج غير محدود (يتطلب تفعيل)",
+                activation_codes: activationCodesForResponse.length > 0 ? activationCodesForResponse : null,
+                email_sent: emailSentUnlimited,
+                email_error: emailErrorUnlimited,
+              }),
+              { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          } else {
+            // Unlimited product that does NOT require activation - return success without codes
+            console.log("Unlimited product does not require activation, no codes generated");
+            return new Response(
+              JSON.stringify({
+                success: true,
+                message: "الطلب مكتمل — منتج غير محدود",
+                activation_codes: null,
+              }),
+              { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
         }
 
         // Not unlimited and no delivered data - still return success for completed orders
