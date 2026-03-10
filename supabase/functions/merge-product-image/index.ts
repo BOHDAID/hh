@@ -80,14 +80,14 @@ serve(async (req: Request) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-image",
+        model: "google/gemini-3.1-flash-image-preview",
         messages: [
           {
             role: "user",
             content: [
               {
                 type: "text",
-                text: "Take the logo/product from the first image and place it LARGE and prominently inside the dark black square area in the center of the second image (the 3D plastic packaging box). The logo should fill about 70-80% of the black square area - make it big and clearly visible. The logo should look like it's printed/embossed on the surface inside the package. The overall result must look like a realistic 3D product box with depth, shadows, and perspective matching the packaging. Keep the purple/pink glowing neon border and the transparent plastic packaging shell exactly as they are. The final image should look like a professional 3D rendered product in its retail packaging.",
+                text: "Take the logo/product from the first image and place it LARGE and prominently inside the dark black square area in the center of the second image (the 3D plastic packaging box). The logo should fill about 70-80% of the black square area - make it big and clearly visible. The logo should look like it's printed/embossed on the surface inside the package. The overall result must look like a realistic 3D product box with depth, shadows, and perspective matching the packaging. Keep the purple/pink glowing neon border and the transparent plastic packaging shell exactly as they are. The final image should look like a professional 3D rendered product in its retail packaging. Generate the result as an image.",
               },
               {
                 type: "image_url",
@@ -100,7 +100,7 @@ serve(async (req: Request) => {
             ],
           },
         ],
-        modalities: ["image", "text"],
+        modalities: ["text", "image"],
       }),
     });
 
