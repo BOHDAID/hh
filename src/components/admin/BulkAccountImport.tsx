@@ -91,32 +91,14 @@ const BulkAccountImport = ({ products, onImportComplete }: BulkAccountImportProp
 
   const fetchUnlimitedVariants = async (productId: string) => {
     setUnlimitedVariant("");
-    
-    try {
-      const { data } = await db
-        .from("product_variants")
-        .select("id, product_id, name, name_en, description, description_en, price, stock, image_url, is_active, is_unlimited, warranty_days, display_order, fulfillment_type, created_at, updated_at")
-        .eq("product_id", productId)
-        .order("display_order", { ascending: true });
-      
-      setUnlimitedVariants(data || []);
-    } catch {
-      setUnlimitedVariants([]);
-    }
+    const { data } = await fetchVariantsWithFallback(productId);
+    setUnlimitedVariants(data || []);
   };
 
   const fetchOnDemandVariants = async (productId: string) => {
     setOnDemandVariant("");
-    try {
-      const { data } = await db
-        .from("product_variants")
-        .select("id, product_id, name, name_en, description, description_en, price, stock, image_url, is_active, is_unlimited, warranty_days, display_order, fulfillment_type, created_at, updated_at")
-        .eq("product_id", productId)
-        .order("display_order", { ascending: true });
-      setOnDemandVariants(data || []);
-    } catch {
-      setOnDemandVariants([]);
-    }
+    const { data } = await fetchVariantsWithFallback(productId);
+    setOnDemandVariants(data || []);
   };
 
   const handleSaveOnDemand = async () => {
