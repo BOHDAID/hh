@@ -1364,23 +1364,30 @@ const Checkout = () => {
               onAddToOrder={async (upsellProduct, discountedPrice) => {
                 if (!user) return;
                 
+                const addToCart = async (productId: string, qty: number) => {
+                  const { data: existing } = await db.from("cart_items")
+                    .select("id, quantity")
+                    .eq("user_id", user.id)
+                    .eq("product_id", productId)
+                    .maybeSingle();
+                  
+                  if (existing) {
+                    await db.from("cart_items")
+                      .update({ quantity: existing.quantity + qty, updated_at: new Date().toISOString() })
+                      .eq("id", existing.id);
+                  } else {
+                    await db.from("cart_items")
+                      .insert({ user_id: user.id, product_id: productId, quantity: qty });
+                  }
+                };
+
                 // 1) Add current product to cart (if single-product checkout)
                 if (!isCartCheckout && product) {
-                  await db.from("cart_items")
-                    .upsert({
-                      user_id: user.id,
-                      product_id: product.id,
-                      quantity: quantity,
-                    }, { onConflict: "user_id,product_id" });
+                  await addToCart(product.id, quantity);
                 }
                 
                 // 2) Add upsell product to cart
-                await db.from("cart_items")
-                  .upsert({
-                    user_id: user.id,
-                    product_id: upsellProduct.id,
-                    quantity: 1,
-                  }, { onConflict: "user_id,product_id" });
+                await addToCart(upsellProduct.id, 1);
                 
                 window.dispatchEvent(new Event("cart-updated"));
                 toast({
