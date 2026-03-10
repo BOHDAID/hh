@@ -5,7 +5,7 @@ import { Zap, Clock, Plus, X, Flame, Gift, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
 
-interface UpsellVariant {
+interface UpsellItem {
   id: string;
   name: string;
   name_en: string | null;
@@ -37,8 +37,7 @@ const DiscountRoulette = ({ onComplete, isRTL }: { onComplete: (discount: number
     setSpinning(true);
     setResult(null);
 
-    // Pick final result (weighted towards 3-7%)
-    const weights = [5, 8, 12, 15, 18, 15, 12, 8, 5, 2]; // weights for 1-10
+    const weights = [5, 8, 12, 15, 18, 15, 12, 8, 5, 2];
     const totalWeight = weights.reduce((a, b) => a + b, 0);
     let rand = Math.random() * totalWeight;
     let finalDiscount = 1;
@@ -47,7 +46,6 @@ const DiscountRoulette = ({ onComplete, isRTL }: { onComplete: (discount: number
       if (rand <= 0) { finalDiscount = DISCOUNT_VALUES[i]; break; }
     }
 
-    // Animate through numbers rapidly then slow down
     let tick = 0;
     const totalTicks = 30 + Math.floor(Math.random() * 10);
     
@@ -56,14 +54,11 @@ const DiscountRoulette = ({ onComplete, isRTL }: { onComplete: (discount: number
       const progress = tick / totalTicks;
       
       if (progress < 0.7) {
-        // Fast spinning
         setDisplayValue(DISCOUNT_VALUES[Math.floor(Math.random() * DISCOUNT_VALUES.length)]);
       } else if (progress < 0.9) {
-        // Slowing down - show nearby values
         const nearby = [finalDiscount - 1, finalDiscount, finalDiscount + 1, finalDiscount].filter(v => v >= 1 && v <= 10);
         setDisplayValue(nearby[Math.floor(Math.random() * nearby.length)]);
       } else {
-        // Final value
         setDisplayValue(finalDiscount);
       }
 
@@ -90,7 +85,6 @@ const DiscountRoulette = ({ onComplete, isRTL }: { onComplete: (discount: number
         </h3>
       </div>
 
-      {/* Roulette display */}
       <div className="relative">
         <motion.div
           className={`w-24 h-24 rounded-2xl border-4 flex items-center justify-center ${
@@ -160,7 +154,7 @@ const DiscountRoulette = ({ onComplete, isRTL }: { onComplete: (discount: number
 const SmartUpsell = ({ cartProductIds, currentCategoryId, onAddToOrder }: SmartUpsellProps) => {
   const { i18n } = useTranslation();
   const isRTL = i18n.language === "ar";
-  const [variant, setVariant] = useState<UpsellVariant | null>(null);
+  const [variant, setVariant] = useState<UpsellItem | null>(null);
   const [timeLeft, setTimeLeft] = useState(TIMER_SECONDS);
   const [dismissed, setDismissed] = useState(false);
   const [added, setAdded] = useState(false);
@@ -169,9 +163,10 @@ const SmartUpsell = ({ cartProductIds, currentCategoryId, onAddToOrder }: SmartU
 
   const fetchUpsell = useCallback(async () => {
     try {
-      const baseSelect = "id, name, name_en, price, product_id, created_at, products!inner(id, name, name_en, image_url, category_id, is_active, sales_count)";
+      // === Strategy 1: Try product_variants with inner join ===
+      const variantSelect = "id, name, name_en, price, product_id, created_at, products!inner(id, name, name_en, image_url, category_id, is_active, sales_count)";
 
-      const pickFromData = (data: any[]) => {
+      const pickFromVariants = (data: any[]): UpsellItem | null => {
         const filtered = data.filter((v: any) => !cartProductIds.includes(v.product_id));
         if (filtered.length === 0) return null;
         const pick = filtered[Math.floor(Math.random() * filtered.length)];
@@ -188,37 +183,76 @@ const SmartUpsell = ({ cartProductIds, currentCategoryId, onAddToOrder }: SmartU
         };
       };
 
-      // Try same category first
+      // Try same category first (variants)
       if (currentCategoryId) {
-        const { data } = await db
-          .from("product_variants")
-          .select(baseSelect)
-          .eq("is_active", true)
-          .eq("products.is_active", true)
-          .gt("price", 0)
-          .eq("products.category_id", currentCategoryId)
-          .order("created_at", { ascending: false })
-          .limit(50);
+        try {
+          const { data } = await db
+            .from("product_variants")
+            .select(variantSelect)
+            .eq("is_active", true)
+            .eq("products.is_active", true)
+            .gt("price", 0)
+            .eq("products.category_id", currentCategoryId)
+            .order("created_at", { ascending: false })
+            .limit(50);
 
-        if (data && data.length > 0) {
-          const result = pickFromData(data);
-          if (result) { setVariant(result); return; }
+          if (data && data.length > 0) {
+            const result = pickFromVariants(data);
+            if (result) { setVariant(result); return; }
+          }
+        } catch {
+          // Query failed, continue to fallback
         }
       }
 
-      // Fallback: all categories
-      const { data: allData } = await db
-        .from("product_variants")
-        .select(baseSelect)
-        .eq("is_active", true)
-        .eq("products.is_active", true)
-        .gt("price", 0)
-        .order("created_at", { ascending: false })
-        .limit(50);
+      // Fallback: all categories (variants)
+      try {
+        const { data: allData } = await db
+          .from("product_variants")
+          .select(variantSelect)
+          .eq("is_active", true)
+          .eq("products.is_active", true)
+          .gt("price", 0)
+          .order("created_at", { ascending: false })
+          .limit(50);
 
-      if (!allData || allData.length === 0) return;
-      const result = pickFromData(allData);
-      if (result) setVariant(result);
+        if (allData && allData.length > 0) {
+          const result = pickFromVariants(allData);
+          if (result) { setVariant(result); return; }
+        }
+      } catch {
+        // Query failed, continue to product fallback
+      }
+
+      // === Strategy 2: Fallback to products directly (no variants needed) ===
+      try {
+        const { data: productData } = await db
+          .from("products")
+          .select("id, name, name_en, price, image_url, category_id, is_active, sales_count")
+          .eq("is_active", true)
+          .gt("price", 0)
+          .order("created_at", { ascending: false })
+          .limit(50);
+
+        if (productData && productData.length > 0) {
+          const filtered = productData.filter((p: any) => !cartProductIds.includes(p.id));
+          if (filtered.length > 0) {
+            const pick = filtered[Math.floor(Math.random() * filtered.length)];
+            setVariant({
+              id: pick.id + "_product",
+              name: pick.name,
+              name_en: pick.name_en,
+              price: pick.price,
+              product_id: pick.id,
+              product_name: pick.name,
+              product_name_en: pick.name_en,
+              product_image_url: pick.image_url,
+            });
+          }
+        }
+      } catch {
+        // All strategies failed silently
+      }
     } catch {
       // Silently fail
     }
@@ -268,7 +302,6 @@ const SmartUpsell = ({ cartProductIds, currentCategoryId, onAddToOrder }: SmartU
           <X className="h-3.5 w-3.5 text-muted-foreground" />
         </button>
 
-        {/* Header */}
         <div className="bg-gradient-to-r from-primary to-primary/80 px-4 py-2 flex items-center gap-2">
           <Zap className="h-4 w-4 text-primary-foreground" />
           <span className="text-xs font-bold text-primary-foreground tracking-wide uppercase">
@@ -285,7 +318,6 @@ const SmartUpsell = ({ cartProductIds, currentCategoryId, onAddToOrder }: SmartU
           )}
         </div>
 
-        {/* Phase: Roulette or Offer */}
         {phase === "roulette" ? (
           <DiscountRoulette onComplete={handleRouletteComplete} isRTL={isRTL} />
         ) : (
