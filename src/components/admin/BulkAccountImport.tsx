@@ -55,36 +55,39 @@ const BulkAccountImport = ({ products, onImportComplete }: BulkAccountImportProp
   const [onDemandVariants, setOnDemandVariants] = useState<ProductVariant[]>([]);
   const [savingOnDemand, setSavingOnDemand] = useState(false);
 
+  const VARIANT_COLS_WITH_FULFILLMENT = "id, product_id, name, name_en, description, description_en, price, stock, image_url, is_active, is_unlimited, warranty_days, display_order, fulfillment_type, created_at, updated_at";
+  const VARIANT_COLS_WITHOUT_FULFILLMENT = "id, product_id, name, name_en, description, description_en, price, stock, image_url, is_active, is_unlimited, warranty_days, display_order, created_at, updated_at";
+
+  const fetchVariantsWithFallback = async (productId: string) => {
+    // Try with fulfillment_type first, fallback without it
+    let { data, error } = await db
+      .from("product_variants")
+      .select(VARIANT_COLS_WITH_FULFILLMENT)
+      .eq("product_id", productId)
+      .order("display_order", { ascending: true });
+
+    if (error) {
+      const res = await db
+        .from("product_variants")
+        .select(VARIANT_COLS_WITHOUT_FULFILLMENT)
+        .eq("product_id", productId)
+        .order("display_order", { ascending: true });
+      data = res.data;
+      error = res.error;
+    }
+    return { data, error };
+  };
+
   const fetchVariants = async (productId: string) => {
     setLoadingVariants(true);
     setSelectedVariant("");
-    
-    try {
-      const { data, error } = await db
-        .from("product_variants")
-        .select("id, product_id, name, name_en, description, description_en, price, stock, image_url, is_active, is_unlimited, warranty_days, display_order, fulfillment_type, created_at, updated_at")
-        .eq("product_id", productId)
-        .order("display_order", { ascending: true });
-      
-      if (error) {
-        toast({
-          title: "خطأ في جلب الخيارات",
-          description: error.message,
-          variant: "destructive",
-        });
-        setVariants([]);
-      } else {
-        setVariants(data || []);
-      }
-    } catch (err: any) {
-      toast({
-        title: "خطأ",
-        description: err.message,
-        variant: "destructive",
-      });
+    const { data, error } = await fetchVariantsWithFallback(productId);
+    if (error) {
+      toast({ title: "خطأ في جلب الخيارات", description: error.message, variant: "destructive" });
       setVariants([]);
+    } else {
+      setVariants(data || []);
     }
-    
     setLoadingVariants(false);
   };
 
