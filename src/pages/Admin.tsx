@@ -811,15 +811,6 @@ const Admin = () => {
                         className="glass h-8 text-sm"
                       />
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">السعر</Label>
-                      <Input
-                        type="number"
-                        value={productForm.price}
-                        onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
-                        placeholder="0"
-                        className="glass h-8 text-sm"
-                      />
                     </div>
                   </div>
                   <div className="space-y-1">
