@@ -27,6 +27,8 @@ interface CartItem {
     price: number;
     image_url: string | null;
   };
+  // The actual display price from the cheapest variant
+  displayPrice: number;
 }
 
 const Cart = () => {
@@ -62,14 +64,41 @@ const Cart = () => {
         .eq("user_id", session.user.id);
 
       if (!error && data) {
-        // Filter out items where product might be null and map to correct shape
         const validItems = data
           .filter(item => item.product !== null)
           .map(item => ({
             ...item,
-            product: Array.isArray(item.product) ? item.product[0] : item.product
+            product: Array.isArray(item.product) ? item.product[0] : item.product,
+            displayPrice: 0,
           }))
           .filter(item => item.product) as CartItem[];
+
+        // Fetch min variant price for each product
+        const productIds = [...new Set(validItems.map(item => item.product.id))];
+        if (productIds.length > 0) {
+          const { data: variants } = await db
+            .from("product_variants")
+            .select("product_id, price")
+            .in("product_id", productIds)
+            .eq("is_active", true)
+            .gt("price", 0);
+
+          // Build a map of product_id -> min variant price
+          const minPriceMap: Record<string, number> = {};
+          if (variants) {
+            for (const v of variants) {
+              if (!minPriceMap[v.product_id] || v.price < minPriceMap[v.product_id]) {
+                minPriceMap[v.product_id] = v.price;
+              }
+            }
+          }
+
+          // Apply variant prices
+          for (const item of validItems) {
+            item.displayPrice = minPriceMap[item.product.id] || item.product.price;
+          }
+        }
+
         setCartItems(validItems);
       }
       
@@ -132,7 +161,7 @@ const Cart = () => {
   };
 
   const totalAmount = cartItems.reduce(
-    (sum, item) => sum + (item.product.price * item.quantity), 
+    (sum, item) => sum + (item.displayPrice * item.quantity), 
     0
   );
 
@@ -147,7 +176,6 @@ const Cart = () => {
       return;
     }
 
-    // Navigate to cart checkout
     navigate("/checkout/cart");
   };
 
@@ -224,7 +252,7 @@ const Cart = () => {
                       {item.product.name}
                     </h3>
                     <p className="text-primary font-bold mt-1">
-                      ${item.product.price}
+                      ${item.displayPrice.toFixed(2)}
                     </p>
                   </div>
 
@@ -256,7 +284,7 @@ const Cart = () => {
                   {/* Subtotal & Delete */}
                   <div className="flex flex-col items-end gap-2">
                     <p className="font-bold text-foreground">
-                      ${(item.product.price * item.quantity).toFixed(2)}
+                      ${(item.displayPrice * item.quantity).toFixed(2)}
                     </p>
                     <Button
                       variant="ghost"
@@ -297,7 +325,6 @@ const Cart = () => {
               cartProductIds={cartItems.map(item => item.product_id)}
               userId={user.id}
               onAddedToCart={() => {
-                // Refresh cart
                 window.dispatchEvent(new Event("cart-updated"));
               }}
             />

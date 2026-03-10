@@ -150,10 +150,34 @@ const Checkout = () => {
           return;
         }
 
+        // Fetch min variant price for each cart product (since product.price is always 0)
+        const cartProductIds = [...new Set(items.map(i => i.product.id))];
+        const { data: cartVariants } = await db
+          .from("product_variants")
+          .select("product_id, price")
+          .in("product_id", cartProductIds)
+          .eq("is_active", true)
+          .gt("price", 0);
+
+        const minPriceMap: Record<string, number> = {};
+        if (cartVariants) {
+          for (const v of cartVariants) {
+            if (!minPriceMap[v.product_id] || v.price < minPriceMap[v.product_id]) {
+              minPriceMap[v.product_id] = v.price;
+            }
+          }
+        }
+
+        // Apply variant prices to cart items
+        for (const item of items) {
+          if (minPriceMap[item.product.id]) {
+            item.product.price = minPriceMap[item.product.id];
+          }
+        }
+
         setCartItems(items);
-        // Set first product as "product" for compatibility with rest of page
         setProduct(items[0].product);
-        setStockCount(999); // Cart items already validated
+        setStockCount(999);
       }
 
       // Plan checkout mode - load plan as virtual product
