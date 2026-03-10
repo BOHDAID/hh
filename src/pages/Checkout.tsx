@@ -323,15 +323,18 @@ const Checkout = () => {
         // Check if variant is "on demand" (stored in site_settings)
         let isOnDemand = false;
         if (variantId) {
-          const { data: onDemandSetting } = await db
+          const { data: onDemandSetting, error: onDemandErr } = await db
             .from("site_settings")
             .select("value")
             .eq("key", `on_demand_variant_${variantId}`)
             .maybeSingle();
+          console.log('🔍 On-demand check for variant', variantId, ':', onDemandSetting, 'error:', onDemandErr);
           if (onDemandSetting?.value === "true") {
             isOnDemand = true;
           }
         }
+
+        console.log('📦 Product type:', productData.product_type, 'requires_activation:', productData.requires_activation, 'isOnDemand:', isOnDemand, 'variantId:', variantId);
 
         // Check stock for account products
         // Products with requires_activation (OTP/QR) are ALWAYS available - no traditional stock needed
