@@ -320,11 +320,27 @@ const Checkout = () => {
           setOriginalPrice(null);
         }
 
+        // Check if variant is "on demand" (stored in site_settings)
+        let isOnDemand = false;
+        if (variantId) {
+          const { data: onDemandSetting } = await db
+            .from("site_settings")
+            .select("value")
+            .eq("key", `on_demand_variant_${variantId}`)
+            .maybeSingle();
+          if (onDemandSetting?.value === "true") {
+            isOnDemand = true;
+          }
+        }
+
         // Check stock for account products
         // Products with requires_activation (OTP/QR) are ALWAYS available - no traditional stock needed
         if (productData.requires_activation) {
           console.log('✅ Product requires activation (OTP/QR) - always available');
           setStockCount(999999); // Unlimited for activation products
+        } else if (isOnDemand) {
+          console.log('✅ On-demand variant - always available');
+          setStockCount(999999);
         } else if (productData.product_type === "account") {
           // Traditional stock check for non-activation products
           let stockFetched = false;
