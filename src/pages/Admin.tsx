@@ -419,8 +419,8 @@ const Admin = () => {
   };
 
   const saveProduct = async () => {
-    if (!productForm.name || !productForm.price) {
-      toast({ title: "خطأ", description: "الاسم والسعر مطلوبان", variant: "destructive" });
+    if (!productForm.name) {
+      toast({ title: "خطأ", description: "اسم المنتج مطلوب", variant: "destructive" });
       return;
     }
 
@@ -436,7 +436,7 @@ const Admin = () => {
       name_en: translations.name_en || null,
       description: productForm.description || null,
       description_en: translations.description_en || null,
-      price: parseFloat(productForm.price),
+      price: productForm.price ? parseFloat(productForm.price) : 0,
       category_id: productForm.category_id || null,
       image_url: productForm.image_url || null,
       is_active: productForm.is_active,
@@ -801,26 +801,14 @@ const Admin = () => {
                   <DialogTitle className="text-base">{editingProduct ? "تعديل المنتج" : "إضافة منتج جديد"}</DialogTitle>
                 </DialogHeader>
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs">اسم المنتج</Label>
-                      <Input
-                        value={productForm.name}
-                        onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
-                        placeholder="مثال: اشتراك Netflix"
-                        className="glass h-8 text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">السعر</Label>
-                      <Input
-                        type="number"
-                        value={productForm.price}
-                        onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
-                        placeholder="0"
-                        className="glass h-8 text-sm"
-                      />
-                    </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">اسم المنتج</Label>
+                    <Input
+                      value={productForm.name}
+                      onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
+                      placeholder="مثال: اشتراك Netflix"
+                      className="glass h-8 text-sm"
+                    />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">الوصف</Label>
