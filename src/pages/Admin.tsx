@@ -518,15 +518,19 @@ const Admin = () => {
   };
 
   const addCategory = async () => {
-    if (!newCategoryName) return;
+    if (!newCategoryName.trim()) {
+      toast({ title: "خطأ", description: "يرجى إدخال اسم التصنيف", variant: "destructive" });
+      return;
+    }
     
-    toast({ title: "جاري الإضافة...", description: "يتم إضافة التصنيف" });
+    console.log('Adding category:', newCategoryName);
+    toast({ title: "جاري الإضافة..." });
     
-    // Insert category first, translate later
-    const { error } = await db.from('categories').insert({ 
-      name: newCategoryName,
-      name_en: null,
-    });
+    const { data, error } = await db.from('categories').insert({ 
+      name: newCategoryName.trim(),
+    }).select();
+    
+    console.log('Insert result:', { data, error });
     
     if (error) {
       console.error('Category insert error:', error);
@@ -537,17 +541,6 @@ const Admin = () => {
     toast({ title: "تم الإضافة", description: "تم إضافة التصنيف بنجاح ✅" });
     setNewCategoryName("");
     fetchCategories();
-    
-    // Try to translate in background (non-blocking)
-    try {
-      const translations = await translateCategory(newCategoryName);
-      if (translations.name_en) {
-        await db.from('categories').update({ name_en: translations.name_en }).eq('name', newCategoryName);
-        fetchCategories();
-      }
-    } catch (e) {
-      console.warn('Translation failed:', e);
-    }
   };
 
   const deleteCategory = async (id: string) => {
