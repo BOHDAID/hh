@@ -55,7 +55,7 @@ const BulkAccountImport = ({ products, onImportComplete }: BulkAccountImportProp
   const [onDemandVariants, setOnDemandVariants] = useState<ProductVariant[]>([]);
   const [savingOnDemand, setSavingOnDemand] = useState(false);
 
-  const VARIANT_COLS = "id, product_id, name, name_en, description, description_en, price, stock, image_url, is_active, is_unlimited, warranty_days, display_order, created_at, updated_at";
+  const VARIANT_COLS = "id, product_id, name, name_en, description, description_en, price, stock, image_url, is_active, warranty_days, display_order, created_at, updated_at";
 
   const fetchVariantsForProduct = async (productId: string) => {
     const { data, error } = await db

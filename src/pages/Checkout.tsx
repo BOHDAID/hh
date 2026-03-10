@@ -1042,7 +1042,7 @@ const Checkout = () => {
     return null;
   }
 
-  const isUnlimited = selectedVariant?.is_unlimited === true;
+  const isUnlimited = false; // Determined via site_settings, not DB column
   const requiresActivation = product?.requires_activation === true;
   // Products with requires_activation (OTP/QR) are always available
   const isOutOfStock = !isCartCheckout && product?.product_type === "account" && stockCount === 0 && !isUnlimited && !requiresActivation;

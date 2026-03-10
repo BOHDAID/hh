@@ -86,10 +86,8 @@ const ProductDetailsModal = ({
       if (variantsData && variantsData.length > 0) {
         const variantsWithStock = await Promise.all(
           variantsData.map(async (variant: any) => {
-            // Check if variant is unlimited (also covers on-demand variants)
-            if (variant.is_unlimited) {
-              return { ...variant, stock: -1 };
-            }
+            // Check stock from product_accounts
+            const { count } = await db
 
             // Use secure database function to get stock count
             const { data: stockData } = await db.rpc("get_variant_stock", {
