@@ -120,7 +120,7 @@ export async function invokeCloudFunction<T = unknown>(
       console.error(`❌ Function ${slug} failed:`, data);
       return { data: null, error: new Error(data?.error || `Function ${slug} returned ${response.status}`) };
     }
-    console.log(`✅ Function ${slug} success`);
+    // Function completed successfully
     return { data: data as T, error: null };
   } catch (err) {
     console.error(`❌ Function ${slug} error:`, err);

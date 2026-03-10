@@ -92,7 +92,7 @@ const useDynamicFavicon = () => {
       appleLink.href = url;
       document.head.appendChild(appleLink);
 
-      console.log("🎨 Favicon set to processed image");
+      // Favicon updated
     };
 
     const fetchAndSetFavicon = async () => {
