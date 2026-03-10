@@ -234,13 +234,13 @@ const BulkAccountImport = ({ products, onImportComplete }: BulkAccountImportProp
 
       if (insertError) throw insertError;
 
-      // Mark the variant as unlimited
-      const { error: updateError } = await db
-        .from("product_variants")
-        .update({ is_unlimited: true })
-        .eq("id", unlimitedVariant);
-
-      if (updateError) throw updateError;
+      // Mark the variant as unlimited via site_settings (avoid schema cache errors)
+      await db.from("site_settings").upsert({
+        key: `unlimited_variant_${unlimitedVariant}`,
+        value: "true",
+        category: "products",
+        is_sensitive: false,
+      }, { onConflict: "key" });
 
       toast({
         title: "تم الحفظ",

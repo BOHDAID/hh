@@ -77,7 +77,7 @@ const ProductDetailsModal = ({
       // Get variants for this product
       const { data: variantsData } = await db
         .from("product_variants")
-        .select("id, product_id, name, name_en, description, description_en, price, stock, image_url, is_active, is_unlimited, warranty_days, display_order, created_at, updated_at")
+        .select("id, product_id, name, name_en, description, description_en, price, stock, image_url, is_active, warranty_days, display_order, created_at, updated_at")
         .eq("product_id", productId)
         .eq("is_active", true)
         .order("display_order", { ascending: true });
