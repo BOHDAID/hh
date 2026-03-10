@@ -67,7 +67,7 @@ const CartRecommendations = ({ cartProductIds, userId, onAddedToCart }: CartReco
         coPurchasedIds = [...new Set(coItems?.map(i => i.product_id))] as string[];
       }
 
-      // 3. Query recommended products: co-purchased first, then same category
+      // 3. Query recommended products
       let recommended: RecommendedProduct[] = [];
 
       if (coPurchasedIds.length > 0) {
@@ -108,6 +108,32 @@ const CartRecommendations = ({ cartProductIds, userId, onAddedToCart }: CartReco
         if (data) recommended = [...recommended, ...data];
       }
 
+      // Fetch min variant prices for all recommended products
+      if (recommended.length > 0) {
+        const recIds = recommended.map(r => r.id);
+        const { data: variants } = await db
+          .from("product_variants")
+          .select("product_id, price")
+          .in("product_id", recIds)
+          .eq("is_active", true)
+          .gt("price", 0);
+
+        if (variants) {
+          const minPriceMap: Record<string, number> = {};
+          for (const v of variants) {
+            if (!minPriceMap[v.product_id] || v.price < minPriceMap[v.product_id]) {
+              minPriceMap[v.product_id] = v.price;
+            }
+          }
+          // Apply variant prices
+          for (const product of recommended) {
+            if (minPriceMap[product.id]) {
+              product.price = minPriceMap[product.id];
+            }
+          }
+        }
+      }
+
       setProducts(recommended);
     } catch (err) {
       console.error("Recommendations error:", err);
@@ -119,11 +145,13 @@ const CartRecommendations = ({ cartProductIds, userId, onAddedToCart }: CartReco
   const addToCart = async (productId: string) => {
     setAddingId(productId);
     try {
-      // Check if already in cart
+      const { data: { session } } = await db.auth.getSession();
+      if (!session) return;
+
       const { data: existing } = await db
         .from("cart_items")
         .select("id, quantity")
-        .eq("user_id", userId)
+        .eq("user_id", session.user.id)
         .eq("product_id", productId)
         .maybeSingle();
 
@@ -135,47 +163,26 @@ const CartRecommendations = ({ cartProductIds, userId, onAddedToCart }: CartReco
       } else {
         await db
           .from("cart_items")
-          .insert({ user_id: userId, product_id: productId, quantity: 1 });
+          .insert({ user_id: session.user.id, product_id: productId, quantity: 1 });
       }
 
       toast({
-        title: isRTL ? "✅ تمت الإضافة" : "✅ Added",
-        description: isRTL ? "تمت إضافة المنتج إلى السلة" : "Product added to cart",
+        title: isRTL ? "تمت الإضافة" : "Added",
+        description: isRTL ? "تم إضافة المنتج للسلة" : "Product added to cart",
       });
 
-      // Remove from recommendations
-      setProducts(prev => prev.filter(p => p.id !== productId));
-      window.dispatchEvent(new Event("cart-updated"));
       onAddedToCart?.();
-    } catch {
+    } catch (err) {
       toast({
         title: isRTL ? "خطأ" : "Error",
+        description: isRTL ? "فشل في إضافة المنتج" : "Failed to add product",
         variant: "destructive",
       });
-    } finally {
-      setAddingId(null);
     }
+    setAddingId(null);
   };
 
-  if (loading) {
-    return (
-      <div className="glass rounded-2xl p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Sparkles className="h-5 w-5 text-primary" />
-          <h3 className="font-bold text-foreground">
-            {isRTL ? "عملاء اشتروا أيضاً..." : "Customers also bought..."}
-          </h3>
-        </div>
-        <div className="flex gap-3 overflow-x-auto pb-2">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="w-36 h-48 rounded-xl bg-muted animate-pulse flex-shrink-0" />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (products.length === 0) return null;
+  if (loading || products.length === 0) return null;
 
   return (
     <motion.div
@@ -228,7 +235,7 @@ const CartRecommendations = ({ cartProductIds, userId, onAddedToCart }: CartReco
                 </h4>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-bold text-primary">
-                    ${product.price}
+                    ${product.price.toFixed(2)}
                   </span>
                   {product.average_rating > 0 && (
                     <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
