@@ -336,7 +336,7 @@ const Admin = () => {
   const fetchVariantsForProduct = async (productId: string) => {
     const { data, error } = await db
       .from('product_variants')
-      .select('id, product_id, name, name_en, description, description_en, price, stock, image_url, is_active, is_unlimited, warranty_days, display_order, created_at, updated_at')
+      .select('id, product_id, name, name_en, description, description_en, price, stock, image_url, is_active, warranty_days, display_order, created_at, updated_at')
       .eq('product_id', productId)
       .order('display_order', { ascending: true });
     

@@ -51,12 +51,13 @@ const DashboardTab = () => {
         .select("*", { count: "exact", head: true })
         .eq("is_sold", false);
 
-      // جلب الخيارات الدائمة (unlimited) لإضافتها للمخزون
-      const { count: unlimitedCount } = await db
-        .from("product_variants")
-        .select("id", { count: "exact", head: true })
-        .eq("is_unlimited", true)
-        .eq("is_active", true);
+      // جلب الخيارات الدائمة (unlimited) من site_settings
+      const { data: unlimitedSettings } = await db
+        .from("site_settings")
+        .select("key")
+        .like("key", "unlimited_variant_%")
+        .eq("value", "true");
+      const unlimitedCount = unlimitedSettings?.length || 0;
 
       // جلب الطلبات المكتملة - نتحقق من كل الحالات الممكنة
       const { data: completedOrders } = await db

@@ -32,7 +32,6 @@ interface SelectedVariant {
   id: string;
   name: string;
   price: number;
-  is_unlimited?: boolean | null;
   warranty_days?: number | null;
 }
 
@@ -273,7 +272,7 @@ const Checkout = () => {
 
           const { data: vData, error: vError } = await db
             .from("product_variants")
-            .select("id, name, price, is_unlimited, warranty_days")
+            .select("id, name, price, warranty_days")
             .eq("id", variantId)
             .eq("product_id", productId)
             .eq("is_active", true)
@@ -1043,7 +1042,7 @@ const Checkout = () => {
     return null;
   }
 
-  const isUnlimited = selectedVariant?.is_unlimited === true;
+  const isUnlimited = false; // Determined via site_settings, not DB column
   const requiresActivation = product?.requires_activation === true;
   // Products with requires_activation (OTP/QR) are always available
   const isOutOfStock = !isCartCheckout && product?.product_type === "account" && stockCount === 0 && !isUnlimited && !requiresActivation;
